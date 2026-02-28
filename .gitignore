@@ -7,7 +7,7 @@ __pycache__/
 env/
 venv/
 ENV/
-build/
+# build/
 develop-eggs/
 dist/
 downloads/
@@ -46,7 +46,7 @@ staticfiles/
 .DS_Store
 
 # Docker
-*.dockerignore
+# *.dockerignore
 
 # Flutter
 mobile/.dart_tool/
