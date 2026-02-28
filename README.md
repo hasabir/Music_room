@@ -1,4 +1,4 @@
-# Music Room
+<!-- # Music Room
 
 A collaborative music room application where users can vote on songs, manage playlists, and delegate control.
 
@@ -133,4 +133,4 @@ The backend uses Django with Channels for WebSocket support, enabling real-time 
 
 ## License
 
-MIT
+MIT -->
