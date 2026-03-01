@@ -31,3 +31,10 @@ flutter run
 - [ ] Add voting functionality
 - [ ] Implement WebSocket connection
 - [ ] Add delegation features
+
+- Django Backend: http://localhost:8000
+- Django Admin: http://localhost:8082/admin/
+- PostgreSQL: localhost:5433 (configured via environment variables)
+- Redis: localhost:6380
+- Adminer: http://localhost:8080
+- Nginx: http://localhost:8082
