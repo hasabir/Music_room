@@ -32,7 +32,7 @@ media/
 staticfiles/
 
 # Environment
-.env
+backend/build/.env
 .env.local
 
 # IDE

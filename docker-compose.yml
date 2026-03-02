@@ -76,9 +76,28 @@ services:
       - "8080:8080"
     depends_on:
       - db
+  
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin_container
+    env_file:
+      - .env
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "5050:80"
+    networks:
+      - music_room_network
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
 
 volumes:
   postgres_data:
+  pgadmin_data:
 
 networks:
   music_room_network:
