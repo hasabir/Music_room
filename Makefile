@@ -22,8 +22,8 @@ build:
 	docker-compose build
 
 up:
-	docker-compose up -d
-	@echo "Services started. Backend: http://localhost:8000"
+	docker-compose up --build
+# 	@echo "Services started. Backend: http://localhost:8000"
 
 down:
 	docker-compose down
