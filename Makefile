@@ -58,18 +58,8 @@ clean:
 	docker-compose down -v
 	docker system prune -f
 
-# Flutter commands
-flutter-get:
-	cd mobile && flutter pub get
-
-flutter-run:
-	cd mobile && flutter run
-
-flutter-build-android:
-	cd mobile && flutter build apk
-
-flutter-build-ios:
-	cd mobile && flutter build ios
+db:
+	docker compose exec backend python manage.py loaddata build/test_users.json
 
 # Initial setup
 setup: build up migrate createsuperuser

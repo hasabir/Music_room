@@ -59,7 +59,7 @@ services:
     env_file:
       - .env
     environment:
-      DEBUG: ${DEBUG}
+      DEBUG: 1
       DB_HOST: ${DB_HOST} 
       REDIS_HOST: ${REDIS_HOST}
     depends_on:
