@@ -1,5 +1,6 @@
 # playlists/models.py
 from django.db import models
+from django.db.models import Deferrable
 from django.conf import settings
 
 
@@ -68,8 +69,21 @@ class PlaylistSong(models.Model):
 
     class Meta:
         constraints = [
-            # No two songs can share a slot in the same playlist
-            models.UniqueConstraint(fields=["playlist", "position"], name="unique_position_per_playlist"),
+            # No two songs can share a slot in the same playlist.
+            #
+            # DEFERRABLE = Deferrable.DEFERRED: Postgres normally checks a
+            # unique constraint immediately after each row is modified. When
+            # we shift multiple songs' positions in one UPDATE (reordering),
+            # a row can momentarily land on a position another not-yet-updated
+            # row still occupies — even though the FINAL result is valid.
+            # Making the constraint deferred tells Postgres to only check it
+            # once, at the end of the transaction, avoiding false failures
+            # during a multi-row shift.
+            models.UniqueConstraint(
+                fields=["playlist", "position"],
+                name="unique_position_per_playlist",
+                deferrable=Deferrable.DEFERRED,
+            ),
             # The same song can't be added twice to the same playlist
             models.UniqueConstraint(fields=["playlist", "song"], name="unique_song_per_playlist"),
         ]

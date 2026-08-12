@@ -1,4 +1,4 @@
-# Music Room — Auth API Documentation
+ # Music Room — Auth API Documentation
 
 Base URL (local dev): `http://localhost:8000/api/v1/auth/`
 

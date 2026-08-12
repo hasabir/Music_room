@@ -102,7 +102,17 @@ REST_FRAMEWORK = {
         "login": "5/min",
         "register": "5/hour",
         "password_reset": "3/hour",
+        # NEW — events
+        "vote": "30/min",          # generous enough for real use, blocks vote-spam scripts
+        "add_song": "20/min",
+        "create_event": "10/hour",
+ 
+        # NEW — playlists
+        "add_playlist_song": "20/min",
+        "move_song": "60/min",     # reordering can happen fast during active editing (drag-and-drop)
+        "create_playlist": "10/hour",
     },
+    
 }
 
 CHANNEL_LAYERS = {

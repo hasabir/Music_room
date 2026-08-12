@@ -83,3 +83,8 @@ class EventSongSerializer(serializers.ModelSerializer):
         if not request or not request.user.is_authenticated:
             return False
         return obj.votes.filter(voter=request.user).exists()
+
+class InviteGuestSerializer(serializers.Serializer):
+    """Used for POSTing a new guest invitation."""
+    user_id = serializers.IntegerField()
+ 

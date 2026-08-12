@@ -49,4 +49,9 @@ class PlaylistSongSerializer(serializers.ModelSerializer):
             "id", "playlist", "song", "song_title", "song_artist",
             "position", "added_by_email", "added_at",
         ]
-        read_only_fields = fields
+        read_only_fields = fields\
+
+class InviteCollaboratorSerializer(serializers.Serializer):
+    """Used for POSTing a new collaborator invitation."""
+    user_id = serializers.IntegerField()
+ 

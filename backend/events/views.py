@@ -1,5 +1,5 @@
 # events/views.py
-from django.db import IntegrityError
+from django.db import IntegrityError , transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
@@ -7,9 +7,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
-
+from .throttles import VoteRateThrottle, AddSongRateThrottle, CreateEventRateThrottle
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
-
 from authentication.utils import log_action
 
 from .models import Event, Song, EventSong, Vote
@@ -49,6 +48,7 @@ class EventListCreateView(generics.ListCreateAPIView):
     POST -> create a new event (current user becomes the host)
     """
     permission_classes = [IsAuthenticated]
+    throttle_classes = [CreateEventRateThrottle] 
     serializer_class = EventSerializer
 
     def get_queryset(self):
@@ -150,7 +150,7 @@ class EventQueueView(APIView):
     POST -> add a new song to the event's queue
     """
     permission_classes = [IsAuthenticated]
-
+    throttle_classes = [AddSongRateThrottle] 
     def get(self, request, event_id):
         event = get_object_or_404(Event, id=event_id)
         if not can_user_see_event(request.user, event):
@@ -244,7 +244,7 @@ class EventQueueView(APIView):
 )
 class VoteView(APIView):
     permission_classes = [IsAuthenticated]
-
+    throttle_classes = [VoteRateThrottle] 
     def post(self, request, event_id, event_song_id):
         event = get_object_or_404(Event, id=event_id)
         event_song = get_object_or_404(EventSong, id=event_song_id, event=event)
@@ -258,9 +258,9 @@ class VoteView(APIView):
         )
         if not allowed:
             return Response({"detail": reason}, status=status.HTTP_403_FORBIDDEN)
-
         try:
-            Vote.objects.create(event_song=event_song, voter=request.user)
+            with transaction.atomic():
+                Vote.objects.create(event_song=event_song, voter=request.user)
         except IntegrityError:
             return Response({"detail": "You have already voted for this song."},
                              status=status.HTTP_400_BAD_REQUEST)
@@ -282,7 +282,7 @@ class VoteView(APIView):
                              status=status.HTTP_400_BAD_REQUEST)
 
         log_action(request, "event.vote_retracted", user=request.user)
-        broadcast_queue_update(event)
+        broadcast_queue_update(event_song.event) 
         return Response(
             {"detail": "Vote retracted.", "vote_count": event_song.vote_count},
             status=status.HTTP_200_OK

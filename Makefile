@@ -18,6 +18,7 @@ help:
 	@echo "make flutter-get    - Install Flutter dependencies"
 	@echo "make flutter-run    - Run Flutter app"
 
+
 build:
 	docker-compose build
 
@@ -62,8 +63,12 @@ db:
 	docker compose exec backend python manage.py loaddata build/test_users.json
 
 # Initial setup
-setup: build up migrate createsuperuser
-	@echo "Setup complete!"
+setup:
+	docker-compose up --build -d
+	sleep 5
+	docker-compose exec backend python manage.py migrate
+	docker-compose exec backend python manage.py createsuperuser
+	@echo "Setup complete!""
 
 # Development workflow
 dev: up logs

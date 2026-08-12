@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
-
+from .throttles import AddPlaylistSongRateThrottle, MoveSongRateThrottle, CreatePlaylistRateThrottle
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 
 from authentication.utils import log_action
@@ -38,6 +38,7 @@ from .broadcast import broadcast_playlist_update
 )
 class PlaylistListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [CreatePlaylistRateThrottle]
     serializer_class = PlaylistSerializer
 
     def get_queryset(self):
@@ -122,7 +123,7 @@ class PlaylistDetailView(generics.RetrieveUpdateDestroyAPIView):
 )
 class PlaylistSongListView(APIView):
     permission_classes = [IsAuthenticated]
-
+    throttle_classes = [AddPlaylistSongRateThrottle]
     def get(self, request, playlist_id):
         playlist = get_object_or_404(Playlist, id=playlist_id)
         if not can_user_see_playlist(request.user, playlist):
@@ -216,7 +217,7 @@ class PlaylistSongDeleteView(APIView):
 )
 class PlaylistSongMoveView(APIView):
     permission_classes = [IsAuthenticated]
-
+    throttle_classes = [MoveSongRateThrottle] 
     def post(self, request, playlist_id, playlist_song_id):
         playlist = get_object_or_404(Playlist, id=playlist_id)
         allowed, reason = can_user_edit_playlist(request.user, playlist)
