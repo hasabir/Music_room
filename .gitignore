@@ -13,7 +13,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/
 lib64/
 parts/
 sdist/
@@ -55,9 +55,9 @@ mobile/.flutter-plugins-dependencies
 mobile/.packages
 mobile/.pub-cache/
 mobile/.pub/
-mobile/build/
-mobile/ios/Flutter/flutter_export_environment.sh
-mobile/ios/Flutter/Generated.xcconfig
-mobile/ios/Flutter/App.framework
-mobile/ios/Flutter/Flutter.framework
-mobile/ios/Flutter/Flutter.podspec
+# mobile/build/
+# mobile/ios/Flutter/flutter_export_environment.sh
+# mobile/ios/Flutter/Generated.xcconfig
+# mobile/ios/Flutter/App.framework
+# mobile/ios/Flutter/Flutter.framework
+# mobile/ios/Flutter/Flutter.podspec

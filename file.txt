@@ -1,0 +1,134 @@
+adminer-1          | [Mon Aug 17 07:59:35 2026] PHP 8.4.24 Development Server (http://[::]:8080) started
+adminer-1          | [Mon Aug 17 08:05:44 2026] PHP 8.4.24 Development Server (http://[::]:8080) started
+pgadmin_container  | email config is {'CHECK_EMAIL_DELIVERABILITY': False, 'ALLOW_SPECIAL_EMAIL_DOMAINS': [], 'GLOBALLY_DELIVERABLE': True}
+backend-1          | Waiting for database...
+pgadmin_container  | /venv/lib/python3.14/site-packages/sshtunnel.py:1040: SyntaxWarning: 'return' in a 'finally' block
+nginx              | nginx: [emerg] host not found in upstream "backend:8000" in /etc/nginx/nginx.conf:7
+nginx              | nginx: [emerg] host not found in upstream "backend:8000" in /etc/nginx/nginx.conf:7
+nginx              | nginx: [emerg] host not found in upstream "backend:8000" in /etc/nginx/nginx.conf:7
+backend-1          | Running migrations...
+nginx              | nginx: [emerg] host not found in upstream "backend:8000" in /etc/nginx/nginx.conf:7
+db-1               | The files belonging to this database system will be owned by user "postgres".
+db-1               | This user must also own the server process.
+db-1               | 
+nginx              | nginx: [emerg] host not found in upstream "backend:8000" in /etc/nginx/nginx.conf:7
+redis-1            | 1:C 17 Aug 2026 07:59:35.466 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. Being disabled, it can also cause failures without low memory condition, see https://github.com/jemalloc/jemalloc/issues/1328. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+db-1               | The database cluster will be initialized with locale "en_US.utf8".
+backend-1          | No changes detected
+db-1               | The default database encoding has accordingly been set to "UTF8".
+redis-1            | 1:C 17 Aug 2026 07:59:35.466 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+pgadmin_container  |   return (ssh_host,
+redis-1            | 1:C 17 Aug 2026 07:59:35.466 * Redis version=7.4.10, bits=64, commit=00000000, modified=0, pid=1, just started
+pgadmin_container  | NOTE: Configuring authentication for SERVER mode.
+redis-1            | 1:C 17 Aug 2026 07:59:35.466 # Warning: no config file specified, using the default config. In order to specify a config file use redis-server /path/to/redis.conf
+redis-1            | 1:M 17 Aug 2026 07:59:35.467 * Increased maximum number of open files to 10032 (it was originally set to 1024).
+redis-1            | 1:M 17 Aug 2026 07:59:35.467 * monotonic clock: POSIX clock_gettime
+redis-1            | 1:M 17 Aug 2026 07:59:35.468 * Running mode=standalone, port=6379.
+backend-1          | Operations to perform:
+pgadmin_container  | 
+nginx              | nginx: [emerg] host not found in upstream "backend:8000" in /etc/nginx/nginx.conf:7
+nginx              | nginx: [emerg] host not found in upstream "backend:8000" in /etc/nginx/nginx.conf:7
+nginx              | nginx: [emerg] host not found in upstream "backend:8000" in /etc/nginx/nginx.conf:7
+redis-1            | 1:M 17 Aug 2026 07:59:35.469 * Server initialized
+redis-1            | 1:M 17 Aug 2026 07:59:35.469 * Ready to accept connections tcp
+nginx              | nginx: [emerg] host not found in upstream "backend:8000" in /etc/nginx/nginx.conf:7
+nginx              | nginx: [emerg] host not found in upstream "backend:8000" in /etc/nginx/nginx.conf:7
+db-1               | The default text search configuration will be set to "english".
+backend-1          |   Apply all migrations: admin, auth, contenttypes, events, playlists, profiles, sessions, user
+db-1               | 
+backend-1          | Running migrations:
+backend-1          |   Applying contenttypes.0001_initial... OK
+backend-1          |   Applying contenttypes.0002_remove_content_type_name... OK
+backend-1          |   Applying auth.0001_initial... OK
+nginx              | nginx: [emerg] host not found in upstream "backend:8000" in /etc/nginx/nginx.conf:7
+nginx              | nginx: [emerg] host not found in upstream "backend:8000" in /etc/nginx/nginx.conf:7
+nginx              | nginx: [emerg] host not found in upstream "backend:8000" in /etc/nginx/nginx.conf:7
+pgadmin_container  | pgAdmin 4 - Application Initialisation
+pgadmin_container  | ======================================
+pgadmin_container  | 
+pgadmin_container  | postfix/postlog: starting the Postfix mail system
+pgadmin_container  | [2026-08-17 08:00:20 +0000] [1] [INFO] Starting gunicorn 23.0.0
+pgadmin_container  | [2026-08-17 08:00:20 +0000] [1] [INFO] Listening at: http://[::]:80 (1)
+db-1               | Data page checksums are disabled.
+db-1               | 
+db-1               | fixing permissions on existing directory /var/lib/postgresql/data ... ok
+db-1               | creating subdirectories ... ok
+db-1               | selecting dynamic shared memory implementation ... posix
+db-1               | selecting default max_connections ... 100
+db-1               | selecting default shared_buffers ... 128MB
+pgadmin_container  | [2026-08-17 08:00:20 +0000] [1] [INFO] Using worker: gthread
+pgadmin_container  | [2026-08-17 08:00:20 +0000] [137] [INFO] Booting worker with pid: 137
+pgadmin_container  | /venv/lib/python3.14/site-packages/sshtunnel.py:1040: SyntaxWarning: 'return' in a 'finally' block
+pgadmin_container  |   return (ssh_host,
+backend-1          |   Applying auth.0002_alter_permission_name_max_length... OK
+backend-1          |   Applying auth.0003_alter_user_email_max_length... OK
+backend-1          |   Applying auth.0004_alter_user_username_opts... OK
+backend-1          |   Applying auth.0005_alter_user_last_login_null... OK
+backend-1          |   Applying auth.0006_require_contenttypes_0002... OK
+db-1               | selecting default time zone ... UTC
+db-1               | creating configuration files ... ok
+db-1               | running bootstrap script ... ok
+db-1               | sh: locale: not found
+db-1               | 2026-08-17 07:59:36.143 UTC [35] WARNING:  no usable system locales were found
+db-1               | performing post-bootstrap initialization ... ok
+db-1               | syncing data to disk ... ok
+db-1               | 
+db-1               | 
+db-1               | initdb: warning: enabling "trust" authentication for local connections
+db-1               | initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+db-1               | Success. You can now start the database server using:
+db-1               | 
+db-1               |     pg_ctl -D /var/lib/postgresql/data -l logfile start
+db-1               | 
+db-1               | waiting for server to start....2026-08-17 07:59:36.860 UTC [41] LOG:  starting PostgreSQL 15.19 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+db-1               | 2026-08-17 07:59:36.862 UTC [41] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+db-1               | 2026-08-17 07:59:36.867 UTC [44] LOG:  database system was shut down at 2026-08-17 07:59:36 UTC
+db-1               | 2026-08-17 07:59:36.875 UTC [41] LOG:  database system is ready to accept connections
+db-1               |  done
+db-1               | server started
+db-1               | CREATE DATABASE
+db-1               | 
+db-1               | 
+db-1               | /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+db-1               | 
+db-1               | waiting for server to shut down....2026-08-17 07:59:37.023 UTC [41] LOG:  received fast shutdown request
+backend-1          |   Applying auth.0007_alter_validators_add_error_messages... OK
+backend-1          |   Applying auth.0008_alter_user_username_max_length... OK
+backend-1          |   Applying auth.0009_alter_user_last_name_max_length... OK
+backend-1          |   Applying auth.0010_alter_group_name_max_length... OK
+backend-1          |   Applying auth.0011_update_proxy_permissions... OK
+backend-1          |   Applying auth.0012_alter_user_first_name_max_length... OK
+backend-1          |   Applying user.0001_initial... OK
+backend-1          |   Applying admin.0001_initial... OK
+backend-1          |   Applying admin.0002_logentry_remove_auto_add... OK
+backend-1          |   Applying admin.0003_logentry_add_action_flag_choices... OK
+backend-1          |   Applying events.0001_initial... OK
+backend-1          |   Applying playlists.0001_initial... OK
+backend-1          |   Applying playlists.0002_remove_playlistsong_unique_position_per_playlist_and_more... OK
+backend-1          |   Applying profiles.0001_initial... OK
+backend-1          |   Applying profiles.0002_initial... OK
+backend-1          |   Applying sessions.0001_initial... OK
+db-1               | 2026-08-17 07:59:37.023 UTC [41] LOG:  aborting any active transactions
+db-1               | 2026-08-17 07:59:37.027 UTC [41] LOG:  background worker "logical replication launcher" (PID 47) exited with exit code 1
+db-1               | 2026-08-17 07:59:37.028 UTC [42] LOG:  shutting down
+db-1               | 2026-08-17 07:59:37.028 UTC [42] LOG:  checkpoint starting: shutdown immediate
+db-1               | 2026-08-17 07:59:37.071 UTC [42] LOG:  checkpoint complete: wrote 922 buffers (5.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.018 s, sync=0.023 s, total=0.044 s; sync files=301, longest=0.002 s, average=0.001 s; distance=4249 kB, estimate=4249 kB
+db-1               | 2026-08-17 07:59:37.079 UTC [41] LOG:  database system is shut down
+db-1               |  done
+db-1               | server stopped
+db-1               | 
+db-1               | PostgreSQL init process complete; ready for start up.
+db-1               | 
+db-1               | 2026-08-17 07:59:37.158 UTC [1] LOG:  starting PostgreSQL 15.19 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+backend-1          | Starting Daphne server...
+backend-1          | 2026-08-17 07:59:50,181 INFO     Starting server at tcp:port=8000:interface=0.0.0.0
+db-1               | 2026-08-17 07:59:37.158 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+db-1               | 2026-08-17 07:59:37.158 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+backend-1          | 2026-08-17 07:59:50,181 INFO     HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+backend-1          | 2026-08-17 07:59:50,182 INFO     Configuring endpoint tcp:port=8000:interface=0.0.0.0
+db-1               | 2026-08-17 07:59:37.161 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+backend-1          | 2026-08-17 07:59:50,182 INFO     Listening on TCP address 0.0.0.0:8000
+db-1               | 2026-08-17 07:59:37.166 UTC [57] LOG:  database system was shut down at 2026-08-17 07:59:37 UTC
+db-1               | 2026-08-17 07:59:37.172 UTC [1] LOG:  database system is ready to accept connections
+db-1               | 2026-08-17 08:04:37.252 UTC [55] LOG:  checkpoint starting: time
+db-1               | 2026-08-17 08:05:00.674 UTC [55] LOG:  checkpoint complete: wrote 236 buffers (1.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=23.396 s, sync=0.021 s, total=23.423 s; sync files=186, longest=0.002 s, average=0.001 s; distance=1318 kB, estimate=1318 kB

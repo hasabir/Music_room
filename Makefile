@@ -70,5 +70,11 @@ setup:
 	docker-compose exec backend python manage.py createsuperuser
 	@echo "Setup complete!""
 
+# flutter-get:
+# 	docker-compose exec mobile flutter pub get
+
+flutter-run:
+	cd mobile && flutter run -d 10.32.54.146:38085
+
 # Development workflow
 dev: up logs
