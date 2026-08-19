@@ -68,13 +68,13 @@ setup:
 	sleep 5
 	docker-compose exec backend python manage.py migrate
 	docker-compose exec backend python manage.py createsuperuser
-	@echo "Setup complete!""
+	@echo "Setup complete!"
 
-# flutter-get:
-# 	docker-compose exec mobile flutter pub get
-
+flutter-get:
+	@cd mobile &&  flutter pub get
+	@echo "Flutter setup is complete"
 flutter-run:
-	cd mobile && flutter run -d 10.32.54.146:38085
+	@cd mobile && flutter run -d 10.32.54.146:38085
 
 # Development workflow
 dev: up logs
