@@ -17,6 +17,9 @@ help:
 	@echo "make clean          - Remove containers and volumes"
 	@echo "make flutter-get    - Install Flutter dependencies"
 	@echo "make flutter-run    - Run Flutter app"
+	@echo "make setup          - Initial setup (build, migrate, create superuser)"
+	@echo "make dev            - Start development workflow (up + logs)"
+	@echo "make db             - Load test data into the database"
 
 
 build:

@@ -11,6 +11,8 @@ class ApiConfig {
   static const String baseUrl = 'http://10.32.129.163:8000';
 
   static const String registerEndpoint = '/api/v1/auth/register/';
+  static const String loginEndpoint = '/api/v1/auth/login/';
 
   static Uri registerUri() => Uri.parse('$baseUrl$registerEndpoint');
+  static Uri loginUri() => Uri.parse('$baseUrl$loginEndpoint');
 }

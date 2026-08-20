@@ -23,15 +23,13 @@ class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
   void _onCreateAccount(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RegisterScreen()),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const RegisterScreen()));
   }
 
   void _onLogIn(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const LoginScreen()));
   }
 
   // TODO: Replace with real Google Sign-In once the auth service exists.

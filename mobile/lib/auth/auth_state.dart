@@ -1,21 +1,24 @@
+import '../core/auth/token_storage.dart';
+
 /// Abstraction over the app's authentication status.
 ///
 /// This lets navigation code (e.g. the splash screen) decide between the
 /// Welcome flow and the Home screen without knowing how authentication is
 /// actually determined.
 abstract class AuthState {
-  bool get isAuthenticated;
+  Future<bool> isAuthenticated();
 }
 
-/// Temporary [AuthState] used until a real auth service (backed by the
-/// Django backend) is implemented. Defaults to unauthenticated so the
-/// Welcome Screen is shown during development.
+/// [AuthState] backed by the tokens persisted in [TokenStorage].
 ///
-/// Replace this with a real implementation (e.g. one backed by a stored
-/// session token) once the auth feature is built.
-class TemporaryAuthState implements AuthState {
-  const TemporaryAuthState({this.isAuthenticated = false});
+/// A session is considered valid if an access token was saved by a prior
+/// successful login (see `AuthApi.login`) and hasn't been cleared since.
+class SessionAuthState implements AuthState {
+  SessionAuthState({TokenStorage? tokenStorage})
+    : _tokenStorage = tokenStorage ?? TokenStorage();
+
+  final TokenStorage _tokenStorage;
 
   @override
-  final bool isAuthenticated;
+  Future<bool> isAuthenticated() => _tokenStorage.hasSession();
 }

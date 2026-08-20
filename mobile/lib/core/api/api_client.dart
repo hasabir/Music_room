@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -23,11 +24,13 @@ class ApiException implements Exception {
 /// Centralizes request/response handling (encoding, status checks, error
 /// parsing) so individual features don't each reimplement it.
 class ApiClient {
-  ApiClient({http.Client? httpClient}) : _httpClient = httpClient ?? http.Client();
+  ApiClient({http.Client? httpClient})
+    : _httpClient = httpClient ?? http.Client();
 
   final http.Client _httpClient;
 
   static const _jsonHeaders = {'Content-Type': 'application/json'};
+  static const _timeout = Duration(seconds: 15);
 
   Future<Map<String, dynamic>> post(
     Uri uri, {
@@ -35,13 +38,16 @@ class ApiClient {
   }) async {
     late final http.Response response;
     try {
-      response = await _httpClient.post(
-        uri,
-        headers: _jsonHeaders,
-        body: jsonEncode(body),
-      );
+      response = await _httpClient
+          .post(uri, headers: _jsonHeaders, body: jsonEncode(body))
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw ApiException(0, 'The request timed out. Please try again.');
     } catch (error) {
-      throw ApiException(0, 'Could not reach the server: $error');
+      throw ApiException(
+        0,
+        'Unable to connect to the server. Please try again.',
+      );
     }
 
     return _decode(response);

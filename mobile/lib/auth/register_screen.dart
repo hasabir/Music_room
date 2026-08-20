@@ -75,9 +75,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = error.message);
@@ -90,7 +90,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void _onContinueWithGoogle() {}
 
   void _onLogIn() {
-    Navigator.of(context).pop();
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
   }
 
   @override
@@ -116,10 +118,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   hint: 'Enter your first name',
                   controller: _firstNameController,
                   textCapitalization: TextCapitalization.words,
-                  validator: (value) =>
-                      (value == null || value.trim().isEmpty)
-                          ? 'First name is required'
-                          : null,
+                  validator: (value) => (value == null || value.trim().isEmpty)
+                      ? 'First name is required'
+                      : null,
                 ),
                 const SizedBox(height: 20),
                 _LabeledField(
@@ -127,10 +128,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   hint: 'Enter your last name',
                   controller: _lastNameController,
                   textCapitalization: TextCapitalization.words,
-                  validator: (value) =>
-                      (value == null || value.trim().isEmpty)
-                          ? 'Last name is required'
-                          : null,
+                  validator: (value) => (value == null || value.trim().isEmpty)
+                      ? 'Last name is required'
+                      : null,
                 ),
                 const SizedBox(height: 20),
                 _LabeledField(
@@ -522,7 +522,10 @@ class _LogInPrompt extends StatelessWidget {
     return Center(
       child: RichText(
         text: TextSpan(
-          style: const TextStyle(fontSize: 14, color: _RegisterColors.description),
+          style: const TextStyle(
+            fontSize: 14,
+            color: _RegisterColors.description,
+          ),
           children: [
             const TextSpan(text: 'Already have an account?  '),
             TextSpan(

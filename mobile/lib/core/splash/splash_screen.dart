@@ -20,11 +20,12 @@ class _SplashColors {
 /// two ambient background glows. Fades its content in, holds for a few
 /// seconds, then fades/scales it out before navigating onward.
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key, this.authState = const TemporaryAuthState()});
+  SplashScreen({super.key, AuthState? authState})
+    : authState = authState ?? SessionAuthState();
 
   /// Determines which screen to navigate to once the splash animation
-  /// finishes. Defaults to a temporary, unauthenticated implementation
-  /// until a real auth service is wired in.
+  /// finishes. Defaults to [SessionAuthState], which checks for a
+  /// persisted login session.
   final AuthState authState;
 
   @override
@@ -80,8 +81,9 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
     await _exitController.forward();
 
+    final isAuthenticated = await widget.authState.isAuthenticated();
     if (!mounted) return;
-    final destination = widget.authState.isAuthenticated
+    final destination = isAuthenticated
         ? const HomeScreen()
         : const WelcomeScreen();
     Navigator.of(context)

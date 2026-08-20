@@ -1,6 +1,11 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../core/api/api_client.dart';
+import '../home/home_screen.dart';
+import 'auth_api.dart';
+import 'register_screen.dart';
+
 class _LoginColors {
   static const background = Color(0xFF0E0E15);
   static const title = Color(0xFFC0C1FF);
@@ -17,10 +22,11 @@ class _LoginColors {
   static const tertiary = Color(0xFF2FD9F4);
 }
 
-/// Login screen shown from the Welcome screen's "Log In" action.
+/// Login screen shown from the Welcome screen's "Log In" action (and from
+/// the Register screen's "Already have an account?" prompt).
 ///
-/// Collects email and password. Submission is not wired to the backend
-/// yet — [_onLogIn] is a placeholder for that integration.
+/// Collects email and password, posts them to the backend via [AuthApi],
+/// and on success clears the auth stack and navigates to [HomeScreen].
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -32,8 +38,11 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _authApi = AuthApi();
 
   bool _isPasswordVisible = false;
+  bool _isSubmitting = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -42,16 +51,41 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // TODO: Replace with a real login call once the auth service exists.
-  void _onLogIn() {
+  Future<void> _onLogIn() async {
+    if (_isSubmitting) return;
     if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await _authApi.login(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = error.message);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   // TODO: Replace with real Google Sign-In once the auth service exists.
   void _onContinueWithGoogle() {}
 
   void _onCreateAccount() {
-    Navigator.of(context).pop();
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+    );
   }
 
   @override
@@ -106,8 +140,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     return null;
                   },
                 ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 20),
+                  _ErrorMessage(message: _errorMessage!),
+                ],
                 const SizedBox(height: 28),
-                _LogInButton(onPressed: _onLogIn),
+                _LogInButton(
+                  onPressed: _isSubmitting ? null : _onLogIn,
+                  isLoading: _isSubmitting,
+                ),
                 const SizedBox(height: 20),
                 const _OrDivider(),
                 const SizedBox(height: 20),
@@ -281,9 +322,10 @@ class _VisibilityToggle extends StatelessWidget {
 }
 
 class _LogInButton extends StatelessWidget {
-  const _LogInButton({required this.onPressed});
+  const _LogInButton({required this.onPressed, this.isLoading = false});
 
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -309,19 +351,42 @@ class _LogInButton extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: onPressed,
-          child: const Center(
-            child: Text(
-              'Log In',
-              style: TextStyle(
-                fontFamily: 'Sora',
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-                color: Colors.white,
-              ),
-            ),
+          child: Center(
+            child: isLoading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation(Colors.white),
+                    ),
+                  )
+                : const Text(
+                    'Log In',
+                    style: TextStyle(
+                      fontFamily: 'Sora',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: Colors.white,
+                    ),
+                  ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ErrorMessage extends StatelessWidget {
+  const _ErrorMessage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      message,
+      style: const TextStyle(fontSize: 14, color: Colors.redAccent),
     );
   }
 }
