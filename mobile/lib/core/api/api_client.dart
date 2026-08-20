@@ -53,6 +53,29 @@ class ApiClient {
     return _decode(response);
   }
 
+  Future<Map<String, dynamic>> get(Uri uri, {String? accessToken}) async {
+    late final http.Response response;
+    try {
+      response = await _httpClient
+          .get(
+            uri,
+            headers: accessToken == null
+                ? null
+                : {'Authorization': 'Bearer $accessToken'},
+          )
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw ApiException(0, 'The request timed out. Please try again.');
+    } catch (error) {
+      throw ApiException(
+        0,
+        'Unable to connect to the server. Please try again.',
+      );
+    }
+
+    return _decode(response);
+  }
+
   Map<String, dynamic> _decode(http.Response response) {
     Map<String, dynamic>? decoded;
     if (response.body.isNotEmpty) {

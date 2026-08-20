@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api/api_client.dart';
 import 'auth_api.dart';
+import 'email_verification_pending_screen.dart';
 import 'login_screen.dart';
 
 class _RegisterColors {
@@ -67,7 +68,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      await _authApi.register(
+      final result = await _authApi.register(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         firstName: _firstNameController.text.trim(),
@@ -75,9 +76,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => EmailVerificationPendingScreen(
+            email: result.email,
+            initialDevVerification: result.devVerification,
+          ),
+        ),
+      );
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = error.message);

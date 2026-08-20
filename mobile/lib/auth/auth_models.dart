@@ -27,3 +27,35 @@ class LoginResult {
 
   final AuthUser user;
 }
+
+/// The uid/token pair for confirming an account's email, as returned by the
+/// backend's `dev_verification` response field.
+///
+/// The backend only includes this when running with `EMAIL_DEV_MODE` on
+/// (see `authentication/views.py`), as a way to exercise the verification
+/// flow without a real mail server. It carries the exact same uid/token the
+/// backend would otherwise deliver via the link in the verification email,
+/// so calling [AuthApi.verifyEmail] with it performs real backend
+/// verification — nothing about it is faked.
+class DevVerificationInfo {
+  const DevVerificationInfo({required this.uid, required this.token});
+
+  factory DevVerificationInfo.fromJson(Map<String, dynamic> json) =>
+      DevVerificationInfo(
+        uid: json['uid'] as String,
+        token: json['token'] as String,
+      );
+
+  final String uid;
+  final String token;
+}
+
+/// Result of a successful registration call.
+class RegisterResult {
+  const RegisterResult({required this.email, this.devVerification});
+
+  final String email;
+
+  /// Non-null only when the backend is running in dev-email mode.
+  final DevVerificationInfo? devVerification;
+}

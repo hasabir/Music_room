@@ -12,7 +12,15 @@ class ApiConfig {
 
   static const String registerEndpoint = '/api/v1/auth/register/';
   static const String loginEndpoint = '/api/v1/auth/login/';
+  static const String meEndpoint = '/api/v1/user/me/';
+  static const String verifyEmailEndpoint = '/api/v1/auth/verify-email/';
+  static const String resendVerificationEndpoint =
+      '/api/v1/auth/resend-verification/';
 
   static Uri registerUri() => Uri.parse('$baseUrl$registerEndpoint');
   static Uri loginUri() => Uri.parse('$baseUrl$loginEndpoint');
+  static Uri meUri() => Uri.parse('$baseUrl$meEndpoint');
+  static Uri verifyEmailUri() => Uri.parse('$baseUrl$verifyEmailEndpoint');
+  static Uri resendVerificationUri() =>
+      Uri.parse('$baseUrl$resendVerificationEndpoint');
 }
