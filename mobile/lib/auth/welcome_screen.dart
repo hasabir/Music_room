@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'login_screen.dart';
+import 'register_screen.dart';
+
 class _WelcomeColors {
   static const background = Color(0xFF0E0E15);
   static const headline = Color(0xFFC0C1FF);
@@ -19,11 +22,17 @@ class _WelcomeColors {
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
-  // TODO: Replace with real navigation once the registration screen exists.
-  void _onCreateAccount(BuildContext context) {}
+  void _onCreateAccount(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+    );
+  }
 
-  // TODO: Replace with real navigation once the login screen exists.
-  void _onLogIn(BuildContext context) {}
+  void _onLogIn(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
+  }
 
   // TODO: Replace with real Google Sign-In once the auth service exists.
   void _onContinueWithGoogle(BuildContext context) {}

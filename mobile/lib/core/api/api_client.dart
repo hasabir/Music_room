@@ -1,0 +1,86 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+/// Thrown when the backend returns a non-2xx response, or the response body
+/// can't be parsed as expected.
+class ApiException implements Exception {
+  ApiException(this.statusCode, this.message, {this.fieldErrors});
+
+  final int statusCode;
+  final String message;
+
+  /// Field-level validation errors, e.g. `{"email": ["already in use"]}`,
+  /// as returned by Django REST Framework serializers.
+  final Map<String, dynamic>? fieldErrors;
+
+  @override
+  String toString() => 'ApiException($statusCode, $message)';
+}
+
+/// Thin wrapper around [http.Client] for JSON APIs.
+///
+/// Centralizes request/response handling (encoding, status checks, error
+/// parsing) so individual features don't each reimplement it.
+class ApiClient {
+  ApiClient({http.Client? httpClient}) : _httpClient = httpClient ?? http.Client();
+
+  final http.Client _httpClient;
+
+  static const _jsonHeaders = {'Content-Type': 'application/json'};
+
+  Future<Map<String, dynamic>> post(
+    Uri uri, {
+    required Map<String, dynamic> body,
+  }) async {
+    late final http.Response response;
+    try {
+      response = await _httpClient.post(
+        uri,
+        headers: _jsonHeaders,
+        body: jsonEncode(body),
+      );
+    } catch (error) {
+      throw ApiException(0, 'Could not reach the server: $error');
+    }
+
+    return _decode(response);
+  }
+
+  Map<String, dynamic> _decode(http.Response response) {
+    Map<String, dynamic>? decoded;
+    if (response.body.isNotEmpty) {
+      try {
+        final parsed = jsonDecode(response.body);
+        if (parsed is Map<String, dynamic>) {
+          decoded = parsed;
+        }
+      } on FormatException {
+        decoded = null;
+      }
+    }
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return decoded ?? const {};
+    }
+
+    final message = decoded != null
+        ? _firstErrorMessage(decoded)
+        : 'Request failed with status ${response.statusCode}';
+    throw ApiException(response.statusCode, message, fieldErrors: decoded);
+  }
+
+  String _firstErrorMessage(Map<String, dynamic> body) {
+    for (final value in body.values) {
+      if (value is List && value.isNotEmpty) {
+        return value.first.toString();
+      }
+      if (value is String) {
+        return value;
+      }
+    }
+    return 'Something went wrong. Please try again.';
+  }
+
+  void dispose() => _httpClient.close();
+}

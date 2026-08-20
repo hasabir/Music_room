@@ -74,7 +74,8 @@ flutter-get:
 	@cd mobile &&  flutter pub get
 	@echo "Flutter setup is complete"
 flutter-run:
-	@cd mobile && flutter run -d 10.32.54.146:38085
+	@cd mobile && flutter run -d 10.32.54.146:35657
+
 
 # Development workflow
 dev: up logs
