@@ -76,8 +76,25 @@ setup:
 flutter-get:
 	@cd mobile &&  flutter pub get
 	@echo "Flutter setup is complete"
+
+flutter-setup:
+	@if [ -z "$(PORT)" ]; then \
+		echo "Error: PORT argument is required"; \
+		echo "Usage: make flutter-setup PORT=5555"; \
+		exit 1; \
+	fi
+	@echo "Connecting to 10.32.54.146:$(PORT)..."
+	@adb connect 10.32.54.146:$(PORT) 2>&1 | grep -q "connected" || true
+	@if adb devices | grep -q "10.32.54.146:$(PORT)\s\+device"; then \
+		echo "✅ Connected to 10.32.54.146:$(PORT)"; \
+	else \
+		echo "❌ Could not connect to 10.32.54.146:$(PORT)"; \
+		adb disconnect 10.32.54.146:$(PORT) > /dev/null 2>&1 || true; \
+		exit 1; \
+	fi
+
 flutter-run:
-	@cd mobile && flutter run -d 10.32.54.146:35657
+	@cd mobile && flutter run -d 10.32.54.146:38499
 
 
 # Development workflow

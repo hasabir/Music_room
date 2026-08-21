@@ -55,15 +55,30 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _handleLogout() async {
+    await _authApi.logout();
+    await _signOutAndReturnToWelcome();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFF0E0E15),
+    return Scaffold(
+      backgroundColor: const Color(0xFF0E0E15),
       body: SizedBox.expand(
         child: Center(
-          child: Text(
-            'Welcome to home page',
-            style: TextStyle(color: Colors.white),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Welcome to home page',
+                style: TextStyle(color: Colors.white),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: _handleLogout,
+                child: const Text('Logout'),
+              ),
+            ],
           ),
         ),
       ),

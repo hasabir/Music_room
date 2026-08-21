@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../core/api/api_client.dart';
 import '../home/home_screen.dart';
 import 'auth_api.dart';
+import 'email_verification_pending_screen.dart';
 import 'register_screen.dart';
 
 class _LoginColors {
@@ -73,9 +74,50 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _errorMessage = error.message);
+      if (_isEmailNotVerified(error)) {
+        await _handleUnverifiedEmail(_emailController.text.trim());
+      } else {
+        setState(() => _errorMessage = error.message);
+      }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  /// The backend rejects login for an unverified email account with this
+  /// `code` field (see `authentication/serializers.py`'s `LoginSerializer`)
+  /// rather than a generic 400 — that's how this case is distinguished
+  /// from a wrong password.
+  bool _isEmailNotVerified(ApiException error) {
+    final codes = error.fieldErrors?['code'];
+    if (codes is List) return codes.contains('email_not_verified');
+    if (codes is String) return codes == 'email_not_verified';
+    return false;
+  }
+
+  /// An unverified account can't just show an error — the user has no way
+  /// to act on it from here. Instead, kick off a fresh verification code
+  /// (same as registration would) and drop them into the same
+  /// check-your-inbox flow so they can complete verification and land
+  /// back here to log in.
+  Future<void> _handleUnverifiedEmail(String email) async {
+    try {
+      final devVerification = await _authApi.resendVerificationEmail(
+        email: email,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => EmailVerificationPendingScreen(
+            email: email,
+            initialDevVerification: devVerification,
+          ),
+        ),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = error.message);
     }
   }
 

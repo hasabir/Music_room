@@ -434,3 +434,48 @@ class GoogleLoginView(generics.GenericAPIView):
             },
             status=status.HTTP_200_OK,
         )
+        
+
+
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework.permissions import IsAuthenticated
+
+from .serializers import LogoutSerializer
+
+
+@extend_schema(
+    summary="Log out",
+    description=(
+        "Blacklists the provided refresh token so it can no longer be "
+        "used to obtain new access tokens. Requires a valid access token "
+        "in the Authorization header."
+    ),
+    request=LogoutSerializer,
+    responses={
+        205: OpenApiResponse(description="Logout successful."),
+        400: OpenApiResponse(description="Invalid or already-blacklisted refresh token."),
+    },
+    tags=["auth"],
+)
+class LogoutView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = LogoutSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            token = RefreshToken(serializer.validated_data["refresh"])
+            token.blacklist()
+        except TokenError:
+            raise serializers.ValidationError("Invalid or expired refresh token.")
+
+        log_action(
+            request,
+            "authentication.logout",
+            user=request.user
+        )
+
+        return Response(status=status.HTTP_205_RESET_CONTENT)

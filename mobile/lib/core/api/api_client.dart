@@ -35,11 +35,19 @@ class ApiClient {
   Future<Map<String, dynamic>> post(
     Uri uri, {
     required Map<String, dynamic> body,
+    String? accessToken,
   }) async {
     late final http.Response response;
     try {
       response = await _httpClient
-          .post(uri, headers: _jsonHeaders, body: jsonEncode(body))
+          .post(
+            uri,
+            headers: {
+              ..._jsonHeaders,
+              if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode(body),
+          )
           .timeout(_timeout);
     } on TimeoutException {
       throw ApiException(0, 'The request timed out. Please try again.');

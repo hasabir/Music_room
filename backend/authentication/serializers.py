@@ -165,3 +165,7 @@ class GoogleLoginSerializer(serializers.Serializer):
         attrs["last_name"] = idinfo.get("family_name", "")
 
         return attrs
+
+
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField()

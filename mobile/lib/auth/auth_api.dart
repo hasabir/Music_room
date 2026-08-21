@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../core/api/api_client.dart';
 import '../core/api/api_config.dart';
 import '../core/auth/token_storage.dart';
@@ -171,5 +173,25 @@ class AuthApi {
   VerificationCodeInfo? _devVerificationFrom(Map<String, dynamic> response) {
     final json = response['dev_verification'] as Map<String, dynamic>?;
     return json == null ? null : VerificationCodeInfo.fromJson(json);
+  }
+
+  /// Invalidates the refresh token server-side (blacklisting it, per
+  /// `LogoutView`), best-effort. Never throws — a failed logout call
+  /// shouldn't block the user from leaving; callers still clear the
+  /// locally-stored tokens regardless of whether this succeeds.
+  Future<void> logout() async {
+    final refreshToken = await _tokenStorage.readRefreshToken();
+    if (refreshToken == null) return;
+
+    final accessToken = await _tokenStorage.readAccessToken();
+    try {
+      await _apiClient.post(
+        ApiConfig.logoutUri(),
+        body: {'refresh': refreshToken},
+        accessToken: accessToken,
+      );
+    } on ApiException catch (error) {
+      debugPrint('Logout call failed: ${error.message}');
+    }
   }
 }

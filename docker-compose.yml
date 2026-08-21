@@ -21,6 +21,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - music_room_network
+    container_name: db
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
@@ -37,6 +38,7 @@ services:
     image: redis:7-alpine
     networks:
       - music_room_network
+    container_name: redis
     ports:
       - "6380:6379"
     healthcheck:
@@ -50,6 +52,7 @@ services:
       context: ./backend
       dockerfile: build/Dockerfile
     command: sh /app/start.sh
+    container_name: backend
     volumes:
       - ./backend:/app
     ports:
