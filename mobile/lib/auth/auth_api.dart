@@ -3,6 +3,12 @@ import '../core/api/api_config.dart';
 import '../core/auth/token_storage.dart';
 import 'auth_models.dart';
 
+/// Thrown when an authenticated request can't be completed because
+/// there's no valid session — no stored tokens, or the refresh token
+/// itself was rejected as expired/invalid. Callers should clear any
+/// remaining local state and route the user back to sign in.
+class SessionExpiredException implements Exception {}
+
 /// Talks to the backend's authentication endpoints.
 class AuthApi {
   AuthApi({ApiClient? apiClient, TokenStorage? tokenStorage})
@@ -67,42 +73,92 @@ class AuthApi {
   }
 
   /// Fetches the currently-authenticated user using the stored access
-  /// token. Throws [ApiException] if there's no stored session or the
-  /// backend rejects the token.
+  /// token.
+  ///
+  /// If the access token has expired (a 401), transparently refreshes it
+  /// via [refreshAccessToken] and retries once. Throws
+  /// [SessionExpiredException] if there's no stored session or the
+  /// refresh token itself is invalid/expired — callers should treat that
+  /// as "log in again". Any other failure (network, 403, 404, ...)
+  /// surfaces as [ApiException].
   Future<AuthUser> getCurrentUser() async {
-    final accessToken = await _tokenStorage.readAccessToken();
-    if (accessToken == null) {
-      throw ApiException(401, 'Not logged in.');
-    }
-
-    final response = await _apiClient.get(
-      ApiConfig.meUri(),
-      accessToken: accessToken,
-    );
+    final response = await _authorizedGet(ApiConfig.meUri());
     return AuthUser.fromJson(response);
   }
 
-  /// Confirms an account's email using the uid/token pair from the
-  /// verification link the backend emailed the user (or, in dev-email
-  /// mode, from [RegisterResult.devVerification] /
-  /// [resendVerificationEmail]'s return value).
+  /// Exchanges the stored refresh token for a new access token via
+  /// `/token/refresh/`, persisting it. Returns the new access token.
   ///
-  /// Throws [ApiException] if the uid/token pair is invalid, already used,
-  /// or expired — the backend does not distinguish between those cases.
-  Future<void> verifyEmail({required String uid, required String token}) {
+  /// Throws [ApiException] if there's no stored refresh token or the
+  /// backend rejects it (expired/invalid) — callers driving a
+  /// refresh-then-retry flow should treat that as a session that can't be
+  /// recovered.
+  Future<String> refreshAccessToken() async {
+    final refreshToken = await _tokenStorage.readRefreshToken();
+    if (refreshToken == null) {
+      throw ApiException(401, 'Not logged in.');
+    }
+
+    final response = await _apiClient.post(
+      ApiConfig.tokenRefreshUri(),
+      body: {'refresh': refreshToken},
+    );
+
+    final newAccessToken = response['access'] as String;
+    await _tokenStorage.saveAccessToken(newAccessToken);
+    return newAccessToken;
+  }
+
+  /// GETs [uri] with the stored access token, transparently refreshing
+  /// and retrying once on a 401. Throws [SessionExpiredException] if
+  /// there's no session to authenticate with, or the refresh itself
+  /// fails — in both cases the stored tokens are cleared first.
+  Future<Map<String, dynamic>> _authorizedGet(Uri uri) async {
+    final accessToken = await _tokenStorage.readAccessToken();
+    if (accessToken == null) {
+      throw SessionExpiredException();
+    }
+
+    try {
+      return await _apiClient.get(uri, accessToken: accessToken);
+    } on ApiException catch (error) {
+      if (error.statusCode != 401) rethrow;
+
+      final String refreshedToken;
+      try {
+        refreshedToken = await refreshAccessToken();
+      } on ApiException {
+        await _tokenStorage.clear();
+        throw SessionExpiredException();
+      }
+
+      return await _apiClient.get(uri, accessToken: refreshedToken);
+    }
+  }
+
+  /// Confirms an account's email using the 6-digit code the backend
+  /// emailed the user.
+  ///
+  /// Throws [ApiException] if the code is wrong/already used (the backend
+  /// reports "Invalid or already-used code.") or expired (15 minutes
+  /// after issuance — the backend reports "This code has expired."). The
+  /// message text is the only way to distinguish those two cases, since
+  /// the backend uses the same 400 status for both.
+  Future<void> verifyEmail({required String email, required String code}) {
     return _apiClient.post(
       ApiConfig.verifyEmailUri(),
-      body: {'uid': uid, 'token': token},
+      body: {'email': email, 'code': code},
     );
   }
 
-  /// Requests a new verification email for an unverified account.
+  /// Requests a new verification code for an unverified account.
   ///
-  /// The backend always responds with 200 regardless of whether the email
-  /// is registered or already verified, to avoid leaking account
-  /// existence — so this never throws for that reason. It still throws
-  /// [ApiException] for network failures or rate limiting.
-  Future<DevVerificationInfo?> resendVerificationEmail({
+  /// Invalidates any previously issued, unused code. The backend always
+  /// responds with 200 regardless of whether the email is registered or
+  /// already verified, to avoid leaking account existence — so this never
+  /// throws for that reason. It still throws [ApiException] for network
+  /// failures or rate limiting.
+  Future<VerificationCodeInfo?> resendVerificationEmail({
     required String email,
   }) async {
     final response = await _apiClient.post(
@@ -112,8 +168,8 @@ class AuthApi {
     return _devVerificationFrom(response);
   }
 
-  DevVerificationInfo? _devVerificationFrom(Map<String, dynamic> response) {
+  VerificationCodeInfo? _devVerificationFrom(Map<String, dynamic> response) {
     final json = response['dev_verification'] as Map<String, dynamic>?;
-    return json == null ? null : DevVerificationInfo.fromJson(json);
+    return json == null ? null : VerificationCodeInfo.fromJson(json);
   }
 }

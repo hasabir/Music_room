@@ -18,8 +18,8 @@ class _ExpiredColors {
   static const errorText = Color(0xFFFF8A8A);
 }
 
-/// Shown when the backend reports that a verification uid/token pair is
-/// invalid, already used, or expired (see [AuthApi.verifyEmail]).
+/// Shown when the backend reports that a verification code has expired
+/// (see [AuthApi.verifyEmail]) — 15 minutes after it was issued.
 class VerificationExpiredScreen extends StatefulWidget {
   const VerificationExpiredScreen({super.key, required this.email});
 

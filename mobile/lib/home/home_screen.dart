@@ -30,22 +30,29 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final user = await _authApi.getCurrentUser();
       debugPrint('Current user id: ${user.id}');
+    } on SessionExpiredException {
+      // getCurrentUser() already tried refreshing the access token; this
+      // means the refresh token itself is gone/expired, so there's no
+      // session left to recover.
+      await _signOutAndReturnToWelcome();
     } on ApiException catch (error) {
       debugPrint('Could not fetch current user: ${error.message}');
 
       final isRejectedByBackend =
-          error.statusCode == 401 ||
-          error.statusCode == 403 ||
-          error.statusCode == 404;
+          error.statusCode == 403 || error.statusCode == 404;
       if (isRejectedByBackend) {
-        await _tokenStorage.clear();
-        if (!mounted) return;
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-          (route) => false,
-        );
+        await _signOutAndReturnToWelcome();
       }
     }
+  }
+
+  Future<void> _signOutAndReturnToWelcome() async {
+    await _tokenStorage.clear();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+      (route) => false,
+    );
   }
 
   @override

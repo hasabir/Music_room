@@ -22,6 +22,11 @@ class TokenStorage {
     ]);
   }
 
+  /// Overwrites just the access token, leaving the refresh token as-is.
+  /// Used after a successful `/token/refresh/` call.
+  Future<void> saveAccessToken(String accessToken) =>
+      _storage.write(key: _accessTokenKey, value: accessToken);
+
   Future<String?> readAccessToken() => _storage.read(key: _accessTokenKey);
 
   Future<String?> readRefreshToken() => _storage.read(key: _refreshTokenKey);

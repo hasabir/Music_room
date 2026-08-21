@@ -8,7 +8,7 @@
 class ApiConfig {
   const ApiConfig._();
 
-  static const String baseUrl = 'http://10.32.129.163:8000';
+  static const String baseUrl = 'http://10.116.112.13:8000';
 
   static const String registerEndpoint = '/api/v1/auth/register/';
   static const String loginEndpoint = '/api/v1/auth/login/';
@@ -16,6 +16,7 @@ class ApiConfig {
   static const String verifyEmailEndpoint = '/api/v1/auth/verify-email/';
   static const String resendVerificationEndpoint =
       '/api/v1/auth/resend-verification/';
+  static const String tokenRefreshEndpoint = '/api/v1/auth/token/refresh/';
 
   static Uri registerUri() => Uri.parse('$baseUrl$registerEndpoint');
   static Uri loginUri() => Uri.parse('$baseUrl$loginEndpoint');
@@ -23,4 +24,5 @@ class ApiConfig {
   static Uri verifyEmailUri() => Uri.parse('$baseUrl$verifyEmailEndpoint');
   static Uri resendVerificationUri() =>
       Uri.parse('$baseUrl$resendVerificationEndpoint');
+  static Uri tokenRefreshUri() => Uri.parse('$baseUrl$tokenRefreshEndpoint');
 }

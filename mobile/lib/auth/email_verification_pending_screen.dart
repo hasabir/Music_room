@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/api/api_client.dart';
 import 'auth_api.dart';
@@ -18,19 +19,21 @@ class _PendingColors {
   static const statusText = Color(0xFF8B899B);
   static const errorText = Color(0xFFFF8A8A);
   static const successText = Color(0xFF6EE7C8);
+  static const fieldBackground = Color(0xFF1B1B26);
+  static const fieldBorder = Color(0xFF34333F);
 }
 
 /// Shown immediately after a successful registration, while the account
 /// still needs its email verified before the user can log in.
 ///
-/// The backend is the source of truth for verification: this screen never
-/// assumes success on its own. It confirms verification with
-/// [AuthApi.verifyEmail] using a uid/token pair, which is only available
-/// here if the backend included it as `dev_verification` (dev-email mode)
-/// on registration or resend. Outside of dev mode there is no
-/// verification-status-by-email endpoint to poll, so pressing "I've
-/// Verified" without a known uid/token honestly reports that verification
-/// can't be confirmed yet, rather than faking success.
+/// The backend emails a 6-digit code (see `authentication/models.py`'s
+/// `OTPCode`) rather than a clickable link, so this screen collects that
+/// code from the user and confirms it with [AuthApi.verifyEmail]. The
+/// backend is the source of truth: nothing here assumes success without
+/// that call succeeding. In dev-email mode the backend also returns the
+/// code directly as `dev_verification`, which is used only to prefill the
+/// field for convenience — the user (or this screen) still has to submit
+/// it through the real endpoint.
 class EmailVerificationPendingScreen extends StatefulWidget {
   const EmailVerificationPendingScreen({
     super.key,
@@ -39,7 +42,7 @@ class EmailVerificationPendingScreen extends StatefulWidget {
   });
 
   final String email;
-  final DevVerificationInfo? initialDevVerification;
+  final VerificationCodeInfo? initialDevVerification;
 
   @override
   State<EmailVerificationPendingScreen> createState() =>
@@ -49,8 +52,8 @@ class EmailVerificationPendingScreen extends StatefulWidget {
 class _EmailVerificationPendingScreenState
     extends State<EmailVerificationPendingScreen> {
   final _authApi = AuthApi();
+  final _codeController = TextEditingController();
 
-  late DevVerificationInfo? _devVerification;
   bool _isCheckingVerification = false;
   bool _isResending = false;
   String? _statusMessage;
@@ -59,17 +62,25 @@ class _EmailVerificationPendingScreenState
   @override
   void initState() {
     super.initState();
-    _devVerification = widget.initialDevVerification;
+    if (widget.initialDevVerification != null) {
+      _codeController.text = widget.initialDevVerification!.code;
+    }
   }
 
-  Future<void> _onIveVerified() async {
+  @override
+  void dispose() {
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onVerifyCode() async {
     if (_isCheckingVerification || _isResending) return;
 
-    final devVerification = _devVerification;
-    if (devVerification == null) {
+    final code = _codeController.text.trim();
+    if (code.length != 6) {
       setState(() {
         _statusIsError = true;
-        _statusMessage = "Your email hasn't been verified yet.";
+        _statusMessage = 'Enter the 6-digit code from your email.';
       });
       return;
     }
@@ -80,17 +91,15 @@ class _EmailVerificationPendingScreenState
     });
 
     try {
-      await _authApi.verifyEmail(
-        uid: devVerification.uid,
-        token: devVerification.token,
-      );
+      await _authApi.verifyEmail(email: widget.email, code: code);
 
       if (!mounted) return;
       Navigator.of(context)
           .push(MaterialPageRoute(builder: (_) => const EmailVerifiedScreen()));
     } on ApiException catch (error) {
       if (!mounted) return;
-      if (error.statusCode == 400) {
+      if (error.statusCode == 400 &&
+          error.message.toLowerCase().contains('expired')) {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => VerificationExpiredScreen(email: widget.email),
@@ -122,7 +131,7 @@ class _EmailVerificationPendingScreenState
 
       if (!mounted) return;
       setState(() {
-        _devVerification = devVerification ?? _devVerification;
+        _codeController.text = devVerification?.code ?? '';
         _statusIsError = false;
         _statusMessage = 'Verification email sent.';
       });
@@ -144,12 +153,12 @@ class _EmailVerificationPendingScreenState
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
+          child: ListView(
             children: [
               const SizedBox(height: 8),
               _BackButton(onPressed: () => Navigator.of(context).pop()),
-              const Spacer(flex: 3),
-              const _VerificationIcon(),
+              const SizedBox(height: 32),
+              const Center(child: _VerificationIcon()),
               const SizedBox(height: 32),
               const Text(
                 'Check your inbox',
@@ -164,8 +173,8 @@ class _EmailVerificationPendingScreenState
               ),
               const SizedBox(height: 16),
               const Text(
-                'We sent a verification link to your email. Please '
-                'click it to activate your account.',
+                'We sent a 6-digit verification code to your email. '
+                'Enter it below to activate your account.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 16,
@@ -173,7 +182,9 @@ class _EmailVerificationPendingScreenState
                   color: _PendingColors.description,
                 ),
               ),
-              const Spacer(flex: 4),
+              const SizedBox(height: 32),
+              _CodeField(controller: _codeController),
+              const SizedBox(height: 24),
               if (_statusMessage != null) ...[
                 Text(
                   _statusMessage!,
@@ -188,10 +199,10 @@ class _EmailVerificationPendingScreenState
                 const SizedBox(height: 16),
               ],
               _PrimaryButton(
-                label: "I've Verified",
+                label: 'Verify Code',
                 icon: Icons.check_circle_outline,
                 isLoading: _isCheckingVerification,
-                onPressed: _isResending ? null : _onIveVerified,
+                onPressed: _isResending ? null : _onVerifyCode,
               ),
               const SizedBox(height: 16),
               _SecondaryButton(
@@ -264,6 +275,73 @@ class _VerificationIcon extends StatelessWidget {
           size: 48,
         ),
       ),
+    );
+  }
+}
+
+class _CodeField extends StatelessWidget {
+  const _CodeField({required this.controller});
+
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'VERIFICATION CODE',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.05 * 12,
+            color: _PendingColors.tertiary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          maxLength: 6,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(6),
+          ],
+          style: const TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 12,
+            color: _PendingColors.title,
+          ),
+          decoration: InputDecoration(
+            counterText: '',
+            hintText: '000000',
+            hintStyle: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 12,
+              color: _PendingColors.statusText,
+            ),
+            filled: true,
+            fillColor: _PendingColors.fieldBackground,
+            contentPadding: const EdgeInsets.symmetric(vertical: 18),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: _PendingColors.fieldBorder),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: _PendingColors.fieldBorder),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: _PendingColors.tertiary),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -390,11 +468,7 @@ class _SecondaryButton extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Icon(
-                    Icons.refresh,
-                    color: _PendingColors.tertiary,
-                    size: 20,
-                  ),
+                  Icon(icon, color: _PendingColors.tertiary, size: 20),
                 ],
               ),
       ),

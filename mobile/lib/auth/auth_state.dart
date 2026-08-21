@@ -37,11 +37,13 @@ class SessionAuthState implements AuthState {
     try {
       await _authApi.getCurrentUser();
       return true;
+    } on SessionExpiredException {
+      // getCurrentUser() already tried refreshing the access token and
+      // cleared storage; the refresh token itself is gone/expired.
+      return false;
     } on ApiException catch (error) {
       final isRejectedByBackend =
-          error.statusCode == 401 ||
-          error.statusCode == 403 ||
-          error.statusCode == 404;
+          error.statusCode == 403 || error.statusCode == 404;
       if (isRejectedByBackend) {
         await _tokenStorage.clear();
         return false;
