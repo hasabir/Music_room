@@ -1,7 +1,5 @@
 # authentication/views.py
 
-import os
-
 from django.conf import settings
 
 from rest_framework import generics, status, serializers
@@ -37,8 +35,6 @@ from .throttles import (
     PasswordResetRateThrottle,
 )
 
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL")
-
 
 def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
@@ -53,11 +49,12 @@ def get_tokens_for_user(user):
     summary="Register with email and password",
     description=(
         "Creates a new account using email/password. No login tokens are "
-        "returned — the account must be verified via email before logging in."
+        "returned — the account must be verified via the emailed code "
+        "before logging in."
     ),
     request=RegisterSerializer,
     responses={
-        201: OpenApiResponse(description="Account created. Check email to verify before logging in."),
+        201: OpenApiResponse(description="Account created. Check email for a verification code."),
         400: OpenApiResponse(description="Email already registered, or invalid input."),
     },
     tags=["auth"],
@@ -73,10 +70,7 @@ class RegisterView(generics.CreateAPIView):
 
         user = serializer.save()
 
-        email_data = send_verification_email(
-            user,
-            FRONTEND_BASE_URL
-        )
+        email_data = send_verification_email(user)
 
         log_action(
             request,
@@ -88,7 +82,7 @@ class RegisterView(generics.CreateAPIView):
             "user": UserSerializer(user).data,
             "detail": (
                 "Registration successful. "
-                "Please check your email to verify your account "
+                "Please check your email for a verification code "
                 "before logging in."
             ),
         }
@@ -157,13 +151,13 @@ class LoginView(generics.GenericAPIView):
 @extend_schema(
     summary="Verify email address",
     description=(
-        "Confirms an account's email using the uid/token pair sent in "
-        "the verification email. Tokens are single-use."
+        "Confirms an account's email using the 6-digit code sent to "
+        "that address. Codes expire after 15 minutes and are single-use."
     ),
     request=EmailVerifySerializer,
     responses={
         200: OpenApiResponse(description="Email verified successfully."),
-        400: OpenApiResponse(description="Invalid, expired, or already-used token."),
+        400: OpenApiResponse(description="Invalid, expired, or already-used code."),
     },
     tags=["auth"],
 )
@@ -198,11 +192,12 @@ class VerifyEmailView(generics.GenericAPIView):
 
 
 @extend_schema(
-    summary="Resend verification email",
+    summary="Resend verification code",
     description=(
-        "Sends a new verification email if the account exists and is "
+        "Sends a new verification code if the account exists and is "
         "still unverified. Always returns 200 regardless of whether the "
-        "email exists, to avoid leaking which emails are registered."
+        "email exists, to avoid leaking which emails are registered. "
+        "Any previously issued, unused code is invalidated."
     ),
     request=ResendVerificationSerializer,
     responses={200: OpenApiResponse(description="Generic confirmation message (see description).")},
@@ -222,7 +217,7 @@ class ResendVerificationEmailView(generics.GenericAPIView):
         response_data = {
             "detail": (
                 "If an account with that email exists and is "
-                "unverified, a verification email has been sent."
+                "unverified, a new verification code has been sent."
             )
         }
 
@@ -234,10 +229,7 @@ class ResendVerificationEmailView(generics.GenericAPIView):
 
             if not user.is_email_verified:
 
-                email_data = send_verification_email(
-                    user,
-                    FRONTEND_BASE_URL
-                )
+                email_data = send_verification_email(user)
                 log_action(
                     request,
                     "authentication.resend_verification",
@@ -259,7 +251,7 @@ class ResendVerificationEmailView(generics.GenericAPIView):
 @extend_schema(
     summary="Request a password reset",
     description=(
-        "Sends a password reset email if the account exists. Always "
+        "Sends a password reset code if the account exists. Always "
         "returns 200 regardless of whether the email exists, to avoid "
         "leaking which emails are registered. Does not apply to Google "
         "accounts."
@@ -282,7 +274,7 @@ class PasswordResetRequestView(generics.GenericAPIView):
         response_data = {
             "detail": (
                 "If an account with that email exists, "
-                "a reset link has been sent."
+                "a reset code has been sent."
             )
         }
 
@@ -292,10 +284,7 @@ class PasswordResetRequestView(generics.GenericAPIView):
                 registration_method="email"
             )
 
-            email_data = send_password_reset_email(
-                user,
-                FRONTEND_BASE_URL
-            )
+            email_data = send_password_reset_email(user)
 
             log_action(
                 request,
@@ -317,11 +306,11 @@ class PasswordResetRequestView(generics.GenericAPIView):
 
 @extend_schema(
     summary="Confirm a password reset",
-    description="Sets a new password using the uid/token pair sent in the reset email.",
+    description="Sets a new password using the 6-digit code sent to the account's email.",
     request=PasswordResetConfirmSerializer,
     responses={
         200: OpenApiResponse(description="Password reset successful."),
-        400: OpenApiResponse(description="Invalid/expired token, or password fails validation rules."),
+        400: OpenApiResponse(description="Invalid/expired code, or password fails validation rules."),
     },
     tags=["auth"],
 )

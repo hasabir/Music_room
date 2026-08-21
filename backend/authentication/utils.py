@@ -7,6 +7,7 @@ from django.contrib.auth.tokens import default_token_generator
 from .tokens import email_verification_token
 from django.conf import settings
 from user.models import ActionLog
+from .models import OTPCode
 
 
 def log_action(request, action, user=None):
@@ -27,43 +28,41 @@ def get_client_ip(request):
         return forwarded_for.split(",")[0].strip()
 
     return request.META.get("REMOTE_ADDR")
-    
-
-def build_verification_link(user, frontend_base_url):
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = email_verification_token.make_token(user)
-    return f"{frontend_base_url}/verify-email?uid={uid}&token={token}", uid, token
 
 
-def build_password_reset_link(user, frontend_base_url):
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = default_token_generator.make_token(user)
-    return f"{frontend_base_url}/reset-password?uid={uid}&token={token}", uid, token
-
-
-def send_verification_email(user, frontend_base_url):
-    link, uid, token = build_verification_link(user, frontend_base_url)
+def send_verification_email(user):
+    otp = OTPCode.create_for_user(user, purpose="verify_email", ttl_minutes=15)
 
     if not settings.EMAIL_DEV_MODE:
         send_mail(
             subject="Verify your Music Room account",
-            message=f"Hi {user.first_name},\n\nPlease verify your email by using this link:\n{link}\n\nIf you didn't create this account, ignore this email.",
+            message=(
+                f"Hi {user.first_name},\n\n"
+                f"Your verification code is: {otp.code}\n\n"
+                f"This code expires in 15 minutes.\n\n"
+                f"If you didn't create this account, ignore this email."
+            ),
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[user.email],
         )
 
-    return {"link": link, "uid": uid, "token": token}
+    return {"code": otp.code, "expires_at": otp.expires_at.isoformat()}
 
 
-def send_password_reset_email(user, frontend_base_url):
-    link, uid, token = build_password_reset_link(user, frontend_base_url)
+def send_password_reset_email(user):
+    otp = OTPCode.create_for_user(user, purpose="password_reset", ttl_minutes=15)
 
     if not settings.EMAIL_DEV_MODE:
         send_mail(
             subject="Reset your Music Room password",
-            message=f"Hi {user.first_name},\n\nReset your password using this link:\n{link}\n\nIf you didn't request this, ignore this email.",
+            message=(
+                f"Hi {user.first_name},\n\n"
+                f"Your password reset code is: {otp.code}\n\n"
+                f"This code expires in 15 minutes.\n\n"
+                f"If you didn't request this, ignore this email."
+            ),
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[user.email],
         )
 
-    return {"link": link, "uid": uid, "token": token}
+    return {"code": otp.code, "expires_at": otp.expires_at.isoformat()}

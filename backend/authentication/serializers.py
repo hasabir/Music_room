@@ -10,16 +10,14 @@ from user.models import User , SocialAccount
 from django.conf import settings
 from google.auth.transport import requests
 from google.oauth2 import id_token
-
-class ResendVerificationSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+from .models import OTPCode
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'first_name', 'last_name']
+        fields = ["email", "password", "first_name", "last_name"]
 
     def validate_email(self, value):
         if User.objects.filter(email__iexact=value).exists():
@@ -28,11 +26,11 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         user = User.objects.create_user(
-            email=validated_data['email'],
-            password=validated_data['password'],
-            first_name=validated_data.get('first_name', ''),
-            last_name=validated_data.get('last_name', ''),
-            registration_method='email',
+            email=validated_data["email"],
+            password=validated_data["password"],
+            first_name=validated_data.get("first_name", ""),
+            last_name=validated_data.get("last_name", ""),
+            registration_method="email",
         )
         return user
 
@@ -42,44 +40,59 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        email = attrs.get('email')
-        password = attrs.get('password')
+        email = attrs.get("email")
+        password = attrs.get("password")
 
-        user = authenticate(username=email, password=password)
-        if not user:
-            try:
-                user_obj = User.objects.get(email__iexact=email)
-            except User.DoesNotExist:
-                raise serializers.ValidationError("Invalid email or password.")
-            if not user_obj.check_password(password):
-                raise serializers.ValidationError("Invalid email or password.")
-            user = user_obj
+        try:
+            user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError({"detail": "Invalid email or password."})
+
+        if not user.check_password(password):
+            raise serializers.ValidationError({"detail": "Invalid email or password."})
 
         if not user.is_active:
-            raise serializers.ValidationError("This account is disabled.")
-        if not user.is_email_verified:
-            raise serializers.ValidationError(
-                "Please verify your email before logging in."
-            )
-        attrs['user'] = user
+            raise serializers.ValidationError({"detail": "This account is disabled."})
+
+        if user.registration_method == "email" and not user.is_email_verified:
+            raise serializers.ValidationError({
+                "detail": "Email not verified. Please verify your email before logging in.",
+                "code": "email_not_verified"
+            })
+
+        attrs["user"] = user
         return attrs
 
+
 class EmailVerifySerializer(serializers.Serializer):
-    uid = serializers.CharField()
-    token = serializers.CharField()
+    email = serializers.EmailField()
+    code = serializers.CharField(max_length=6)
 
     def validate(self, attrs):
         try:
-            user_id = force_str(urlsafe_base64_decode(attrs['uid']))
-            user = User.objects.get(pk=user_id)
-        except (User.DoesNotExist, ValueError, TypeError, OverflowError):
-            raise serializers.ValidationError("Invalid verification link.")
+            user = User.objects.get(email__iexact=attrs["email"])
+        except User.DoesNotExist:
+            raise serializers.ValidationError("Invalid email or code.")
 
-        if not email_verification_token.check_token(user, attrs['token']):
-            raise serializers.ValidationError("Invalid or expired verification link.")
+        try:
+            otp = OTPCode.objects.get(
+                user=user, code=attrs["code"], purpose="verify_email", used=False
+            )
+        except OTPCode.DoesNotExist:
+            raise serializers.ValidationError("Invalid or already-used code.")
 
-        attrs['user'] = user
+        if not otp.is_valid():
+            raise serializers.ValidationError("This code has expired.")
+
+        otp.used = True
+        otp.save(update_fields=["used"])
+
+        attrs["user"] = user
         return attrs
+
+
+class ResendVerificationSerializer(serializers.Serializer):
+    email = serializers.EmailField()
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
@@ -87,8 +100,8 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
-    uid = serializers.CharField()
-    token = serializers.CharField()
+    email = serializers.EmailField()
+    code = serializers.CharField(max_length=6)
     new_password = serializers.CharField(write_only=True)
 
     def validate_new_password(self, value):
@@ -97,15 +110,24 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         try:
-            user_id = force_str(urlsafe_base64_decode(attrs['uid']))
-            user = User.objects.get(pk=user_id)
-        except (User.DoesNotExist, ValueError, TypeError, OverflowError):
-            raise serializers.ValidationError("Invalid reset link.")
+            user = User.objects.get(email__iexact=attrs["email"])
+        except User.DoesNotExist:
+            raise serializers.ValidationError("Invalid email or code.")
 
-        if not default_token_generator.check_token(user, attrs['token']):
-            raise serializers.ValidationError("Invalid or expired reset link.")
+        try:
+            otp = OTPCode.objects.get(
+                user=user, code=attrs["code"], purpose="password_reset", used=False
+            )
+        except OTPCode.DoesNotExist:
+            raise serializers.ValidationError("Invalid or already-used code.")
 
-        attrs['user'] = user
+        if not otp.is_valid():
+            raise serializers.ValidationError("This code has expired.")
+
+        otp.used = True
+        otp.save(update_fields=["used"])
+
+        attrs["user"] = user
         return attrs
 
 
@@ -113,33 +135,29 @@ class GoogleLoginSerializer(serializers.Serializer):
     id_token = serializers.CharField()
 
     def validate(self, attrs):
+        from google.oauth2 import id_token as google_id_token
+        from google.auth.transport import requests as google_requests
+        from django.conf import settings
+
         google_token = attrs["id_token"]
 
         try:
-            idinfo = id_token.verify_oauth2_token(
+            idinfo = google_id_token.verify_oauth2_token(
                 google_token,
-                requests.Request(),
+                google_requests.Request(),
                 settings.GOOGLE_CLIENT_ID,
             )
         except ValueError:
-            raise serializers.ValidationError(
-                "Invalid Google ID token."
-            )
+            raise serializers.ValidationError("Invalid Google ID token.")
 
-        # Google must identify the user
         google_uid = idinfo.get("sub")
         email = idinfo.get("email")
 
         if not google_uid or not email:
-            raise serializers.ValidationError(
-                "Google account information is incomplete."
-            )
+            raise serializers.ValidationError("Google account information is incomplete.")
 
-        # Google should have verified the email
         if not idinfo.get("email_verified", False):
-            raise serializers.ValidationError(
-                "Google email is not verified."
-            )
+            raise serializers.ValidationError("Google email is not verified.")
 
         attrs["google_uid"] = google_uid
         attrs["email"] = email
