@@ -45,7 +45,7 @@ class AuthApi {
 
     return RegisterResult(
       email: email,
-      devVerification: _devVerificationFrom(response),
+      devVerification: _devCodeFrom(response, 'dev_verification'),
     );
   }
 
@@ -167,11 +167,70 @@ class AuthApi {
       ApiConfig.resendVerificationUri(),
       body: {'email': email},
     );
-    return _devVerificationFrom(response);
+    return _devCodeFrom(response, 'dev_verification');
   }
 
-  VerificationCodeInfo? _devVerificationFrom(Map<String, dynamic> response) {
-    final json = response['dev_verification'] as Map<String, dynamic>?;
+  /// Requests a password-reset code for the given email, if an
+  /// email/password account with that address exists.
+  ///
+  /// The backend always responds with 200 regardless of whether the
+  /// email is registered, to avoid leaking account existence — so this
+  /// never throws for that reason. It still throws [ApiException] for
+  /// network failures or rate limiting. Also used to resend the code:
+  /// the backend endpoint is the same one, and issuing a new code
+  /// invalidates any previous unused one.
+  Future<VerificationCodeInfo?> requestPasswordReset({
+    required String email,
+  }) async {
+    final response = await _apiClient.post(
+      ApiConfig.passwordResetRequestUri(),
+      body: {'email': email},
+    );
+    return _devCodeFrom(response, 'dev_reset');
+  }
+
+  /// Checks whether a password-reset code is valid, via
+  /// `POST /password-reset/verify-code/`, without consuming it or
+  /// changing the password — that only happens in [confirmPasswordReset].
+  ///
+  /// Throws [ApiException] if the code is wrong/already used ("Invalid
+  /// or already-used code.") or expired ("This code has expired."), same
+  /// message text as [verifyEmail]'s equivalent cases.
+  Future<void> verifyPasswordResetCode({
+    required String email,
+    required String code,
+  }) {
+    return _apiClient.post(
+      ApiConfig.passwordResetVerifyCodeUri(),
+      body: {'email': email, 'code': code},
+    );
+  }
+
+  /// Sets a new password using the 6-digit code sent to the account's
+  /// email by [requestPasswordReset].
+  ///
+  /// Throws [ApiException] if the code is wrong/already used/expired
+  /// (same messages as [verifyEmail]'s equivalent cases), or if
+  /// `newPassword` fails the backend's password rules — in which case
+  /// the code is *not* consumed, since password validation runs before
+  /// the code is checked, so the same code can be retried with a
+  /// different password.
+  Future<void> confirmPasswordReset({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) {
+    return _apiClient.post(
+      ApiConfig.passwordResetConfirmUri(),
+      body: {'email': email, 'code': code, 'new_password': newPassword},
+    );
+  }
+
+  VerificationCodeInfo? _devCodeFrom(
+    Map<String, dynamic> response,
+    String key,
+  ) {
+    final json = response[key] as Map<String, dynamic>?;
     return json == null ? null : VerificationCodeInfo.fromJson(json);
   }
 

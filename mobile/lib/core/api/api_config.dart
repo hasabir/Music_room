@@ -18,6 +18,12 @@ class ApiConfig {
       '/api/v1/auth/resend-verification/';
   static const String logoutEndpoint = '/api/v1/auth/logout/';
   static const String tokenRefreshEndpoint = '/api/v1/auth/token/refresh/';
+  static const String passwordResetRequestEndpoint =
+      '/api/v1/auth/password-reset/';
+  static const String passwordResetVerifyCodeEndpoint =
+      '/api/v1/auth/password-reset/verify-code/';
+  static const String passwordResetConfirmEndpoint =
+      '/api/v1/auth/password-reset/confirm/';
 
   static Uri registerUri() => Uri.parse('$baseUrl$registerEndpoint');
   static Uri loginUri() => Uri.parse('$baseUrl$loginEndpoint');
@@ -27,4 +33,10 @@ class ApiConfig {
       Uri.parse('$baseUrl$resendVerificationEndpoint');
   static Uri tokenRefreshUri() => Uri.parse('$baseUrl$tokenRefreshEndpoint');
   static Uri logoutUri() => Uri.parse('$baseUrl$logoutEndpoint');
+  static Uri passwordResetRequestUri() =>
+      Uri.parse('$baseUrl$passwordResetRequestEndpoint');
+  static Uri passwordResetVerifyCodeUri() =>
+      Uri.parse('$baseUrl$passwordResetVerifyCodeEndpoint');
+  static Uri passwordResetConfirmUri() =>
+      Uri.parse('$baseUrl$passwordResetConfirmEndpoint');
 }

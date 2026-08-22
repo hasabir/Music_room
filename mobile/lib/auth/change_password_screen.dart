@@ -2,58 +2,67 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api/api_client.dart';
-import '../home/home_screen.dart';
 import 'auth_api.dart';
-import 'email_verification_pending_screen.dart';
-import 'register_screen.dart';
-import 'reset_password_screen.dart';
+import 'login_screen.dart';
 
-class _LoginColors {
+class _ChangeColors {
   static const background = Color(0xFF0E0E15);
-  static const title = Color(0xFFC0C1FF);
+  static const title = Color(0xFFEDEDF5);
   static const description = Color(0xFFC7C4D7);
   static const label = Color(0xFF2FD9F4);
   static const fieldBackground = Color(0xFF1B1B26);
   static const fieldBorder = Color(0xFF34333F);
   static const hintText = Color(0xFF7A7889);
   static const inputText = Color(0xFFE4E1EB);
-  static const dividerLine = Color(0xFF464554);
-  static const dividerText = Color(0xFF908FA0);
   static const gradientStart = Color(0xFF8083FF);
   static const gradientEnd = Color(0xFF494BD6);
   static const tertiary = Color(0xFF2FD9F4);
 }
 
-/// Login screen shown from the Welcome screen's "Log In" action (and from
-/// the Register screen's "Already have an account?" prompt).
+/// Final step of the password-reset flow: sets a new password using the
+/// email + 6-digit code carried over from [PasswordResetCodeScreen] (the
+/// previous screen already confirmed the code is valid, but doesn't
+/// consume it).
 ///
-/// Collects email and password, posts them to the backend via [AuthApi],
-/// and on success clears the auth stack and navigates to [HomeScreen].
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+/// The code is only actually consumed here, via
+/// `POST /password-reset/confirm/` (see `PasswordResetConfirmSerializer`).
+/// A wrong/expired code surfaces as a normal backend error on submit; the
+/// code is not consumed if the error is about the new password instead
+/// (password validation runs first) — either way the user can go back to
+/// re-enter/resend the code.
+class ChangePasswordScreen extends StatefulWidget {
+  const ChangePasswordScreen({
+    super.key,
+    required this.email,
+    required this.code,
+  });
+
+  final String email;
+  final String code;
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   final _authApi = AuthApi();
 
   bool _isPasswordVisible = false;
+  bool _isConfirmPasswordVisible = false;
   bool _isSubmitting = false;
   String? _errorMessage;
 
   @override
   void dispose() {
-    _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  Future<void> _onLogIn() async {
+  Future<void> _onUpdatePassword() async {
     if (_isSubmitting) return;
     if (!_formKey.currentState!.validate()) return;
 
@@ -63,83 +72,36 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await _authApi.login(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
+      await _authApi.confirmPasswordReset(
+        email: widget.email,
+        code: widget.code,
+        newPassword: _passwordController.text,
       );
 
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
         (route) => false,
       );
     } on ApiException catch (error) {
       if (!mounted) return;
-      if (_isEmailNotVerified(error)) {
-        await _handleUnverifiedEmail(_emailController.text.trim());
-      } else {
-        setState(() => _errorMessage = error.message);
-      }
+      setState(() => _errorMessage = error.message);
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
-  /// The backend rejects login for an unverified email account with this
-  /// `code` field (see `authentication/serializers.py`'s `LoginSerializer`)
-  /// rather than a generic 400 — that's how this case is distinguished
-  /// from a wrong password.
-  bool _isEmailNotVerified(ApiException error) {
-    final codes = error.fieldErrors?['code'];
-    if (codes is List) return codes.contains('email_not_verified');
-    if (codes is String) return codes == 'email_not_verified';
-    return false;
-  }
-
-  /// An unverified account can't just show an error — the user has no way
-  /// to act on it from here. Instead, kick off a fresh verification code
-  /// (same as registration would) and drop them into the same
-  /// check-your-inbox flow so they can complete verification and land
-  /// back here to log in.
-  Future<void> _handleUnverifiedEmail(String email) async {
-    try {
-      final devVerification = await _authApi.resendVerificationEmail(
-        email: email,
-      );
-
-      if (!mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => EmailVerificationPendingScreen(
-            email: email,
-            initialDevVerification: devVerification,
-          ),
-        ),
-      );
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() => _errorMessage = error.message);
-    }
-  }
-
-  // TODO: Replace with real Google Sign-In once the auth service exists.
-  void _onContinueWithGoogle() {}
-
-  void _onCreateAccount() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+  void _onBackToSignIn() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
     );
-  }
-
-  void _onForgotPassword() {
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const ResetPasswordScreen()));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _LoginColors.background,
+      backgroundColor: _ChangeColors.background,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -155,26 +117,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 const _Description(),
                 const SizedBox(height: 32),
                 _LabeledField(
-                  label: 'EMAIL ADDRESS',
-                  hint: 'name@example.com',
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Email is required';
-                    }
-                    if (!value.contains('@') || !value.contains('.')) {
-                      return 'Enter a valid email';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-                _LabeledField(
-                  label: 'PASSWORD',
-                  hint: 'Enter your password',
+                  label: 'NEW PASSWORD',
+                  hint: 'Enter your new password',
                   controller: _passwordController,
                   obscureText: !_isPasswordVisible,
+                  prefixIcon: Icons.lock_outline,
                   suffixIcon: _VisibilityToggle(
                     isVisible: _isPasswordVisible,
                     onPressed: () => setState(
@@ -185,26 +132,46 @@ class _LoginScreenState extends State<LoginScreen> {
                     if (value == null || value.isEmpty) {
                       return 'Password is required';
                     }
+                    if (value.length < 8) {
+                      return 'Password must be at least 8 characters';
+                    }
                     return null;
                   },
                 ),
-                const SizedBox(height: 12),
-                _ForgotPasswordLink(onPressed: _onForgotPassword),
+                const SizedBox(height: 20),
+                _LabeledField(
+                  label: 'CONFIRM NEW PASSWORD',
+                  hint: 'Repeat your new password',
+                  controller: _confirmPasswordController,
+                  obscureText: !_isConfirmPasswordVisible,
+                  prefixIcon: Icons.restore,
+                  suffixIcon: _VisibilityToggle(
+                    isVisible: _isConfirmPasswordVisible,
+                    onPressed: () => setState(
+                      () => _isConfirmPasswordVisible =
+                          !_isConfirmPasswordVisible,
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value != _passwordController.text) {
+                      return 'Passwords do not match';
+                    }
+                    return null;
+                  },
+                ),
                 if (_errorMessage != null) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 20),
                   _ErrorMessage(message: _errorMessage!),
                 ],
-                const SizedBox(height: 20),
-                _LogInButton(
-                  onPressed: _isSubmitting ? null : _onLogIn,
+                const SizedBox(height: 28),
+                _UpdatePasswordButton(
+                  onPressed: _isSubmitting ? null : _onUpdatePassword,
                   isLoading: _isSubmitting,
                 ),
-                const SizedBox(height: 20),
-                const _OrDivider(),
-                const SizedBox(height: 20),
-                _GoogleButton(onPressed: _onContinueWithGoogle),
-                const SizedBox(height: 24),
-                _CreateAccountPrompt(onPressed: _onCreateAccount),
+                const SizedBox(height: 16),
+                _BackToSignInButton(onPressed: _onBackToSignIn),
+                const SizedBox(height: 32),
+                _LogInPrompt(onPressed: _onBackToSignIn),
                 const SizedBox(height: 24),
               ],
             ),
@@ -230,7 +197,7 @@ class _BackButton extends StatelessWidget {
         constraints: const BoxConstraints(),
         icon: const Icon(
           Icons.arrow_back,
-          color: _LoginColors.inputText,
+          color: _ChangeColors.inputText,
           size: 28,
         ),
       ),
@@ -244,14 +211,14 @@ class _Title extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Text(
-      'Welcome Back',
+      'Change Password',
       style: TextStyle(
         fontFamily: 'Sora',
         fontWeight: FontWeight.w800,
         fontSize: 36,
         height: 1.1,
         letterSpacing: -0.02 * 36,
-        color: _LoginColors.title,
+        color: _ChangeColors.title,
       ),
     );
   }
@@ -263,11 +230,11 @@ class _Description extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Text(
-      'Log in to keep the music going.',
+      'Enter a strong, secure password to protect your sonic journey.',
       style: TextStyle(
         fontSize: 16,
         height: 1.5,
-        color: _LoginColors.description,
+        color: _ChangeColors.description,
       ),
     );
   }
@@ -278,18 +245,18 @@ class _LabeledField extends StatelessWidget {
     required this.label,
     required this.hint,
     required this.controller,
-    this.obscureText = false,
-    this.keyboardType,
-    this.suffixIcon,
-    this.validator,
+    required this.obscureText,
+    required this.prefixIcon,
+    required this.suffixIcon,
+    required this.validator,
   });
 
   final String label;
   final String hint;
   final TextEditingController controller;
   final bool obscureText;
-  final TextInputType? keyboardType;
-  final Widget? suffixIcon;
+  final IconData prefixIcon;
+  final Widget suffixIcon;
   final String? Function(String?)? validator;
 
   @override
@@ -303,40 +270,44 @@ class _LabeledField extends StatelessWidget {
             fontSize: 12,
             fontWeight: FontWeight.w600,
             letterSpacing: 0.05 * 12,
-            color: _LoginColors.label,
+            color: _ChangeColors.label,
           ),
         ),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
           obscureText: obscureText,
-          keyboardType: keyboardType,
           validator: validator,
-          style: const TextStyle(fontSize: 16, color: _LoginColors.inputText),
+          style: const TextStyle(fontSize: 16, color: _ChangeColors.inputText),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: const TextStyle(
               fontSize: 16,
-              color: _LoginColors.hintText,
+              color: _ChangeColors.hintText,
             ),
-            filled: true,
-            fillColor: _LoginColors.fieldBackground,
+            prefixIcon: Icon(
+              prefixIcon,
+              color: _ChangeColors.hintText,
+              size: 20,
+            ),
             suffixIcon: suffixIcon,
+            filled: true,
+            fillColor: _ChangeColors.fieldBackground,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 20,
               vertical: 18,
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: _LoginColors.fieldBorder),
+              borderSide: const BorderSide(color: _ChangeColors.fieldBorder),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: _LoginColors.fieldBorder),
+              borderSide: const BorderSide(color: _ChangeColors.fieldBorder),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: _LoginColors.tertiary),
+              borderSide: const BorderSide(color: _ChangeColors.tertiary),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
@@ -365,38 +336,17 @@ class _VisibilityToggle extends StatelessWidget {
       onPressed: onPressed,
       icon: Icon(
         isVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-        color: _LoginColors.hintText,
+        color: _ChangeColors.hintText,
       ),
     );
   }
 }
 
-class _ForgotPasswordLink extends StatelessWidget {
-  const _ForgotPasswordLink({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerRight,
-      child: GestureDetector(
-        onTap: onPressed,
-        child: const Text(
-          'Forgot password?',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: _LoginColors.tertiary,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LogInButton extends StatelessWidget {
-  const _LogInButton({required this.onPressed, this.isLoading = false});
+class _UpdatePasswordButton extends StatelessWidget {
+  const _UpdatePasswordButton({
+    required this.onPressed,
+    this.isLoading = false,
+  });
 
   final VoidCallback? onPressed;
   final bool isLoading;
@@ -410,11 +360,11 @@ class _LogInButton extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [_LoginColors.gradientStart, _LoginColors.gradientEnd],
+          colors: [_ChangeColors.gradientStart, _ChangeColors.gradientEnd],
         ),
         boxShadow: [
           BoxShadow(
-            color: _LoginColors.gradientEnd.withValues(alpha: 0.4),
+            color: _ChangeColors.gradientEnd.withValues(alpha: 0.4),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -436,7 +386,7 @@ class _LogInButton extends StatelessWidget {
                     ),
                   )
                 : const Text(
-                    'Log In',
+                    'Update Password',
                     style: TextStyle(
                       fontFamily: 'Sora',
                       fontWeight: FontWeight.w700,
@@ -444,6 +394,38 @@ class _LogInButton extends StatelessWidget {
                       color: Colors.white,
                     ),
                   ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BackToSignInButton extends StatelessWidget {
+  const _BackToSignInButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 56,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          side: const BorderSide(color: _ChangeColors.tertiary, width: 1.5),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        child: const Text(
+          'Back to Sign In',
+          style: TextStyle(
+            fontFamily: 'Sora',
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+            color: _ChangeColors.tertiary,
           ),
         ),
       ),
@@ -465,73 +447,8 @@ class _ErrorMessage extends StatelessWidget {
   }
 }
 
-class _OrDivider extends StatelessWidget {
-  const _OrDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Row(
-      children: [
-        Expanded(child: Divider(color: _LoginColors.dividerLine)),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'OR',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0.05 * 12,
-              color: _LoginColors.dividerText,
-            ),
-          ),
-        ),
-        Expanded(child: Divider(color: _LoginColors.dividerLine)),
-      ],
-    );
-  }
-}
-
-class _GoogleButton extends StatelessWidget {
-  const _GoogleButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 56,
-      child: OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          side: const BorderSide(color: _LoginColors.tertiary, width: 1.5),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Image.asset('assets/images/google_logo.png', width: 20, height: 20),
-            const SizedBox(width: 12),
-            const Text(
-              'Continue with Google',
-              style: TextStyle(
-                fontFamily: 'Sora',
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-                color: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CreateAccountPrompt extends StatelessWidget {
-  const _CreateAccountPrompt({required this.onPressed});
+class _LogInPrompt extends StatelessWidget {
+  const _LogInPrompt({required this.onPressed});
 
   final VoidCallback onPressed;
 
@@ -540,14 +457,17 @@ class _CreateAccountPrompt extends StatelessWidget {
     return Center(
       child: RichText(
         text: TextSpan(
-          style: const TextStyle(fontSize: 14, color: _LoginColors.description),
+          style: const TextStyle(
+            fontSize: 14,
+            color: _ChangeColors.description,
+          ),
           children: [
-            const TextSpan(text: "Don't have an account?  "),
+            const TextSpan(text: 'Remember your password?  '),
             TextSpan(
-              text: 'Create one',
+              text: 'Log in here',
               style: const TextStyle(
                 fontWeight: FontWeight.w700,
-                color: _LoginColors.gradientStart,
+                color: _ChangeColors.gradientStart,
               ),
               recognizer: (TapGestureRecognizer()..onTap = onPressed),
             ),
