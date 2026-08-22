@@ -99,20 +99,20 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.UserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "20/hour",
-        "user": "1000/hour",
-        "login": "5/min",
-        "register": "5/hour",
-        "password_reset": "3/hour",
+        "anon": "20000/hour",
+        "user": "1000000/hour",
+        "login": "5000/min",
+        "register": "5000/hour",
+        "password_reset": "3000/hour",
         # NEW — events
-        "vote": "30/min",          # generous enough for real use, blocks vote-spam scripts
-        "add_song": "20/min",
-        "create_event": "10/hour",
+        "vote": "30000/min",          # generous enough for real use, blocks vote-spam scripts
+        "add_song": "20000/min",
+        "create_event": "10000/hour",
  
         # NEW — playlists
-        "add_playlist_song": "20/min",
-        "move_song": "60/min",     # reordering can happen fast during active editing (drag-and-drop)
-        "create_playlist": "10/hour",
+        "add_playlist_song": "20000/min",
+        "move_song": "60000/min",     # reordering can happen fast during active editing (drag-and-drop)
+        "create_playlist": "10000/hour",
     },
     
 }

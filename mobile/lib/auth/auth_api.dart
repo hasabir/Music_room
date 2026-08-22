@@ -74,6 +74,28 @@ class AuthApi {
     );
   }
 
+  /// Logs in (or registers, on first sign-in) using a Google ID token
+  /// obtained via [GoogleAuthService.signInAndGetIdToken].
+  ///
+  /// On success, persists the returned access/refresh tokens via
+  /// [TokenStorage], same as [login].
+  Future<LoginResult> loginWithGoogle({required String idToken}) async {
+    final response = await _apiClient.post(
+      ApiConfig.googleLoginUri(),
+      body: {'id_token': idToken},
+    );
+
+    final tokens = response['tokens'] as Map<String, dynamic>;
+    await _tokenStorage.saveTokens(
+      accessToken: tokens['access'] as String,
+      refreshToken: tokens['refresh'] as String,
+    );
+
+    return LoginResult(
+      user: AuthUser.fromJson(response['user'] as Map<String, dynamic>),
+    );
+  }
+
   /// Fetches the currently-authenticated user using the stored access
   /// token.
   ///

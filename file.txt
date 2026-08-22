@@ -1,0 +1,3 @@
+give me only the prompt that i will give the ai coding agent.
+
+this is the reset password , it has to be linked with the backend , however the deep link is not implemented yet in the backend. there are the design pages, however the email will send an email with 6 digits in the next screen so the agent has 

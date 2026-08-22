@@ -5,6 +5,7 @@ import '../core/api/api_client.dart';
 import '../home/home_screen.dart';
 import 'auth_api.dart';
 import 'email_verification_pending_screen.dart';
+import 'google_auth_service.dart';
 import 'register_screen.dart';
 import 'reset_password_screen.dart';
 
@@ -122,8 +123,35 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // TODO: Replace with real Google Sign-In once the auth service exists.
-  void _onContinueWithGoogle() {}
+  Future<void> _onContinueWithGoogle() async {
+    if (_isSubmitting) return;
+
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final idToken = await GoogleAuthService.signInAndGetIdToken();
+      await _authApi.loginWithGoogle(idToken: idToken);
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
+    } on GoogleAuthCancelled {
+      // User dismissed the account picker — not an error.
+    } on GoogleAuthFailed catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = error.message);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = error.message);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
 
   void _onCreateAccount() {
     Navigator.of(context).pushReplacement(
@@ -202,7 +230,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 20),
                 const _OrDivider(),
                 const SizedBox(height: 20),
-                _GoogleButton(onPressed: _onContinueWithGoogle),
+                _GoogleButton(
+                  onPressed: _isSubmitting ? null : () => _onContinueWithGoogle(),
+                ),
                 const SizedBox(height: 24),
                 _CreateAccountPrompt(onPressed: _onCreateAccount),
                 const SizedBox(height: 24),
@@ -494,7 +524,7 @@ class _OrDivider extends StatelessWidget {
 class _GoogleButton extends StatelessWidget {
   const _GoogleButton({required this.onPressed});
 
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {

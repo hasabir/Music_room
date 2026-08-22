@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.mobile"
+    namespace = "com.musicroom.app"
     // flutter_secure_storage requires compileSdk 37; flutter.compileSdkVersion
     // (36) isn't enough. Bump explicitly until Flutter's default catches up.
     compileSdk = 37

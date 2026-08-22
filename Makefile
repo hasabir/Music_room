@@ -58,9 +58,17 @@ createsuperuser:
 test:
 	docker-compose exec backend python manage.py test
 
-clean:
-	docker-compose down -v
+fclean:
+	docker-compose down -v --remove-orphans
 	docker system prune -f
+
+clean:
+	docker-compose down --remove-orphans
+	docker rm -f $$(docker ps -aq)
+	docker image rm -f $$(docker images -q)
+
+volume_clean:
+	docker volume rm $$(docker volume ls -q)
 
 db:
 	docker compose exec backend python manage.py loaddata build/test_users.json
@@ -77,6 +85,7 @@ flutter-get:
 	@cd mobile &&  flutter pub get
 	@echo "Flutter setup is complete"
 
+# At the top of your Makefile
 flutter-setup:
 	@if [ -z "$(PORT)" ]; then \
 		echo "Error: PORT argument is required"; \
@@ -87,6 +96,8 @@ flutter-setup:
 	@adb connect 10.32.54.146:$(PORT) 2>&1 | grep -q "connected" || true
 	@if adb devices | grep -q "10.32.54.146:$(PORT)\s\+device"; then \
 		echo "✅ Connected to 10.32.54.146:$(PORT)"; \
+		echo "$(PORT)" > .flutter_device_port; \
+		echo "Device port saved to .flutter_device_port"; \
 	else \
 		echo "❌ Could not connect to 10.32.54.146:$(PORT)"; \
 		adb disconnect 10.32.54.146:$(PORT) > /dev/null 2>&1 || true; \
@@ -94,8 +105,14 @@ flutter-setup:
 	fi
 
 flutter-run:
-	@cd mobile && flutter run -d 10.32.54.146:38499
-
+	@if [ -f .flutter_device_port ]; then \
+		PORT=$$(cat .flutter_device_port); \
+		echo "Using device port: $$PORT"; \
+		cd mobile && flutter run -d 10.32.54.146:$$PORT; \
+	else \
+		echo "❌ No device port found. Please run 'make flutter-setup PORT=<port>' first"; \
+		exit 1; \
+	fi
 
 # Development workflow
 dev: up logs
