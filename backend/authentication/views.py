@@ -20,8 +20,8 @@ from .serializers import (
     RegisterSerializer,
     LoginSerializer,
     EmailVerifySerializer,
+    PasswordResetRequestSerializer,
     PasswordResetNewPasswordSerializer,
-    PasswordResetVerifyCodeSerializer,
     PasswordResetVerifyCodeSerializer,
     ResendVerificationSerializer,
     GoogleLoginSerializer,
@@ -263,13 +263,13 @@ class ResendVerificationEmailView(generics.GenericAPIView):
         "leaking which emails are registered. Does not apply to Google "
         "accounts."
     ),
-    request=PasswordResetNewPasswordSerializer,
+    request=PasswordResetRequestSerializer,
     responses={200: OpenApiResponse(description="Generic confirmation message (see description).")},
     tags=["auth"],
 )
 class PasswordResetRequestView(generics.GenericAPIView):
     permission_classes = [AllowAny]
-    serializer_class = PasswordResetNewPasswordSerializer
+    serializer_class = PasswordResetRequestSerializer
     throttle_classes = [PasswordResetRateThrottle]
 
     def post(self, request):
@@ -363,7 +363,7 @@ class PasswordResetVerifyCodeView(generics.GenericAPIView):
         "reset_token returned by the verify-code step. The token is "
         "single-use and expires after 10 minutes."
     ),
-    request=PasswordResetVerifyCodeSerializer,
+    request=PasswordResetNewPasswordSerializer,
     responses={
         200: OpenApiResponse(description="Password reset successful."),
         400: OpenApiResponse(description="Invalid/expired reset_token, or password fails validation rules."),
@@ -372,7 +372,7 @@ class PasswordResetVerifyCodeView(generics.GenericAPIView):
 )
 class PasswordResetSetNewPasswordView(generics.GenericAPIView):
     permission_classes = [AllowAny]
-    serializer_class = PasswordResetVerifyCodeSerializer
+    serializer_class = PasswordResetNewPasswordSerializer
     throttle_classes = [PasswordResetRateThrottle]
 
     def post(self, request):
@@ -486,6 +486,71 @@ class GoogleLoginView(generics.GenericAPIView):
             {
                 "user": UserSerializer(user).data,
                 "tokens": tokens,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema(
+    summary="Link a Google account to the signed-in account",
+    description=(
+        "Verifies a Google ID token server-side, then links that Google "
+        "account to the currently signed-in user — letting them log in "
+        "with either their password or Google afterward. Requires the "
+        "Google account's email to match the signed-in account's email. "
+        "Fails if that Google account is already linked to a different "
+        "Music Room account."
+    ),
+    request=GoogleLoginSerializer,
+    responses={
+        200: OpenApiResponse(description="Google account linked (or already linked to this account)."),
+        400: OpenApiResponse(description="Invalid Google token, email mismatch, or already linked elsewhere."),
+    },
+    tags=["auth"],
+)
+class GoogleLinkView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = GoogleLoginSerializer
+    throttle_classes = [LoginRateThrottle]
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        google_uid = serializer.validated_data["google_uid"]
+        google_email = serializer.validated_data["email"]
+
+        if google_email.lower() != request.user.email.lower():
+            raise serializers.ValidationError(
+                "This Google account's email must match your account email to link it."
+            )
+
+        existing = SocialAccount.objects.filter(provider_uid=google_uid).first()
+        if existing:
+            if existing.user_id == request.user.id:
+                return Response(
+                    {
+                        "user": UserSerializer(request.user).data,
+                        "detail": "This Google account is already linked.",
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            raise serializers.ValidationError(
+                "This Google account is already linked to a different account."
+            )
+
+        SocialAccount.objects.create(user=request.user, provider_uid=google_uid)
+
+        log_action(
+            request,
+            "authentication.google_link",
+            user=request.user,
+        )
+
+        return Response(
+            {
+                "user": UserSerializer(request.user).data,
+                "detail": "Google account linked successfully.",
             },
             status=status.HTTP_200_OK,
         )

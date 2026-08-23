@@ -27,11 +27,9 @@ class _CodeColors {
 /// [EmailVerificationPendingScreen].
 ///
 /// Confirms the code via [AuthApi.verifyPasswordResetCode] before moving
-/// on — that call checks the code without consuming it or requiring a
-/// password yet (`PasswordResetVerifyCodeSerializer`), since the code
-/// still has to be resubmitted to `/password-reset/confirm/` on
-/// [ChangePasswordScreen] to actually be consumed and set the new
-/// password.
+/// on — that call checks the code without consuming it, then returns a
+/// short-lived `reset_token` that's carried over to [ChangePasswordScreen]
+/// to actually set the new password.
 class PasswordResetCodeScreen extends StatefulWidget {
   const PasswordResetCodeScreen({
     super.key,
@@ -88,12 +86,15 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen> {
     });
 
     try {
-      await _authApi.verifyPasswordResetCode(email: widget.email, code: code);
+      final resetToken = await _authApi.verifyPasswordResetCode(
+        email: widget.email,
+        code: code,
+      );
 
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ChangePasswordScreen(email: widget.email, code: code),
+          builder: (_) => ChangePasswordScreen(resetToken: resetToken),
         ),
       );
     } on ApiException catch (error) {

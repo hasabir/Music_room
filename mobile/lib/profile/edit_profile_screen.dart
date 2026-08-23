@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../core/api/api_client.dart';
 import 'profile_api.dart';
@@ -41,6 +42,7 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _profileApi = ProfileApi();
+  final _imagePicker = ImagePicker();
 
   late final TextEditingController _displayNameController;
   late final TextEditingController _bioController;
@@ -48,12 +50,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController _favoriteArtistController;
   late final TextEditingController _phoneController;
 
+  /// Tracks the profile photo separately from the rest of the form: a new
+  /// photo uploads (and is reflected here) as soon as it's picked, rather
+  /// than waiting for "Save Changes" — so the back button also needs to
+  /// hand this back to the caller even if the user never taps Save.
+  late UserProfile _latestProfile;
+
   bool _isSaving = false;
+  bool _isUploadingPhoto = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    _latestProfile = widget.profile;
     _displayNameController = TextEditingController(text: widget.profile.displayName);
     _bioController = TextEditingController(text: widget.profile.bio);
     _locationController = TextEditingController(text: widget.profile.location);
@@ -71,10 +81,47 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  void _onEditPhoto() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Photo upload coming soon.')));
+  Future<void> _onEditPhoto() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: _EditColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined, color: _EditColors.headline),
+              title: const Text('Take a photo', style: TextStyle(color: _EditColors.body)),
+              onTap: () => Navigator.of(context).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined, color: _EditColors.headline),
+              title: const Text('Choose from gallery', style: TextStyle(color: _EditColors.body)),
+              onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+
+    final picked = await _imagePicker.pickImage(source: source, imageQuality: 85);
+    if (picked == null || !mounted) return;
+
+    setState(() => _isUploadingPhoto = true);
+    try {
+      final updated = await _profileApi.uploadProfileImage(picked.path);
+      if (!mounted) return;
+      setState(() => _latestProfile = updated);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _isUploadingPhoto = false);
+    }
   }
 
   Future<void> _save() async {
@@ -92,6 +139,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         phoneNumber: _phoneController.text.trim(),
       );
       if (!mounted) return;
+      setState(() => _latestProfile = updated);
       Navigator.of(context).pop(updated);
     } on ApiException catch (error) {
       setState(() => _error = error.message);
@@ -107,14 +155,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _Header(title: 'Edit Profile'),
+            _Header(
+              title: 'Edit Profile',
+              onBack: () => Navigator.of(context).pop(_latestProfile),
+            ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                 children: [
                   Center(
                     child: _AvatarEditor(
-                      imageUrl: widget.profile.profileImageUrl,
+                      imageUrl: _latestProfile.profileImageUrl,
+                      isUploading: _isUploadingPhoto,
                       onEdit: _onEditPhoto,
                     ),
                   ),
@@ -203,9 +255,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.title});
+  const _Header({required this.title, required this.onBack});
 
   final String title;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -214,7 +267,7 @@ class _Header extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: onBack,
             icon: const Icon(Icons.arrow_back_rounded, color: _EditColors.headline),
           ),
           Expanded(
@@ -237,10 +290,15 @@ class _Header extends StatelessWidget {
 }
 
 class _AvatarEditor extends StatelessWidget {
-  const _AvatarEditor({required this.imageUrl, required this.onEdit});
+  const _AvatarEditor({
+    required this.imageUrl,
+    required this.onEdit,
+    this.isUploading = false,
+  });
 
   final String? imageUrl;
   final VoidCallback onEdit;
+  final bool isUploading;
 
   @override
   Widget build(BuildContext context) {
@@ -269,11 +327,27 @@ class _AvatarEditor extends StatelessWidget {
                   : const _AvatarFallback(),
             ),
           ),
+          if (isUploading)
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0x99000000),
+                ),
+                child: Center(
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             right: 0,
             bottom: 0,
             child: GestureDetector(
-              onTap: onEdit,
+              onTap: isUploading ? null : onEdit,
               child: Container(
                 width: 36,
                 height: 36,

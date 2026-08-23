@@ -12,7 +12,7 @@ class _ConnectionsColors {
   static const muted = Color(0xFF908FA0);
 }
 
-/// Lists the signed-in user's accepted friends ("Crew"), backed by
+/// Lists the signed-in user's accepted friends ("friends"), backed by
 /// `GET /api/v1/profile/friends/`.
 class ConnectionsScreen extends StatefulWidget {
   const ConnectionsScreen({super.key});

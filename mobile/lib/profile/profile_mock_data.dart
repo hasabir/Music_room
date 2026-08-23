@@ -25,7 +25,7 @@ const mockSuggestedArtists = [
 ];
 
 /// A friend's presence, keyed by [Friend.id]. Cycles through a small set
-/// of placeholder statuses so the UI has something to show per crew
+/// of placeholder statuses so the UI has something to show per friends
 /// member instead of looking uniform.
 class MockPresence {
   const MockPresence({required this.isOnline, required this.activity});

@@ -61,6 +61,35 @@ class ApiClient {
     return _decode(response);
   }
 
+  /// PATCHes a single file field as `multipart/form-data`, for endpoints
+  /// with an `ImageField`/`FileField` (JSON can't carry binary data).
+  Future<Map<String, dynamic>> patchMultipartFile(
+    Uri uri, {
+    required String fieldName,
+    required String filePath,
+    String? accessToken,
+  }) async {
+    final request = http.MultipartRequest('PATCH', uri);
+    if (accessToken != null) {
+      request.headers['Authorization'] = 'Bearer $accessToken';
+    }
+    request.files.add(await http.MultipartFile.fromPath(fieldName, filePath));
+
+    late final http.StreamedResponse streamedResponse;
+    try {
+      streamedResponse = await _httpClient.send(request).timeout(_timeout);
+    } on TimeoutException {
+      throw ApiException(0, 'The request timed out. Please try again.');
+    } catch (error) {
+      throw ApiException(
+        0,
+        'Unable to connect to the server. Please try again.',
+      );
+    }
+
+    return _decode(await http.Response.fromStream(streamedResponse));
+  }
+
   Future<Map<String, dynamic>> patch(
     Uri uri, {
     required Map<String, dynamic> body,

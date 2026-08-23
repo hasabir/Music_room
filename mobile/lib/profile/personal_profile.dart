@@ -7,6 +7,7 @@ import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
 import '../core/widgets/app_bottom_nav.dart';
 import '../core/widgets/app_tab_navigation.dart';
+import '../settings/settings_screen.dart';
 import 'connections_screen.dart';
 import 'edit_profile_screen.dart';
 import 'music_preferences_screen.dart';
@@ -33,7 +34,7 @@ class _ProfileColors {
 /// The signed-in user's own Profile screen.
 ///
 /// Loads the real profile (`GET /api/v1/profile/me/`) and friends list
-/// (`GET /api/v1/profile/friends/`) from the backend. "Crew" presence and
+/// (`GET /api/v1/profile/friends/`) from the backend. "friends" presence and
 /// "Active Sessions" are local placeholder data — see
 /// `profile_mock_data.dart` for why, and to swap them for real data later.
 class PersonalProfileScreen extends StatefulWidget {
@@ -118,8 +119,17 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
   }
 
   void _onSettings() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Settings screen coming soon.')),
+    final data = _currentData;
+    if (data == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Still loading your profile — try again in a moment.')),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SettingsScreen(profile: data.profile, authUser: data.authUser),
+      ),
     );
   }
 
@@ -172,7 +182,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                           onEdit: () => _onMusicPreferences(data.profile),
                         ),
                         const SizedBox(height: 16),
-                        _CrewCard(friends: data.friends),
+                        _friendsCard(friends: data.friends),
                         const SizedBox(height: 24),
                         const _SectionHeader(icon: Icons.podcasts_rounded, title: 'Active Sessions'),
                         const SizedBox(height: 12),
@@ -211,7 +221,15 @@ class _ProfileData {
       favoriteGenres: [],
     ),
     friends: const [],
-    authUser: const AuthUser(id: 0, email: '', firstName: '', lastName: ''),
+    authUser: const AuthUser(
+      id: 0,
+      email: '',
+      firstName: '',
+      lastName: '',
+      isEmailVerified: false,
+      registrationMethod: 'email',
+      hasGoogleLinked: false,
+    ),
   );
 
   final UserProfile profile;
@@ -507,8 +525,8 @@ class _Chip extends StatelessWidget {
   }
 }
 
-class _CrewCard extends StatelessWidget {
-  const _CrewCard({required this.friends});
+class _friendsCard extends StatelessWidget {
+  const _friendsCard({required this.friends});
 
   final List<Friend> friends;
 
@@ -525,7 +543,7 @@ class _CrewCard extends StatelessWidget {
           Row(
             children: [
               const Expanded(
-                child: _SectionHeader(icon: Icons.groups_rounded, title: 'Crew'),
+                child: _SectionHeader(icon: Icons.groups_rounded, title: 'friends'),
               ),
               Text(
                 '$onlineCount ONLINE',
@@ -542,7 +560,7 @@ class _CrewCard extends StatelessWidget {
           const SizedBox(height: 14),
           if (friends.isEmpty)
             const Text(
-              'No crew yet — add friends to see them here.',
+              'No friends yet — add friends to see them here.',
               style: TextStyle(color: _ProfileColors.muted, fontSize: 13),
             )
           else
@@ -552,7 +570,7 @@ class _CrewCard extends StatelessWidget {
                   .map(
                     (friend) => Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: _CrewRow(friend: friend),
+                      child: _friendsRow(friend: friend),
                     ),
                   )
                   .toList(),
@@ -563,8 +581,8 @@ class _CrewCard extends StatelessWidget {
   }
 }
 
-class _CrewRow extends StatelessWidget {
-  const _CrewRow({required this.friend});
+class _friendsRow extends StatelessWidget {
+  const _friendsRow({required this.friend});
 
   final Friend friend;
 

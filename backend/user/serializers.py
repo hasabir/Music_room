@@ -32,8 +32,16 @@ class ActionLogSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 class UserSerializer(serializers.ModelSerializer):
+    has_google_linked = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ['id', 'email', 'first_name', 'last_name', 'registration_method', 'is_email_verified', 'date_joined']
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 'registration_method',
+            'is_email_verified', 'has_google_linked', 'date_joined',
+        ]
         read_only_fields = fields
+
+    def get_has_google_linked(self, obj):
+        return obj.social_accounts.exists()
 

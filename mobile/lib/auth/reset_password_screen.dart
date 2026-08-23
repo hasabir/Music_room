@@ -28,7 +28,11 @@ class _ResetColors {
 /// [PasswordResetCodeScreen] to collect the 6-digit code the backend
 /// emailed.
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({super.key});
+  const ResetPasswordScreen({super.key, this.initialEmail});
+
+  /// Prefills the email field, e.g. when reached from Settings for an
+  /// already-known account rather than the "Forgot password?" link.
+  final String? initialEmail;
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -36,7 +40,7 @@ class ResetPasswordScreen extends StatefulWidget {
 
 class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  late final _emailController = TextEditingController(text: widget.initialEmail);
   final _authApi = AuthApi();
 
   bool _isSubmitting = false;

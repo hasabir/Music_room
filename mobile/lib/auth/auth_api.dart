@@ -96,6 +96,21 @@ class AuthApi {
     );
   }
 
+  /// Links a Google account to the signed-in user, using an ID token
+  /// obtained via [GoogleAuthService.signInAndGetIdToken].
+  ///
+  /// The backend requires the Google account's email to match the
+  /// signed-in account's email. Throws [ApiException] if it doesn't
+  /// match, or if that Google account is already linked to a different
+  /// Music Room account.
+  Future<AuthUser> linkGoogleAccount({required String idToken}) async {
+    final response = await _authorizedPost(
+      ApiConfig.googleLinkUri(),
+      body: {'id_token': idToken},
+    );
+    return AuthUser.fromJson(response['user'] as Map<String, dynamic>);
+  }
+
   /// Fetches the currently-authenticated user using the stored access
   /// token.
   ///
@@ -160,6 +175,35 @@ class AuthApi {
     }
   }
 
+  /// POSTs [body] to [uri] with the stored access token, transparently
+  /// refreshing and retrying once on a 401. Same session-handling as
+  /// [_authorizedGet].
+  Future<Map<String, dynamic>> _authorizedPost(
+    Uri uri, {
+    required Map<String, dynamic> body,
+  }) async {
+    final accessToken = await _tokenStorage.readAccessToken();
+    if (accessToken == null) {
+      throw SessionExpiredException();
+    }
+
+    try {
+      return await _apiClient.post(uri, body: body, accessToken: accessToken);
+    } on ApiException catch (error) {
+      if (error.statusCode != 401) rethrow;
+
+      final String refreshedToken;
+      try {
+        refreshedToken = await refreshAccessToken();
+      } on ApiException {
+        await _tokenStorage.clear();
+        throw SessionExpiredException();
+      }
+
+      return await _apiClient.post(uri, body: body, accessToken: refreshedToken);
+    }
+  }
+
   /// Confirms an account's email using the 6-digit code the backend
   /// emailed the user.
   ///
@@ -213,38 +257,39 @@ class AuthApi {
 
   /// Checks whether a password-reset code is valid, via
   /// `POST /password-reset/verify-code/`, without consuming it or
-  /// changing the password — that only happens in [confirmPasswordReset].
+  /// changing the password yet. On success, the backend returns a
+  /// short-lived `reset_token` (separate from login JWTs) that
+  /// [confirmPasswordReset] uses to actually set the new password —
+  /// the code itself isn't needed again after this call.
   ///
   /// Throws [ApiException] if the code is wrong/already used ("Invalid
   /// or already-used code.") or expired ("This code has expired."), same
   /// message text as [verifyEmail]'s equivalent cases.
-  Future<void> verifyPasswordResetCode({
+  Future<String> verifyPasswordResetCode({
     required String email,
     required String code,
-  }) {
-    return _apiClient.post(
+  }) async {
+    final response = await _apiClient.post(
       ApiConfig.passwordResetVerifyCodeUri(),
       body: {'email': email, 'code': code},
     );
+    return response['reset_token'] as String;
   }
 
-  /// Sets a new password using the 6-digit code sent to the account's
-  /// email by [requestPasswordReset].
+  /// Sets a new password using the `reset_token` returned by
+  /// [verifyPasswordResetCode].
   ///
-  /// Throws [ApiException] if the code is wrong/already used/expired
-  /// (same messages as [verifyEmail]'s equivalent cases), or if
-  /// `newPassword` fails the backend's password rules — in which case
-  /// the code is *not* consumed, since password validation runs before
-  /// the code is checked, so the same code can be retried with a
-  /// different password.
+  /// Throws [ApiException] if the token is invalid/expired ("Invalid or
+  /// already-used reset token." / "This reset session has expired.
+  /// Please start over."), or if `newPassword` fails the backend's
+  /// password validation rules.
   Future<void> confirmPasswordReset({
-    required String email,
-    required String code,
+    required String resetToken,
     required String newPassword,
   }) {
     return _apiClient.post(
       ApiConfig.passwordResetConfirmUri(),
-      body: {'email': email, 'code': code, 'new_password': newPassword},
+      body: {'reset_token': resetToken, 'new_password': newPassword},
     );
   }
 

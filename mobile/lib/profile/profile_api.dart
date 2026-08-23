@@ -48,7 +48,19 @@ class ProfileApi {
     return UserProfile.fromJson(response);
   }
 
-  /// Lists the signed-in user's accepted friends ("Crew").
+  /// Uploads a new profile photo from the file at [filePath], replacing
+  /// `Profile.profile_image`. Sent as `multipart/form-data` since the
+  /// field is an image, not JSON-representable.
+  Future<UserProfile> uploadProfileImage(String filePath) async {
+    final response = await _authorizedPatchMultipartFile(
+      ApiConfig.myProfileUri(),
+      fieldName: 'profile_image',
+      filePath: filePath,
+    );
+    return UserProfile.fromJson(response);
+  }
+
+  /// Lists the signed-in user's accepted friends ("friends").
   Future<List<Friend>> getFriends() async {
     final accessToken = await _tokenStorage.readAccessToken();
     if (accessToken == null) throw SessionExpiredException();
@@ -83,6 +95,33 @@ class ProfileApi {
       if (error.statusCode != 401) rethrow;
       final refreshedToken = await _refreshOrThrow();
       return await _apiClient.patch(uri, body: body, accessToken: refreshedToken);
+    }
+  }
+
+  Future<Map<String, dynamic>> _authorizedPatchMultipartFile(
+    Uri uri, {
+    required String fieldName,
+    required String filePath,
+  }) async {
+    final accessToken = await _tokenStorage.readAccessToken();
+    if (accessToken == null) throw SessionExpiredException();
+
+    try {
+      return await _apiClient.patchMultipartFile(
+        uri,
+        fieldName: fieldName,
+        filePath: filePath,
+        accessToken: accessToken,
+      );
+    } on ApiException catch (error) {
+      if (error.statusCode != 401) rethrow;
+      final refreshedToken = await _refreshOrThrow();
+      return await _apiClient.patchMultipartFile(
+        uri,
+        fieldName: fieldName,
+        filePath: filePath,
+        accessToken: refreshedToken,
+      );
     }
   }
 

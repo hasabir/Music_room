@@ -6,6 +6,9 @@ class AuthUser {
     required this.email,
     required this.firstName,
     required this.lastName,
+    required this.isEmailVerified,
+    required this.registrationMethod,
+    required this.hasGoogleLinked,
   });
 
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
@@ -13,12 +16,23 @@ class AuthUser {
     email: json['email'] as String,
     firstName: json['first_name'] as String? ?? '',
     lastName: json['last_name'] as String? ?? '',
+    isEmailVerified: json['is_email_verified'] as bool? ?? false,
+    registrationMethod: json['registration_method'] as String? ?? 'email',
+    hasGoogleLinked: json['has_google_linked'] as bool? ?? false,
   );
 
   final int id;
   final String email;
   final String firstName;
   final String lastName;
+  final bool isEmailVerified;
+
+  /// Either `'email'` or `'google'` (see backend's `User.REGISTRATION_CHOICES`).
+  final String registrationMethod;
+
+  /// Whether a Google account has been linked (in addition to, or as, the
+  /// sign-in method) — see `authentication.GoogleLinkView`.
+  final bool hasGoogleLinked;
 }
 
 /// Result of a successful login call.
