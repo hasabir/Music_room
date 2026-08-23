@@ -1,16 +1,11 @@
 # authentication/serializers.py
-from django.contrib.auth.password_validation import validate_password
-from django.contrib.auth.tokens import default_token_generator
-from django.utils.http import urlsafe_base64_decode
-from django.contrib.auth import authenticate
-from .tokens import email_verification_token
-from django.utils.encoding import force_str
 from rest_framework import serializers
-from user.models import User , SocialAccount
-from django.conf import settings
-from google.auth.transport import requests
-from google.oauth2 import id_token
+from django.contrib.auth.password_validation import validate_password
+
+from user.models import User
+
 from .models import OTPCode
+
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -96,17 +91,15 @@ class ResendVerificationSerializer(serializers.Serializer):
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
+    """Step 1: user asks for a reset code to be emailed."""
     email = serializers.EmailField()
 
 
-class PasswordResetConfirmSerializer(serializers.Serializer):
+class PasswordResetVerifyCodeSerializer(serializers.Serializer):
+    """Step 2: user enters the code from their email.
+    On success, returns a short-lived reset_token instead of the code itself."""
     email = serializers.EmailField()
     code = serializers.CharField(max_length=6)
-    new_password = serializers.CharField(write_only=True)
-
-    def validate_new_password(self, value):
-        validate_password(value)
-        return value
 
     def validate(self, attrs):
         try:
@@ -124,10 +117,35 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         if not otp.is_valid():
             raise serializers.ValidationError("This code has expired.")
 
-        otp.used = True
-        otp.save(update_fields=["used"])
-
+        attrs["otp"] = otp
         attrs["user"] = user
+        return attrs
+
+
+class PasswordResetNewPasswordSerializer(serializers.Serializer):
+    """Step 3: user submits their new password using the reset_token from step 2."""
+    reset_token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True)
+
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
+
+    def validate(self, attrs):
+        try:
+            otp = OTPCode.objects.get(
+                reset_token=attrs["reset_token"],
+                purpose="password_reset",
+                used=False,
+            )
+        except OTPCode.DoesNotExist:
+            raise serializers.ValidationError("Invalid or already-used reset token.")
+
+        if not otp.reset_token_is_valid():
+            raise serializers.ValidationError("This reset session has expired. Please start over.")
+
+        attrs["otp"] = otp
+        attrs["user"] = otp.user
         return attrs
 
 
@@ -165,7 +183,6 @@ class GoogleLoginSerializer(serializers.Serializer):
         attrs["last_name"] = idinfo.get("family_name", "")
 
         return attrs
-
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField()

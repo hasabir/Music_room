@@ -4,9 +4,10 @@ from django.conf import settings
 
 from rest_framework import generics, status, serializers
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 
@@ -19,10 +20,12 @@ from .serializers import (
     RegisterSerializer,
     LoginSerializer,
     EmailVerifySerializer,
-    PasswordResetRequestSerializer,
-    PasswordResetConfirmSerializer,
+    PasswordResetNewPasswordSerializer,
+    PasswordResetVerifyCodeSerializer,
+    PasswordResetVerifyCodeSerializer,
     ResendVerificationSerializer,
     GoogleLoginSerializer,
+    LogoutSerializer,
 )
 
 from .utils import (
@@ -260,13 +263,13 @@ class ResendVerificationEmailView(generics.GenericAPIView):
         "leaking which emails are registered. Does not apply to Google "
         "accounts."
     ),
-    request=PasswordResetRequestSerializer,
+    request=PasswordResetNewPasswordSerializer,
     responses={200: OpenApiResponse(description="Generic confirmation message (see description).")},
     tags=["auth"],
 )
 class PasswordResetRequestView(generics.GenericAPIView):
     permission_classes = [AllowAny]
-    serializer_class = PasswordResetRequestSerializer
+    serializer_class = PasswordResetNewPasswordSerializer
     throttle_classes = [PasswordResetRateThrottle]
 
     def post(self, request):
@@ -309,33 +312,81 @@ class PasswordResetRequestView(generics.GenericAPIView):
 
 
 @extend_schema(
-    summary="Confirm a password reset",
-    description="Sets a new password using the 6-digit code sent to the account's email.",
-    request=PasswordResetConfirmSerializer,
+    summary="Verify a password reset code",
+    description=(
+        "Step 2 of password reset: checks the 6-digit code sent to the "
+        "user's email. On success, returns a short-lived reset_token "
+        "(separate from login JWTs) that the app uses on the next screen "
+        "to actually set the new password — the code itself is not "
+        "needed again."
+    ),
+    request=PasswordResetVerifyCodeSerializer,
     responses={
-        200: OpenApiResponse(description="Password reset successful."),
-        400: OpenApiResponse(description="Invalid/expired code, or password fails validation rules."),
+        200: OpenApiResponse(description="Code valid. Returns a reset_token for the next step."),
+        400: OpenApiResponse(description="Invalid, expired, or already-used code."),
     },
     tags=["auth"],
 )
-class PasswordResetConfirmView(generics.GenericAPIView):
+class PasswordResetVerifyCodeView(generics.GenericAPIView):
     permission_classes = [AllowAny]
-    serializer_class = PasswordResetConfirmSerializer
+    serializer_class = PasswordResetVerifyCodeSerializer
     throttle_classes = [PasswordResetRateThrottle]
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        otp = serializer.validated_data["otp"]
         user = serializer.validated_data["user"]
 
-        user.set_password(
-            serializer.validated_data["new_password"]
+        reset_token = otp.issue_reset_token(ttl_minutes=10)
+
+        log_action(
+            request,
+            "authentication.password_reset_code_verified",
+            user=user
         )
 
-        user.save(
-            update_fields=["password"]
+        return Response(
+            {
+                "detail": "Code verified. Use the reset_token below to set your new password.",
+                "reset_token": reset_token,
+            },
+            status=status.HTTP_200_OK
         )
+
+
+@extend_schema(
+    summary="Set new password after reset verification",
+    description=(
+        "Step 3 of password reset: sets the new password using the "
+        "reset_token returned by the verify-code step. The token is "
+        "single-use and expires after 10 minutes."
+    ),
+    request=PasswordResetVerifyCodeSerializer,
+    responses={
+        200: OpenApiResponse(description="Password reset successful."),
+        400: OpenApiResponse(description="Invalid/expired reset_token, or password fails validation rules."),
+    },
+    tags=["auth"],
+)
+class PasswordResetSetNewPasswordView(generics.GenericAPIView):
+    permission_classes = [AllowAny]
+    serializer_class = PasswordResetVerifyCodeSerializer
+    throttle_classes = [PasswordResetRateThrottle]
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        otp = serializer.validated_data["otp"]
+        user = serializer.validated_data["user"]
+
+        user.set_password(serializer.validated_data["new_password"])
+        user.save(update_fields=["password"])
+
+        otp.used = True
+        otp.save(update_fields=["used"])
 
         log_action(
             request,
@@ -344,9 +395,7 @@ class PasswordResetConfirmView(generics.GenericAPIView):
         )
 
         return Response(
-            {
-                "detail": "Password reset successful."
-            },
+            {"detail": "Password reset successful."},
             status=status.HTTP_200_OK
         )
 
@@ -440,14 +489,6 @@ class GoogleLoginView(generics.GenericAPIView):
             },
             status=status.HTTP_200_OK,
         )
-        
-
-
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework.permissions import IsAuthenticated
-
-from .serializers import LogoutSerializer
 
 
 @extend_schema(
