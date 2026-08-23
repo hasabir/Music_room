@@ -4,6 +4,8 @@ import '../auth/auth_api.dart';
 import '../auth/welcome_screen.dart';
 import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
+import '../core/widgets/app_bottom_nav.dart';
+import '../core/widgets/app_tab_navigation.dart';
 
 /// Placeholder Home Screen shown to already-authenticated users.
 ///
@@ -81,6 +83,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
+      ),
+      bottomNavigationBar: AppBottomNav(
+        currentTab: AppTab.home,
+        onTabSelected: (tab) => navigateToTab(context, AppTab.home, tab),
       ),
     );
   }

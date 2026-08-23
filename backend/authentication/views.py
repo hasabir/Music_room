@@ -13,6 +13,8 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResp
 from user.models import User, SocialAccount
 from user.serializers import UserSerializer
 
+from profiles.services import create_profile_for_user
+
 from .serializers import (
     RegisterSerializer,
     LoginSerializer,
@@ -176,6 +178,8 @@ class VerifyEmailView(generics.GenericAPIView):
         user.save(
             update_fields=["is_email_verified"]
         )
+
+        create_profile_for_user(user)
 
         log_action(
             request,
@@ -408,6 +412,8 @@ class GoogleLoginView(generics.GenericAPIView):
                 user.save(
                     update_fields=["is_email_verified"]
                 )
+
+                create_profile_for_user(user)
 
             SocialAccount.objects.create(
                 user=user,

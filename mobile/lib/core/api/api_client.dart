@@ -61,6 +61,35 @@ class ApiClient {
     return _decode(response);
   }
 
+  Future<Map<String, dynamic>> patch(
+    Uri uri, {
+    required Map<String, dynamic> body,
+    String? accessToken,
+  }) async {
+    late final http.Response response;
+    try {
+      response = await _httpClient
+          .patch(
+            uri,
+            headers: {
+              ..._jsonHeaders,
+              if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw ApiException(0, 'The request timed out. Please try again.');
+    } catch (error) {
+      throw ApiException(
+        0,
+        'Unable to connect to the server. Please try again.',
+      );
+    }
+
+    return _decode(response);
+  }
+
   Future<Map<String, dynamic>> get(Uri uri, {String? accessToken}) async {
     late final http.Response response;
     try {
@@ -82,6 +111,58 @@ class ApiClient {
     }
 
     return _decode(response);
+  }
+
+  /// Like [get], but for endpoints whose success response is a bare JSON
+  /// array (e.g. Django REST Framework's `ListAPIView`) rather than an
+  /// object.
+  Future<List<Map<String, dynamic>>> getList(
+    Uri uri, {
+    String? accessToken,
+  }) async {
+    late final http.Response response;
+    try {
+      response = await _httpClient
+          .get(
+            uri,
+            headers: accessToken == null
+                ? null
+                : {'Authorization': 'Bearer $accessToken'},
+          )
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw ApiException(0, 'The request timed out. Please try again.');
+    } catch (error) {
+      throw ApiException(
+        0,
+        'Unable to connect to the server. Please try again.',
+      );
+    }
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (response.body.isEmpty) return const [];
+      final parsed = jsonDecode(response.body);
+      // Django REST Framework's list endpoints are paginated by default
+      // (see `DEFAULT_PAGINATION_CLASS` in the backend's settings), so a
+      // "list" response is actually `{"count": ..., "results": [...]}`
+      // rather than a bare JSON array.
+      final items = parsed is Map<String, dynamic> ? parsed['results'] : parsed;
+      return (items as List<dynamic>).cast<Map<String, dynamic>>();
+    }
+
+    Map<String, dynamic>? decoded;
+    if (response.body.isNotEmpty) {
+      try {
+        final parsed = jsonDecode(response.body);
+        if (parsed is Map<String, dynamic>) decoded = parsed;
+      } on FormatException {
+        decoded = null;
+      }
+    }
+    final message = decoded != null
+        ? _firstErrorMessage(decoded)
+        : 'Request failed with status ${response.statusCode}';
+    throw ApiException(response.statusCode, message, fieldErrors: decoded);
   }
 
   Map<String, dynamic> _decode(http.Response response) {

@@ -30,6 +30,8 @@ class ApiConfig {
       '/api/v1/auth/password-reset/verify-code/';
   static const String passwordResetConfirmEndpoint =
       '/api/v1/auth/password-reset/confirm/';
+  static const String myProfileEndpoint = '/api/v1/profile/me/';
+  static const String friendsEndpoint = '/api/v1/profile/friends/';
 
   static Uri registerUri() => Uri.parse('$baseUrl$registerEndpoint');
   static Uri loginUri() => Uri.parse('$baseUrl$loginEndpoint');
@@ -46,4 +48,6 @@ class ApiConfig {
       Uri.parse('$baseUrl$passwordResetVerifyCodeEndpoint');
   static Uri passwordResetConfirmUri() =>
       Uri.parse('$baseUrl$passwordResetConfirmEndpoint');
+  static Uri myProfileUri() => Uri.parse('$baseUrl$myProfileEndpoint');
+  static Uri friendsUri() => Uri.parse('$baseUrl$friendsEndpoint');
 }
