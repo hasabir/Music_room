@@ -26,6 +26,7 @@ from .serializers import (
     ResendVerificationSerializer,
     GoogleLoginSerializer,
     LogoutSerializer,
+    ChangePasswordSerializer,
 )
 
 from .utils import (
@@ -591,3 +592,41 @@ class LogoutView(generics.GenericAPIView):
         )
 
         return Response(status=status.HTTP_205_RESET_CONTENT)
+    
+@extend_schema(
+    summary="Change password (while logged in)",
+    description=(
+        "Changes the current user's password. Requires the correct "
+        "current password as proof of identity — different from the "
+        "forgot-password flow, which uses an emailed code instead."
+    ),
+    request=ChangePasswordSerializer,
+    responses={
+        200: OpenApiResponse(description="Password changed successfully."),
+        400: OpenApiResponse(description="Current password incorrect, or new password fails validation rules."),
+    },
+    tags=["auth"],
+)
+
+class ChangePasswordView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ChangePasswordSerializer
+ 
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+ 
+        user = request.user
+        user.set_password(serializer.validated_data["new_password"])
+        user.save(update_fields=["password"])
+ 
+        log_action(
+            request,
+            "authentication.password_changed",
+            user=user
+        )
+ 
+        return Response(
+            {"detail": "Password changed successfully."},
+            status=status.HTTP_200_OK
+        )

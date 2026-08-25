@@ -186,3 +186,25 @@ class GoogleLoginSerializer(serializers.Serializer):
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField()
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """For an already-logged-in user changing their own password.
+    Requires the current password as proof, unlike the forgot-password flow."""
+    old_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
+ 
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
+ 
+    def validate(self, attrs):
+        user = self.context["request"].user
+ 
+        if not user.check_password(attrs["old_password"]):
+            raise serializers.ValidationError({"old_password": "Current password is incorrect."})
+ 
+        if attrs["old_password"] == attrs["new_password"]:
+            raise serializers.ValidationError({"new_password": "New password must be different from the current password."})
+ 
+        return attrs
+ 
