@@ -73,6 +73,29 @@ class EventGuest(models.Model):
         return f"{self.guest.email} invited to {self.event.title}"
 
 
+class EventMembership(models.Model):
+    """
+    Tracks that a user has explicitly joined a public event/room.
+
+    Deliberately separate from `EventGuest`: `EventGuest` is host-granted
+    and also drives `invited_only` voting rights (see
+    `permissions.can_user_vote`), so self-joining a public event must
+    never create an `EventGuest` row — that would silently grant
+    invited-only voting permission on top of just "joining".
+    """
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="members")
+    member = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="joined_events")
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("event", "member")
+        ordering = ["-joined_at"]
+
+    def __str__(self):
+        return f"{self.member.email} joined {self.event.title}"
+
+
 class Song(models.Model):
     """A song known to the system (general catalog, not tied to any one event)."""
 

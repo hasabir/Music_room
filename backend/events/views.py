@@ -58,8 +58,12 @@ class EventListCreateView(generics.ListCreateAPIView):
         ).distinct()
 
     def perform_create(self, serializer):
-        serializer.save(host=self.request.user)
-        log_action(self.request, "event.created", user=self.request.user)
+        event = serializer.save(host=self.request.user)
+        log_action(self.request, "event.created", user=self.request.user, metadata={
+            "event_id": event.id,
+            "title": event.title,
+            "visibility": event.visibility,
+        })
 
 
 @extend_schema_view(
@@ -189,8 +193,14 @@ class EventQueueView(APIView):
             return Response({"detail": "This song is already in the queue."},
                              status=status.HTTP_400_BAD_REQUEST)
 
-        log_action(request, "event.song_added", user=request.user)
-        broadcast_queue_update(event)  
+        log_action(request, "event.song_added", user=request.user, metadata={
+            "event_id": event.id,
+            "event_title": event.title,
+            "visibility": event.visibility,
+            "song_title": song.title,
+            "artist": song.artist,
+        })
+        broadcast_queue_update(event)
         return Response(
             EventSongSerializer(event_song, context={"request": request}).data,
             status=status.HTTP_201_CREATED
@@ -265,7 +275,13 @@ class VoteView(APIView):
             return Response({"detail": "You have already voted for this song."},
                              status=status.HTTP_400_BAD_REQUEST)
 
-        log_action(request, "event.vote_cast", user=request.user)
+        log_action(request, "event.vote_cast", user=request.user, metadata={
+            "event_id": event.id,
+            "event_title": event.title,
+            "visibility": event.visibility,
+            "song_title": event_song.song.title,
+            "artist": event_song.song.artist,
+        })
         broadcast_queue_update(event)
         return Response(
             {"detail": "Vote recorded.", "vote_count": event_song.vote_count},
@@ -281,7 +297,13 @@ class VoteView(APIView):
             return Response({"detail": "You have not voted for this song."},
                              status=status.HTTP_400_BAD_REQUEST)
 
-        log_action(request, "event.vote_retracted", user=request.user)
+        log_action(request, "event.vote_retracted", user=request.user, metadata={
+            "event_id": event_song.event.id,
+            "event_title": event_song.event.title,
+            "visibility": event_song.event.visibility,
+            "song_title": event_song.song.title,
+            "artist": event_song.song.artist,
+        })
         broadcast_queue_update(event_song.event) 
         return Response(
             {"detail": "Vote retracted.", "vote_count": event_song.vote_count},

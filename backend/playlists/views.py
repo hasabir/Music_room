@@ -48,8 +48,12 @@ class PlaylistListCreateView(generics.ListCreateAPIView):
         ).distinct()
 
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
-        log_action(self.request, "playlist.created", user=self.request.user)
+        playlist = serializer.save(owner=self.request.user)
+        log_action(self.request, "playlist.created", user=self.request.user, metadata={
+            "playlist_id": playlist.id,
+            "title": playlist.title,
+            "visibility": playlist.visibility,
+        })
 
 
 @extend_schema_view(
@@ -160,7 +164,13 @@ class PlaylistSongListView(APIView):
 
         playlist_song = add_song_to_playlist(playlist, song, request.user)
 
-        log_action(request, "playlist.song_added", user=request.user)
+        log_action(request, "playlist.song_added", user=request.user, metadata={
+            "playlist_id": playlist.id,
+            "playlist_title": playlist.title,
+            "visibility": playlist.visibility,
+            "song_title": song.title,
+            "artist": song.artist,
+        })
         broadcast_playlist_update(playlist)
 
         return Response(PlaylistSongSerializer(playlist_song).data, status=status.HTTP_201_CREATED)
@@ -188,12 +198,22 @@ class PlaylistSongDeleteView(APIView):
         if not allowed:
             return Response({"detail": reason}, status=status.HTTP_403_FORBIDDEN)
 
+        target = PlaylistSong.objects.filter(
+            id=playlist_song_id, playlist=playlist
+        ).select_related("song").first()
+
         removed = remove_song_from_playlist(playlist, playlist_song_id)
         if not removed:
             return Response({"detail": "Song not found in this playlist."},
                              status=status.HTTP_404_NOT_FOUND)
 
-        log_action(request, "playlist.song_removed", user=request.user)
+        log_action(request, "playlist.song_removed", user=request.user, metadata={
+            "playlist_id": playlist.id,
+            "playlist_title": playlist.title,
+            "visibility": playlist.visibility,
+            "song_title": target.song.title if target else "",
+            "artist": target.song.artist if target else "",
+        })
         broadcast_playlist_update(playlist)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -233,7 +253,14 @@ class PlaylistSongMoveView(APIView):
             return Response({"detail": "Song not found in this playlist."},
                              status=status.HTTP_404_NOT_FOUND)
 
-        log_action(request, "playlist.song_moved", user=request.user)
+        log_action(request, "playlist.song_moved", user=request.user, metadata={
+            "playlist_id": playlist.id,
+            "playlist_title": playlist.title,
+            "visibility": playlist.visibility,
+            "song_title": updated.song.title,
+            "artist": updated.song.artist,
+            "new_position": new_position,
+        })
         broadcast_playlist_update(playlist)
 
         return Response(PlaylistSongSerializer(updated).data, status=status.HTTP_200_OK)

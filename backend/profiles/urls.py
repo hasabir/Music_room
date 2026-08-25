@@ -9,7 +9,9 @@ from .views import (
     PendingFriendRequestListView,
     MyProfileView,
     UserProfileView,
-    
+    MyActivityView,
+    UserActivityView,
+
 )
 
 
@@ -51,6 +53,8 @@ urlpatterns = [
         name="remove-friend"
     ),
     path("me/", MyProfileView.as_view(), name="my-profile"),
+    path("me/activity/", MyActivityView.as_view(), name="my-activity"),
     # friends/urls.py
     path('profile/<int:user_id>/', UserProfileView.as_view(), name='user_profile'),
+    path('profile/<int:user_id>/activity/', UserActivityView.as_view(), name='user-activity'),
 ]

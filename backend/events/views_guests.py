@@ -18,8 +18,8 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResp
 from authentication.utils import log_action
 from user.models import User
 
-from .models import Event, EventGuest
-from .serializers import EventGuestSerializer, InviteGuestSerializer
+from .models import Event, EventGuest, EventMembership
+from .serializers import EventGuestSerializer, InviteGuestSerializer, EventMembershipSerializer
 
 
 @extend_schema_view(
@@ -79,7 +79,20 @@ class EventGuestListView(APIView):
 
         guest = EventGuest.objects.create(event=event, guest=invited_user)
 
-        log_action(request, "event.guest_invited", user=request.user)
+        log_action(request, "event.guest_invited", user=request.user, metadata={
+            "event_id": event.id,
+            "title": event.title,
+            "visibility": event.visibility,
+            "invited_user_id": invited_user.id,
+        })
+        # Also surface this on the invited guest's own activity feed —
+        # from their side, being added to a private event reads as "joined".
+        log_action(request, "event.joined", user=invited_user, metadata={
+            "event_id": event.id,
+            "title": event.title,
+            "visibility": event.visibility,
+            "via": "invited",
+        })
 
         return Response(EventGuestSerializer(guest).data, status=status.HTTP_201_CREATED)
 
@@ -109,6 +122,57 @@ class EventGuestRemoveView(APIView):
             return Response({"detail": "This user is not invited to the event."},
                              status=status.HTTP_404_NOT_FOUND)
 
-        log_action(request, "event.guest_removed", user=request.user)
+        log_action(request, "event.guest_removed", user=request.user, metadata={
+            "event_id": event.id,
+            "title": event.title,
+            "visibility": event.visibility,
+            "removed_user_id": user_id,
+        })
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(
+    summary="Join a public room",
+    description=(
+        "Self-serve join for a public event/room — any authenticated user "
+        "can join. Private events cannot be self-joined; the host must "
+        "invite you (see `POST /events/<id>/guests/`).\n\n"
+        "This only records that you've joined the room for activity/"
+        "membership purposes — it does not grant `invited_only` voting "
+        "rights, which remain host-controlled via the guest list."
+    ),
+    responses={
+        201: EventMembershipSerializer,
+        400: OpenApiResponse(description="Already joined, or you're the host."),
+        403: OpenApiResponse(description="This event is private — you must be invited."),
+    },
+    tags=["events"],
+)
+class EventJoinView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, event_id):
+        event = get_object_or_404(Event, id=event_id)
+
+        if event.host_id == request.user.id:
+            return Response({"detail": "You are the host of this event."},
+                             status=status.HTTP_400_BAD_REQUEST)
+
+        if event.visibility != "public":
+            return Response({"detail": "This event is private — you must be invited by the host."},
+                             status=status.HTTP_403_FORBIDDEN)
+
+        membership, created = EventMembership.objects.get_or_create(event=event, member=request.user)
+        if not created:
+            return Response({"detail": "You have already joined this event."},
+                             status=status.HTTP_400_BAD_REQUEST)
+
+        log_action(request, "event.joined", user=request.user, metadata={
+            "event_id": event.id,
+            "title": event.title,
+            "visibility": event.visibility,
+            "via": "joined",
+        })
+
+        return Response(EventMembershipSerializer(membership).data, status=status.HTTP_201_CREATED)
