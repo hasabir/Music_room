@@ -72,6 +72,8 @@ volume_clean:
 
 db:
 	docker compose exec backend python manage.py loaddata build/test_users.json
+	docker compose exec backend python manage.py loaddata build/test_profiles.json
+	docker compose exec backend python manage.py loaddata build/test_friendships.json
 
 # Initial setup
 setup:

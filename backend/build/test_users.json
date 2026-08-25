@@ -49,5 +49,158 @@
       "is_staff": false,
       "date_joined": "2026-08-09T10:10:00Z"
     }
+  },
+  {
+    "model": "user.user",
+    "pk": 18,
+    "fields": {
+      "password": "pbkdf2_sha256$600000$pY36DjoBkyLS1ezMNvQQ31$MdSEfksVMQ2J0sL0Hkq6+z8KprsgJsATwn8w4A3u7tc=",
+      "last_login": null,
+      "is_superuser": false,
+      "email": "dave@test.com",
+      "first_name": "Dave",
+      "last_name": "Test",
+      "registration_method": "email",
+      "is_email_verified": true,
+      "is_active": true,
+      "is_staff": false,
+      "date_joined": "2026-08-09T10:15:00Z"
+    }
+  },
+  {
+    "model": "user.user",
+    "pk": 19,
+    "fields": {
+      "password": "pbkdf2_sha256$600000$pY36DjoBkyLS1ezMNvQQ31$MdSEfksVMQ2J0sL0Hkq6+z8KprsgJsATwn8w4A3u7tc=",
+      "last_login": null,
+      "is_superuser": false,
+      "email": "eve@test.com",
+      "first_name": "Eve",
+      "last_name": "Test",
+      "registration_method": "email",
+      "is_email_verified": true,
+      "is_active": true,
+      "is_staff": false,
+      "date_joined": "2026-08-09T10:20:00Z"
+    }
+  },
+  {
+    "model": "user.user",
+    "pk": 20,
+    "fields": {
+      "password": "pbkdf2_sha256$600000$pY36DjoBkyLS1ezMNvQQ31$MdSEfksVMQ2J0sL0Hkq6+z8KprsgJsATwn8w4A3u7tc=",
+      "last_login": null,
+      "is_superuser": false,
+      "email": "frank@test.com",
+      "first_name": "Frank",
+      "last_name": "Test",
+      "registration_method": "email",
+      "is_email_verified": true,
+      "is_active": true,
+      "is_staff": false,
+      "date_joined": "2026-08-09T10:25:00Z"
+    }
+  },
+  {
+    "model": "user.user",
+    "pk": 21,
+    "fields": {
+      "password": "pbkdf2_sha256$600000$pY36DjoBkyLS1ezMNvQQ31$MdSEfksVMQ2J0sL0Hkq6+z8KprsgJsATwn8w4A3u7tc=",
+      "last_login": null,
+      "is_superuser": false,
+      "email": "grace@test.com",
+      "first_name": "Grace",
+      "last_name": "Test",
+      "registration_method": "email",
+      "is_email_verified": true,
+      "is_active": true,
+      "is_staff": false,
+      "date_joined": "2026-08-09T10:30:00Z"
+    }
+  },
+  {
+    "model": "user.user",
+    "pk": 22,
+    "fields": {
+      "password": "pbkdf2_sha256$600000$pY36DjoBkyLS1ezMNvQQ31$MdSEfksVMQ2J0sL0Hkq6+z8KprsgJsATwn8w4A3u7tc=",
+      "last_login": null,
+      "is_superuser": false,
+      "email": "henry@test.com",
+      "first_name": "Henry",
+      "last_name": "Test",
+      "registration_method": "email",
+      "is_email_verified": true,
+      "is_active": true,
+      "is_staff": false,
+      "date_joined": "2026-08-09T10:35:00Z"
+    }
+  },
+  {
+    "model": "user.user",
+    "pk": 23,
+    "fields": {
+      "password": "pbkdf2_sha256$600000$pY36DjoBkyLS1ezMNvQQ31$MdSEfksVMQ2J0sL0Hkq6+z8KprsgJsATwn8w4A3u7tc=",
+      "last_login": null,
+      "is_superuser": false,
+      "email": "isla@test.com",
+      "first_name": "Isla",
+      "last_name": "Test",
+      "registration_method": "google",
+      "is_email_verified": true,
+      "is_active": true,
+      "is_staff": false,
+      "date_joined": "2026-08-09T10:40:00Z"
+    }
+  },
+  {
+    "model": "user.user",
+    "pk": 24,
+    "fields": {
+      "password": "pbkdf2_sha256$600000$pY36DjoBkyLS1ezMNvQQ31$MdSEfksVMQ2J0sL0Hkq6+z8KprsgJsATwn8w4A3u7tc=",
+      "last_login": null,
+      "is_superuser": false,
+      "email": "jack@test.com",
+      "first_name": "Jack",
+      "last_name": "Test",
+      "registration_method": "email",
+      "is_email_verified": true,
+      "is_active": true,
+      "is_staff": false,
+      "date_joined": "2026-08-09T10:45:00Z"
+    }
+  },
+  {
+    "model": "user.user",
+    "pk": 25,
+    "fields": {
+      "password": "pbkdf2_sha256$600000$pY36DjoBkyLS1ezMNvQQ31$MdSEfksVMQ2J0sL0Hkq6+z8KprsgJsATwn8w4A3u7tc=",
+      "last_login": null,
+      "is_superuser": false,
+      "email": "kate@test.com",
+      "first_name": "Kate",
+      "last_name": "Test",
+      "registration_method": "email",
+      "is_email_verified": true,
+      "is_active": true,
+      "is_staff": false,
+      "date_joined": "2026-08-09T10:45:00Z"
+    }
+  },
+  {
+    "model": "user.user",
+    "pk": 26,
+    "fields": {
+      "password": "pbkdf2_sha256$600000$pY36DjoBkyLS1ezMNvQQ31$MdSEfksVMQ2J0sL0Hkq6+z8KprsgJsATwn8w4A3u7tc=",
+      "last_login": null,
+      "is_superuser": false,
+      "email": "leo@test.com",
+      "first_name": "Leo",
+      "last_name": "Test",
+      "registration_method": "email",
+      "is_email_verified": true,
+      "is_active": true,
+      "is_staff": false,
+      "date_joined": "2026-08-09T10:45:00Z"
+    }
   }
 ]

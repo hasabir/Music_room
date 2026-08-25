@@ -62,11 +62,66 @@ class ProfileApi {
 
   /// Lists the signed-in user's accepted friends ("friends").
   Future<List<Friend>> getFriends() async {
+    final response = await _authorizedGetList(ApiConfig.friendsUri());
+    return response.map((json) => Friend.fromJson(json)).toList();
+  }
+
+  /// Fetches another user's profile, filtered by visibility rules
+  /// (public fields only, or public + friends-only if you're friends).
+  Future<OtherUserProfile> getUserProfile(int userId) async {
+    final response = await _authorizedGet(ApiConfig.userProfileUri(userId));
+    return OtherUserProfile.fromJson(response);
+  }
+
+  /// Lists friend requests sent to the signed-in user that are still
+  /// awaiting their response.
+  Future<List<FriendRequest>> getReceivedRequests() async {
+    final response = await _authorizedGetList(ApiConfig.friendRequestsReceivedUri());
+    return response.map((json) => FriendRequest.fromReceivedJson(json)).toList();
+  }
+
+  /// Lists friend requests the signed-in user has sent that are still
+  /// awaiting the other person's response.
+  Future<List<FriendRequest>> getSentRequests() async {
+    final response = await _authorizedGetList(ApiConfig.friendRequestsSentUri());
+    return response.map((json) => FriendRequest.fromSentJson(json)).toList();
+  }
+
+  /// Accepts a pending friend request sent to the signed-in user.
+  Future<void> acceptFriendRequest(int requestId) async {
+    await _authorizedPost(ApiConfig.acceptFriendRequestUri(requestId));
+  }
+
+  /// Rejects a pending friend request sent to the signed-in user.
+  Future<void> rejectFriendRequest(int requestId) async {
+    await _authorizedPost(ApiConfig.rejectFriendRequestUri(requestId));
+  }
+
+  /// Sends a friend request to [userId].
+  Future<void> sendFriendRequest(int userId) async {
+    await _authorizedPost(ApiConfig.sendFriendRequestUri(userId));
+  }
+
+  /// Removes an existing (accepted) friendship with [userId].
+  Future<void> removeFriend(int userId) async {
     final accessToken = await _tokenStorage.readAccessToken();
     if (accessToken == null) throw SessionExpiredException();
 
-    final response = await _authorizedGetList(ApiConfig.friendsUri());
-    return response.map((json) => Friend.fromJson(json)).toList();
+    try {
+      await _apiClient.delete(ApiConfig.removeFriendUri(userId), accessToken: accessToken);
+    } on ApiException catch (error) {
+      if (error.statusCode != 401) rethrow;
+      final refreshedToken = await _refreshOrThrow();
+      await _apiClient.delete(ApiConfig.removeFriendUri(userId), accessToken: refreshedToken);
+    }
+  }
+
+  /// Searches users by name/email, annotated with the signed-in user's
+  /// relationship to each result. Returns an empty list for a blank query.
+  Future<List<SearchUser>> searchUsers(String query) async {
+    if (query.trim().isEmpty) return const [];
+    final response = await _authorizedGetList(ApiConfig.userSearchUri(query));
+    return response.map((json) => SearchUser.fromJson(json)).toList();
   }
 
   Future<Map<String, dynamic>> _authorizedGet(Uri uri) async {
@@ -79,6 +134,19 @@ class ProfileApi {
       if (error.statusCode != 401) rethrow;
       final refreshedToken = await _refreshOrThrow();
       return await _apiClient.get(uri, accessToken: refreshedToken);
+    }
+  }
+
+  Future<Map<String, dynamic>> _authorizedPost(Uri uri) async {
+    final accessToken = await _tokenStorage.readAccessToken();
+    if (accessToken == null) throw SessionExpiredException();
+
+    try {
+      return await _apiClient.post(uri, body: const {}, accessToken: accessToken);
+    } on ApiException catch (error) {
+      if (error.statusCode != 401) rethrow;
+      final refreshedToken = await _refreshOrThrow();
+      return await _apiClient.post(uri, body: const {}, accessToken: refreshedToken);
     }
   }
 

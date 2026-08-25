@@ -1,0 +1,230 @@
+[
+  {
+    "model": "profiles.profile",
+    "pk": 1,
+    "fields": {
+      "user": 1,
+      "display_name": "Alice",
+      "bio": "House & techno DJ.",
+      "location": "Berlin, Germany",
+      "favorite_artist": "Daft Punk",
+      "phone_number": "+491234567001",
+      "profile_image": null,
+      "favorite_genres": [
+        "house",
+        "techno"
+      ],
+      "created_at": "2026-08-09T10:00:00Z",
+      "updated_at": "2026-08-09T10:00:00Z"
+    }
+  },
+  {
+    "model": "profiles.profile",
+    "pk": 2,
+    "fields": {
+      "user": 2,
+      "display_name": "Bob",
+      "bio": "Vinyl collector, jazz head.",
+      "location": "London, UK",
+      "favorite_artist": "Miles Davis",
+      "phone_number": "+441234567002",
+      "profile_image": null,
+      "favorite_genres": [
+        "jazz",
+        "soul"
+      ],
+      "created_at": "2026-08-09T10:05:00Z",
+      "updated_at": "2026-08-09T10:05:00Z"
+    }
+  },
+  {
+    "model": "profiles.profile",
+    "pk": 3,
+    "fields": {
+      "user": 3,
+      "display_name": "Charlie",
+      "bio": "Synthwave producer.",
+      "location": "Los Angeles, USA",
+      "favorite_artist": "Kavinsky",
+      "phone_number": "+11234567003",
+      "profile_image": null,
+      "favorite_genres": [
+        "electronic",
+        "indie"
+      ],
+      "created_at": "2026-08-09T10:10:00Z",
+      "updated_at": "2026-08-09T10:10:00Z"
+    }
+  },
+  {
+    "model": "profiles.profile",
+    "pk": 18,
+    "fields": {
+      "user": 18,
+      "display_name": "Dave",
+      "bio": "Bedroom pop producer.",
+      "location": "Austin, USA",
+      "favorite_artist": "Mac DeMarco",
+      "phone_number": "+11234567004",
+      "profile_image": null,
+      "favorite_genres": [
+        "indie",
+        "pop"
+      ],
+      "created_at": "2026-08-09T10:15:00Z",
+      "updated_at": "2026-08-09T10:15:00Z"
+    }
+  },
+  {
+    "model": "profiles.profile",
+    "pk": 19,
+    "fields": {
+      "user": 19,
+      "display_name": "Eve",
+      "bio": "Runs a monthly funk & soul night.",
+      "location": "Amsterdam, Netherlands",
+      "favorite_artist": "Chaka Khan",
+      "phone_number": "+311234567005",
+      "profile_image": null,
+      "favorite_genres": [
+        "funk",
+        "soul"
+      ],
+      "created_at": "2026-08-09T10:20:00Z",
+      "updated_at": "2026-08-09T10:20:00Z"
+    }
+  },
+  {
+    "model": "profiles.profile",
+    "pk": 20,
+    "fields": {
+      "user": 20,
+      "display_name": "Frank",
+      "bio": "Metal riffs and folk fingerpicking.",
+      "location": "Helsinki, Finland",
+      "favorite_artist": "Opeth",
+      "phone_number": "+3581234567006",
+      "profile_image": null,
+      "favorite_genres": [
+        "metal",
+        "folk"
+      ],
+      "created_at": "2026-08-09T10:25:00Z",
+      "updated_at": "2026-08-09T10:25:00Z"
+    }
+  },
+  {
+    "model": "profiles.profile",
+    "pk": 21,
+    "fields": {
+      "user": 21,
+      "display_name": "Grace",
+      "bio": "Film composer, soundtrack nerd.",
+      "location": "Toronto, Canada",
+      "favorite_artist": "Hans Zimmer",
+      "phone_number": "+11234567007",
+      "profile_image": null,
+      "favorite_genres": [
+        "soundtrack",
+        "classical"
+      ],
+      "created_at": "2026-08-09T10:30:00Z",
+      "updated_at": "2026-08-09T10:30:00Z"
+    }
+  },
+  {
+    "model": "profiles.profile",
+    "pk": 22,
+    "fields": {
+      "user": 22,
+      "display_name": "Henry",
+      "bio": "Afrobeat drummer.",
+      "location": "Accra, Ghana",
+      "favorite_artist": "Burna Boy",
+      "phone_number": "+2331234567008",
+      "profile_image": null,
+      "favorite_genres": [
+        "afrobeat",
+        "reggae"
+      ],
+      "created_at": "2026-08-09T10:35:00Z",
+      "updated_at": "2026-08-09T10:35:00Z"
+    }
+  },
+  {
+    "model": "profiles.profile",
+    "pk": 23,
+    "fields": {
+      "user": 23,
+      "display_name": "Isla",
+      "bio": "K-pop playlist curator.",
+      "location": "Seoul, South Korea",
+      "favorite_artist": "IU",
+      "phone_number": "+821234567009",
+      "profile_image": null,
+      "favorite_genres": [
+        "kpop",
+        "pop"
+      ],
+      "created_at": "2026-08-09T10:40:00Z",
+      "updated_at": "2026-08-09T10:40:00Z"
+    }
+  },
+  {
+    "model": "profiles.profile",
+    "pk": 24,
+    "fields": {
+      "user": 24,
+      "display_name": "Jack",
+      "bio": "Turntablist, scratch DJ.",
+      "location": "Detroit, USA",
+      "favorite_artist": "DJ Shadow",
+      "phone_number": "+11234567024",
+      "profile_image": null,
+      "favorite_genres": [
+        "hip_hop",
+        "funk"
+      ],
+      "created_at": "2026-08-09T10:45:00Z",
+      "updated_at": "2026-08-09T10:45:00Z"
+    }
+  },
+  {
+    "model": "profiles.profile",
+    "pk": 25,
+    "fields": {
+      "user": 25,
+      "display_name": "Kate",
+      "bio": "Indie folk singer-songwriter.",
+      "location": "Nashville, USA",
+      "favorite_artist": "Bon Iver",
+      "phone_number": "+11234567025",
+      "profile_image": null,
+      "favorite_genres": [
+        "folk",
+        "indie"
+      ],
+      "created_at": "2026-08-09T10:45:00Z",
+      "updated_at": "2026-08-09T10:45:00Z"
+    }
+  },
+  {
+    "model": "profiles.profile",
+    "pk": 26,
+    "fields": {
+      "user": 26,
+      "display_name": "Leo",
+      "bio": "Latin pop & reggaeton playlists.",
+      "location": "Bogota, Colombia",
+      "favorite_artist": "Bad Bunny",
+      "phone_number": "+571234567026",
+      "profile_image": null,
+      "favorite_genres": [
+        "latin",
+        "pop"
+      ],
+      "created_at": "2026-08-09T10:45:00Z",
+      "updated_at": "2026-08-09T10:45:00Z"
+    }
+  }
+]

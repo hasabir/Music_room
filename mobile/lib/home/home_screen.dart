@@ -21,6 +21,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _authApi = AuthApi();
   final _tokenStorage = TokenStorage();
+  int? _currentUserId;
 
   @override
   void initState() {
@@ -31,6 +32,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _printCurrentUserId() async {
     try {
       final user = await _authApi.getCurrentUser();
+      if (!mounted) return;
+      setState(() {
+        _currentUserId = user.id;
+      });
       debugPrint('Current user id: ${user.id}');
     } on SessionExpiredException {
       // getCurrentUser() already tried refreshing the access token; this
@@ -79,6 +84,19 @@ class _HomeScreenState extends State<HomeScreen> {
               ElevatedButton(
                 onPressed: _handleLogout,
                 child: const Text('Logout'),
+              ),
+              const Text(
+                'This is a placeholder home screen. The real Music Room home experience will be built out separately.',
+                style: TextStyle(color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                _currentUserId == null
+                    ? 'Loading current user id...'
+                    : 'Current user ID: $_currentUserId',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
               ),
             ],
           ),

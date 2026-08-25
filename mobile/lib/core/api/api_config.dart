@@ -11,7 +11,7 @@ class ApiConfig {
   const ApiConfig._();
 
   static String get baseUrl =>
-      dotenv.env['API_BASE_URL'] ?? 'http://10.116.112.13:8000';
+      dotenv.env['API_BASE_URL'] ?? 'http://10.215.166.13:8000';
 
   static String get googleWebClientId => dotenv.env['GOOGLE_CLIENT_ID'] ?? '';
 
@@ -33,6 +33,11 @@ class ApiConfig {
       '/api/v1/auth/password-reset/set-new-password/';
   static const String myProfileEndpoint = '/api/v1/profile/me/';
   static const String friendsEndpoint = '/api/v1/profile/friends/';
+  static const String friendRequestsReceivedEndpoint =
+      '/api/v1/profile/friends/requests/';
+  static const String friendRequestsSentEndpoint =
+      '/api/v1/profile/friends/requests/sent/';
+  static const String userSearchEndpoint = '/api/v1/profile/search/';
 
   static Uri registerUri() => Uri.parse('$baseUrl$registerEndpoint');
   static Uri loginUri() => Uri.parse('$baseUrl$loginEndpoint');
@@ -52,4 +57,20 @@ class ApiConfig {
       Uri.parse('$baseUrl$passwordResetConfirmEndpoint');
   static Uri myProfileUri() => Uri.parse('$baseUrl$myProfileEndpoint');
   static Uri friendsUri() => Uri.parse('$baseUrl$friendsEndpoint');
+  static Uri friendRequestsReceivedUri() =>
+      Uri.parse('$baseUrl$friendRequestsReceivedEndpoint');
+  static Uri friendRequestsSentUri() =>
+      Uri.parse('$baseUrl$friendRequestsSentEndpoint');
+  static Uri acceptFriendRequestUri(int requestId) =>
+      Uri.parse('$baseUrl/api/v1/profile/friends/requests/$requestId/accept/');
+  static Uri rejectFriendRequestUri(int requestId) =>
+      Uri.parse('$baseUrl/api/v1/profile/friends/requests/$requestId/reject/');
+  static Uri sendFriendRequestUri(int userId) =>
+      Uri.parse('$baseUrl/api/v1/profile/friends/$userId/add/');
+  static Uri removeFriendUri(int userId) =>
+      Uri.parse('$baseUrl/api/v1/profile/friends/$userId/remove/');
+  static Uri userProfileUri(int userId) =>
+      Uri.parse('$baseUrl/api/v1/profile/profile/$userId/');
+  static Uri userSearchUri(String query) =>
+      Uri.parse('$baseUrl$userSearchEndpoint').replace(queryParameters: {'q': query});
 }

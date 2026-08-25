@@ -25,18 +25,19 @@ class _ProfileColors {
   static const muted = Color(0xFF908FA0);
   static const tertiary = Color(0xFF2FD9F4);
   static const gradientStart = Color(0xFF8083FF);
-  static const gradientEnd = Color(0xFF494BD6);
   static const chip = Color(0xFF232230);
-  static const online = Color(0xFF3DDC97);
-  static const liveBadge = Color(0xFF6C6FF0);
+  static const badgePublic = Color(0xFF2FD9F4);
+  static const badgeFriends = Color(0xFFE05FA8);
+  static const badgePrivate = Color(0xFF908FA0);
 }
 
 /// The signed-in user's own Profile screen.
 ///
 /// Loads the real profile (`GET /api/v1/profile/me/`) and friends list
-/// (`GET /api/v1/profile/friends/`) from the backend. "friends" presence and
-/// "Active Sessions" are local placeholder data — see
-/// `profile_mock_data.dart` for why, and to swap them for real data later.
+/// (`GET /api/v1/profile/friends/`) from the backend. Handle, birthday,
+/// per-field privacy badges, instruments/gear, playlists, and events
+/// hosted are local placeholder data — see `profile_mock_data.dart` for
+/// why, and to swap them for real data later.
 class PersonalProfileScreen extends StatefulWidget {
   const PersonalProfileScreen({super.key});
 
@@ -114,8 +115,13 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     });
   }
 
-  void _onConnections() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ConnectionsScreen()));
+  Future<void> _onFriends() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ConnectionsScreen()));
+    // Friend requests may have been accepted/declined/removed on that
+    // screen, which would leave the friends count shown here stale.
+    _refresh();
   }
 
   void _onSettings() {
@@ -174,21 +180,20 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                           profile: data.profile,
                           authUser: data.authUser,
                           onEditProfile: () => _onEditProfile(data.profile, data.authUser.email),
-                          onConnections: _onConnections,
                         ),
                         const SizedBox(height: 16),
-                        _SonicSignatureCard(
+                        _FriendsCard(count: data.friends.length, onTap: _onFriends),
+                        const SizedBox(height: 24),
+                        const _DetailsLabel(),
+                        const SizedBox(height: 10),
+                        _DetailsCard(profile: data.profile, email: data.authUser.email),
+                        const SizedBox(height: 16),
+                        _VibeSignatureCard(
                           genres: data.profile.favoriteGenres,
                           onEdit: () => _onMusicPreferences(data.profile),
                         ),
-                        const SizedBox(height: 16),
-                        _friendsCard(friends: data.friends),
                         const SizedBox(height: 24),
-                        const _SectionHeader(icon: Icons.podcasts_rounded, title: 'Active Sessions'),
-                        const SizedBox(height: 12),
-                        const _LiveSessionCard(),
-                        const SizedBox(height: 12),
-                        const _UpcomingSessionCard(),
+                        const _ProfileContentTabs(),
                       ],
                     ),
                   );
@@ -321,17 +326,11 @@ class _ErrorState extends StatelessWidget {
 }
 
 class _ProfileCard extends StatelessWidget {
-  const _ProfileCard({
-    required this.profile,
-    required this.authUser,
-    required this.onEditProfile,
-    required this.onConnections,
-  });
+  const _ProfileCard({required this.profile, required this.authUser, required this.onEditProfile});
 
   final UserProfile profile;
   final AuthUser authUser;
   final VoidCallback onEditProfile;
-  final VoidCallback onConnections;
 
   String get _displayName {
     if (profile.displayName.isNotEmpty) return profile.displayName;
@@ -339,8 +338,17 @@ class _ProfileCard extends StatelessWidget {
     return name.isEmpty ? authUser.email : name;
   }
 
+  /// A `@handle`-style label derived from the display name, purely for
+  /// visual presentation — `Profile` has no username/handle field.
+  String? get _handle {
+    final slug = _displayName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    return slug.isEmpty ? null : '@$slug';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final handle = _handle;
+
     return _Card(
       child: Column(
         children: [
@@ -375,6 +383,18 @@ class _ProfileCard extends StatelessWidget {
               color: _ProfileColors.body,
             ),
           ),
+          if (handle != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              handle,
+              style: const TextStyle(
+                fontFamily: 'Sora',
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _ProfileColors.tertiary,
+              ),
+            ),
+          ],
           if (profile.bio.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
@@ -392,46 +412,16 @@ class _ProfileCard extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             height: 48,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
-                gradient: const LinearGradient(
-                  colors: [_ProfileColors.gradientStart, _ProfileColors.gradientEnd],
-                ),
-              ),
-              child: ElevatedButton.icon(
-                onPressed: onEditProfile,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                ),
-                icon: const Icon(Icons.edit_rounded, size: 18, color: Colors.white),
-                label: const Text(
-                  'Edit Profile',
-                  style: TextStyle(
-                    fontFamily: 'Sora',
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
             child: OutlinedButton.icon(
-              onPressed: onConnections,
+              onPressed: onEditProfile,
               style: OutlinedButton.styleFrom(
                 foregroundColor: _ProfileColors.tertiary,
                 side: const BorderSide(color: _ProfileColors.tertiary),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
               ),
-              icon: const Icon(Icons.link_rounded, size: 18),
+              icon: const Icon(Icons.edit_rounded, size: 18),
               label: const Text(
-                'Connections',
+                'Edit Profile',
                 style: TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700),
               ),
             ),
@@ -454,8 +444,209 @@ class _AvatarFallback extends StatelessWidget {
   }
 }
 
-class _SonicSignatureCard extends StatelessWidget {
-  const _SonicSignatureCard({required this.genres, required this.onEdit});
+class _FriendsCard extends StatelessWidget {
+  const _FriendsCard({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: _Card(
+        child: Row(
+          children: [
+            const Icon(Icons.groups_rounded, size: 20, color: _ProfileColors.headline),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Friends',
+                style: TextStyle(
+                  fontFamily: 'Sora',
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  color: _ProfileColors.body,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: _ProfileColors.chip, borderRadius: BorderRadius.circular(12)),
+              child: Text(
+                '$count',
+                style: const TextStyle(
+                  fontFamily: 'Sora',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: _ProfileColors.body,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right_rounded, color: _ProfileColors.muted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailsLabel extends StatelessWidget {
+  const _DetailsLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(left: 4),
+      child: Text(
+        'DETAILS',
+        style: TextStyle(
+          fontFamily: 'Sora',
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1,
+          color: _ProfileColors.muted,
+        ),
+      ),
+    );
+  }
+}
+
+enum _Privacy { public, friends, private }
+
+class _DetailsCard extends StatelessWidget {
+  const _DetailsCard({required this.profile, required this.email});
+
+  final UserProfile profile;
+  final String email;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      child: Column(
+        children: [
+          _DetailRow(
+            icon: Icons.location_on_rounded,
+            label: 'Location',
+            value: profile.location.isNotEmpty ? profile.location : 'Not set',
+            privacy: _Privacy.public,
+          ),
+          const _DetailDivider(),
+          _DetailRow(
+            icon: Icons.cake_rounded,
+            label: 'Birthday',
+            value: mockBirthday ?? 'Not set',
+            privacy: _Privacy.friends,
+          ),
+          const _DetailDivider(),
+          _DetailRow(
+            icon: Icons.mail_rounded,
+            label: 'Email',
+            value: email.isNotEmpty ? email : 'Not set',
+            privacy: _Privacy.private,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailDivider extends StatelessWidget {
+  const _DetailDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 14),
+      child: Divider(height: 1, color: _ProfileColors.cardBorder),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.privacy,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final _Privacy privacy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 18, color: _ProfileColors.muted),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontFamily: 'Sora',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: _ProfileColors.body,
+                ),
+              ),
+            ),
+            _PrivacyBadge(privacy: privacy),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Padding(
+          padding: const EdgeInsets.only(left: 26),
+          child: Text(value, style: const TextStyle(fontSize: 14, color: _ProfileColors.description)),
+        ),
+      ],
+    );
+  }
+}
+
+class _PrivacyBadge extends StatelessWidget {
+  const _PrivacyBadge({required this.privacy});
+
+  final _Privacy privacy;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, icon, color) = switch (privacy) {
+      _Privacy.public => ('Public', Icons.public_rounded, _ProfileColors.badgePublic),
+      _Privacy.friends => ('Friends', Icons.people_alt_rounded, _ProfileColors.badgeFriends),
+      _Privacy.private => ('Private', Icons.lock_rounded, _ProfileColors.badgePrivate),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VibeSignatureCard extends StatelessWidget {
+  const _VibeSignatureCard({required this.genres, required this.onEdit});
 
   final List<String> genres;
   final VoidCallback onEdit;
@@ -467,9 +658,28 @@ class _SonicSignatureCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Expanded(
-                child: _SectionHeader(icon: Icons.bar_chart_rounded, title: 'Sonic Signature'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Vibe Signature',
+                      style: TextStyle(
+                        fontFamily: 'Sora',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                        color: _ProfileColors.body,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Aesthetic & tonal preferences',
+                      style: TextStyle(fontSize: 12, color: _ProfileColors.muted),
+                    ),
+                  ],
+                ),
               ),
               IconButton(
                 onPressed: onEdit,
@@ -478,168 +688,136 @@ class _SonicSignatureCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          if (genres.isEmpty)
-            const Text(
-              'Add your favorite genres in Music Preferences.',
-              style: TextStyle(color: _ProfileColors.muted, fontSize: 13),
-            )
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: genres
-                  .map((code) => _Chip(label: musicGenreLabels[code] ?? code))
-                  .toList(),
-            ),
+          const SizedBox(height: 16),
+          const _ChipsLabel('TOP GENRES'),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ...genres.map((code) => _Chip(label: musicGenreLabels[code] ?? code)),
+              _Chip(label: '+ Add', outlined: true, onTap: onEdit),
+            ],
+          ),
+          const SizedBox(height: 18),
+          const _ChipsLabel('INSTRUMENTS / GEAR'),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: mockInstruments.map((label) => _Chip(label: label)).toList(),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _ChipsLabel extends StatelessWidget {
+  const _ChipsLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontFamily: 'Sora',
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.8,
+        color: _ProfileColors.muted,
       ),
     );
   }
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.label});
+  const _Chip({required this.label, this.outlined = false, this.onTap});
 
   final String label;
+  final bool outlined;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: _ProfileColors.chip,
+        color: outlined ? Colors.transparent : _ProfileColors.chip,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _ProfileColors.cardBorder),
+        border: Border.all(color: outlined ? _ProfileColors.tertiary : _ProfileColors.cardBorder),
       ),
       child: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: 'Sora',
           fontSize: 13,
           fontWeight: FontWeight.w500,
-          color: _ProfileColors.body,
+          color: outlined ? _ProfileColors.tertiary : _ProfileColors.body,
         ),
       ),
     );
+
+    if (onTap == null) return chip;
+    return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(20), child: chip);
   }
 }
 
-class _friendsCard extends StatelessWidget {
-  const _friendsCard({required this.friends});
+enum _ProfileContentTab { playlists, eventsHosted }
 
-  final List<Friend> friends;
+class _ProfileContentTabs extends StatefulWidget {
+  const _ProfileContentTabs();
 
   @override
-  Widget build(BuildContext context) {
-    final onlineCount = friends
-        .where((friend) => MockPresence.forFriendId(friend.id).isOnline)
-        .length;
-
-    return _Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: _SectionHeader(icon: Icons.groups_rounded, title: 'friends'),
-              ),
-              Text(
-                '$onlineCount ONLINE',
-                style: const TextStyle(
-                  fontFamily: 'Sora',
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: _ProfileColors.muted,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          if (friends.isEmpty)
-            const Text(
-              'No friends yet — add friends to see them here.',
-              style: TextStyle(color: _ProfileColors.muted, fontSize: 13),
-            )
-          else
-            Column(
-              children: friends
-                  .take(4)
-                  .map(
-                    (friend) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _friendsRow(friend: friend),
-                    ),
-                  )
-                  .toList(),
-            ),
-        ],
-      ),
-    );
-  }
+  State<_ProfileContentTabs> createState() => _ProfileContentTabsState();
 }
 
-class _friendsRow extends StatelessWidget {
-  const _friendsRow({required this.friend});
-
-  final Friend friend;
+class _ProfileContentTabsState extends State<_ProfileContentTabs> {
+  var _tab = _ProfileContentTab.playlists;
 
   @override
   Widget build(BuildContext context) {
-    final presence = MockPresence.forFriendId(friend.id);
-
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Stack(
+        Row(
           children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: _ProfileColors.chip,
-              child: Text(
-                friend.firstName.isNotEmpty ? friend.firstName[0].toUpperCase() : '?',
-                style: const TextStyle(
-                  color: _ProfileColors.headline,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+            _TabButton(
+              label: 'Playlists',
+              isSelected: _tab == _ProfileContentTab.playlists,
+              onTap: () => setState(() => _tab = _ProfileContentTab.playlists),
             ),
-            if (presence.isOnline)
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: _ProfileColors.online,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: _ProfileColors.card, width: 2),
-                  ),
-                ),
-              ),
+            const SizedBox(width: 20),
+            _TabButton(
+              label: 'Events Hosted',
+              isSelected: _tab == _ProfileContentTab.eventsHosted,
+              onTap: () => setState(() => _tab = _ProfileContentTab.eventsHosted),
+            ),
+            const Spacer(),
+            const Icon(Icons.sort_rounded, color: _ProfileColors.muted),
           ],
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                friend.fullName,
-                style: const TextStyle(
-                  fontFamily: 'Sora',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  color: _ProfileColors.body,
-                ),
-              ),
-              Text(
-                presence.activity,
-                style: const TextStyle(fontSize: 12, color: _ProfileColors.muted),
-              ),
-            ],
+        const SizedBox(height: 16),
+        if (_tab == _ProfileContentTab.playlists)
+          ...mockPlaylists.map(
+            (playlist) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _PlaylistCard(playlist: playlist),
+            ),
+          )
+        else
+          ...mockHostedEvents.map(
+            (event) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _HostedEventCard(event: event),
+            ),
+          ),
+        const SizedBox(height: 4),
+        _CreatePlaylistButton(
+          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Creating playlists is coming soon.')),
           ),
         ),
       ],
@@ -647,95 +825,34 @@ class _friendsRow extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.icon, required this.title});
+class _TabButton extends StatelessWidget {
+  const _TabButton({required this.label, required this.isSelected, required this.onTap});
 
-  final IconData icon;
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: _ProfileColors.headline),
-        const SizedBox(width: 8),
-        Text(
-          title,
-          style: const TextStyle(
-            fontFamily: 'Sora',
-            fontWeight: FontWeight.w800,
-            fontSize: 18,
-            color: _ProfileColors.body,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _LiveSessionCard extends StatelessWidget {
-  const _LiveSessionCard();
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: _ProfileColors.card,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _ProfileColors.gradientStart.withValues(alpha: 0.5)),
-      ),
+    return InkWell(
+      onTap: onTap,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _ProfileColors.liveBadge,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.graphic_eq_rounded, size: 14, color: Colors.white),
-                    SizedBox(width: 4),
-                    Text(
-                      'LIVE',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Spacer(),
-              const Icon(Icons.more_horiz_rounded, color: _ProfileColors.muted),
-            ],
-          ),
-          const SizedBox(height: 68),
           Text(
-            mockActiveSession.title,
-            style: const TextStyle(
+            label,
+            style: TextStyle(
               fontFamily: 'Sora',
-              fontWeight: FontWeight.w800,
-              fontSize: 20,
-              color: _ProfileColors.body,
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+              color: isSelected ? _ProfileColors.body : _ProfileColors.muted,
             ),
           ),
           const SizedBox(height: 6),
-          Row(
-            children: [
-              const Icon(Icons.person_rounded, size: 14, color: _ProfileColors.muted),
-              const SizedBox(width: 4),
-              Text(
-                mockActiveSession.subtitle,
-                style: const TextStyle(fontSize: 13, color: _ProfileColors.muted),
-              ),
-            ],
+          Container(
+            height: 2,
+            width: 20,
+            color: isSelected ? _ProfileColors.tertiary : Colors.transparent,
           ),
         ],
       ),
@@ -743,65 +860,144 @@ class _LiveSessionCard extends StatelessWidget {
   }
 }
 
-class _UpcomingSessionCard extends StatelessWidget {
-  const _UpcomingSessionCard();
+class _PlaylistCard extends StatelessWidget {
+  const _PlaylistCard({required this.playlist});
+
+  final MockPlaylist playlist;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: _ProfileColors.card,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _ProfileColors.cardBorder),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
-              color: _ProfileColors.chip,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
+              gradient: const LinearGradient(
+                colors: [_ProfileColors.gradientStart, _ProfileColors.tertiary],
+              ),
             ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
+            child: const Icon(Icons.queue_music_rounded, color: Colors.white),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.queue_music_rounded, size: 14, color: _ProfileColors.muted),
-                SizedBox(width: 4),
                 Text(
-                  'UP NEXT',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: _ProfileColors.muted,
+                  playlist.title,
+                  style: const TextStyle(
+                    fontFamily: 'Sora',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: _ProfileColors.body,
                   ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  playlist.subtitle,
+                  style: const TextStyle(fontSize: 12, color: _ProfileColors.muted),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 40),
-          Text(
-            mockUpcomingSession.title,
-            style: const TextStyle(
-              fontFamily: 'Sora',
-              fontWeight: FontWeight.w800,
-              fontSize: 18,
-              color: _ProfileColors.body,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: _ProfileColors.chip, borderRadius: BorderRadius.circular(10)),
+            child: Text(
+              '${playlist.trackCount} Tracks',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _ProfileColors.muted),
             ),
           ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              const Icon(Icons.schedule_rounded, size: 14, color: _ProfileColors.muted),
-              const SizedBox(width: 4),
-              Text(
-                mockUpcomingSession.subtitle,
-                style: const TextStyle(fontSize: 13, color: _ProfileColors.muted),
-              ),
-            ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HostedEventCard extends StatelessWidget {
+  const _HostedEventCard({required this.event});
+
+  final MockHostedEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _ProfileColors.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _ProfileColors.cardBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(color: _ProfileColors.chip, borderRadius: BorderRadius.circular(14)),
+            child: const Icon(Icons.podcasts_rounded, color: _ProfileColors.headline),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  event.title,
+                  style: const TextStyle(
+                    fontFamily: 'Sora',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: _ProfileColors.body,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(event.subtitle, style: const TextStyle(fontSize: 12, color: _ProfileColors.muted)),
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CreatePlaylistButton extends StatelessWidget {
+  const _CreatePlaylistButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _ProfileColors.cardBorder),
+        ),
+        child: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.add_rounded, color: _ProfileColors.muted),
+            SizedBox(height: 6),
+            Text(
+              'Create New Playlist',
+              style: TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w600, color: _ProfileColors.muted),
+            ),
+          ],
+        ),
       ),
     );
   }
