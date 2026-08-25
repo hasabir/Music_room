@@ -1,6 +1,6 @@
 # events/serializers.py
 from rest_framework import serializers
-from .models import Event, EventGuest, Song, EventSong, Vote
+from .models import Event, EventGuest, EventMembership, Song, EventSong, Vote
 
 
 class EventSerializer(serializers.ModelSerializer):
@@ -87,4 +87,11 @@ class EventSongSerializer(serializers.ModelSerializer):
 class InviteGuestSerializer(serializers.Serializer):
     """Used for POSTing a new guest invitation."""
     user_id = serializers.IntegerField()
+
+
+class EventMembershipSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventMembership
+        fields = ["id", "event", "member", "joined_at"]
+        read_only_fields = fields
  

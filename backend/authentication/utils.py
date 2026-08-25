@@ -10,7 +10,7 @@ from user.models import ActionLog
 from .models import OTPCode
 
 
-def log_action(request, action, user=None):
+def log_action(request, action, user=None, metadata=None):
     ActionLog.objects.create(
         user=user,
         action=action,
@@ -18,6 +18,7 @@ def log_action(request, action, user=None):
         device=request.headers.get("X-Device", ""),
         app_version=request.headers.get("X-App-Version", ""),
         ip_address=get_client_ip(request),
+        metadata=metadata or {},
     )
 
 

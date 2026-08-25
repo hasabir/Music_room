@@ -8,11 +8,45 @@ from rest_framework.response import Response
 
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 
-from user.models import User
+from user.models import User, ActionLog
 from authentication.utils import log_action
 
 from .models import Friendship, Profile
-from .serializers import FriendSerializer, FriendshipSerializer, ProfileSerializer
+from .serializers import (
+    FriendSerializer,
+    FriendshipSerializer,
+    ProfileSerializer,
+    ActivityLogSerializer,
+)
+
+
+def _are_friends(user_a, user_b):
+    return Friendship.objects.filter(
+        status="accepted"
+    ).filter(
+        Q(sender=user_a, receiver=user_b) |
+        Q(sender=user_b, receiver=user_a)
+    ).exists()
+
+
+def _activity_queryset_for(target_user, viewer):
+    """
+    Activity visible to `viewer` about `target_user`:
+    - the owner sees everything.
+    - friends see everything (public and private rooms/playlists).
+    - everyone else only sees activity tied to public rooms/playlists —
+      entries whose metadata["visibility"] == "private" are excluded.
+    """
+    qs = ActionLog.objects.filter(
+        user=target_user
+    ).filter(
+        Q(action__startswith="event.") | Q(action__startswith="playlist.")
+    )
+
+    if viewer.id == target_user.id or _are_friends(viewer, target_user):
+        return qs
+
+    return qs.exclude(metadata__visibility="private")
 
 
 @extend_schema(
@@ -337,18 +371,17 @@ class UserProfileView(generics.GenericAPIView):
         if request.user.id == target_user.id:
             return Response(ProfileSerializer(profile).data)
 
-        is_friend = Friendship.objects.filter(
-            status="accepted"
-        ).filter(
-            Q(sender=request.user, receiver=target_user) |
-            Q(sender=target_user, receiver=request.user)
-        ).exists()
+        is_friend = _are_friends(request.user, target_user)
+
+        serialized = ProfileSerializer(profile).data
 
         data = {
             "display_name": profile.display_name,
             "bio": profile.bio,
             "profile_image": profile.profile_image.url if profile.profile_image else None,
             "favorite_genres": profile.favorite_genres,
+            "votes_count": serialized["votes_count"],
+            "playlists_count": serialized["playlists_count"],
         }
 
         if is_friend:
@@ -357,3 +390,47 @@ class UserProfileView(generics.GenericAPIView):
 
         log_action(request, "profile.viewed", user=request.user)
         return Response(data)
+
+
+@extend_schema(
+    summary="List my recent activity",
+    description=(
+        "Returns your recent activity related to votes, rooms (events), "
+        "and playlists — e.g. casting/retracting a vote, creating a room, "
+        "adding a song to a room's queue, creating a playlist, adding a "
+        "song to a playlist, inviting/removing a playlist collaborator. "
+        "Newest first."
+    ),
+    responses={200: ActivityLogSerializer(many=True)},
+    tags=["profile"],
+)
+class MyActivityView(generics.ListAPIView):
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = ActivityLogSerializer
+
+    def get_queryset(self):
+        return _activity_queryset_for(self.request.user, self.request.user)
+
+
+@extend_schema(
+    summary="List another user's recent activity",
+    description=(
+        "Returns another user's recent activity, filtered by visibility:\n\n"
+        "- If you are viewing your own activity, everything is returned.\n"
+        "- If you are friends with the target user, everything is returned "
+        "(including activity tied to private rooms/playlists).\n"
+        "- Otherwise, only activity tied to public rooms/playlists is "
+        "returned."
+    ),
+    responses={200: ActivityLogSerializer(many=True)},
+    tags=["profile"],
+)
+class UserActivityView(generics.ListAPIView):
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = ActivityLogSerializer
+
+    def get_queryset(self):
+        target_user = get_object_or_404(User, id=self.kwargs["user_id"])
+        return _activity_queryset_for(target_user, self.request.user)

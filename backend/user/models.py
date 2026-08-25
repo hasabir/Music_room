@@ -60,6 +60,9 @@ class ActionLog(models.Model):
     device = models.CharField(max_length=100, blank=True)
     app_version = models.CharField(max_length=20, blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
+    # Free-form per-action context (e.g. playlist/room title + visibility)
+    # used to render human-readable activity feed entries without a join.
+    metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

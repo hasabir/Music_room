@@ -78,7 +78,12 @@ class PlaylistCollaboratorListView(APIView):
 
         collaborator = PlaylistCollaborator.objects.create(playlist=playlist, collaborator=invited_user)
 
-        log_action(request, "playlist.collaborator_invited", user=request.user)
+        log_action(request, "playlist.collaborator_invited", user=request.user, metadata={
+            "playlist_id": playlist.id,
+            "title": playlist.title,
+            "visibility": playlist.visibility,
+            "invited_user_id": invited_user.id,
+        })
 
         return Response(PlaylistCollaboratorSerializer(collaborator).data, status=status.HTTP_201_CREATED)
 
@@ -108,6 +113,11 @@ class PlaylistCollaboratorRemoveView(APIView):
             return Response({"detail": "This user is not invited to the playlist."},
                              status=status.HTTP_404_NOT_FOUND)
 
-        log_action(request, "playlist.collaborator_removed", user=request.user)
+        log_action(request, "playlist.collaborator_removed", user=request.user, metadata={
+            "playlist_id": playlist.id,
+            "title": playlist.title,
+            "visibility": playlist.visibility,
+            "removed_user_id": user_id,
+        })
 
         return Response(status=status.HTTP_204_NO_CONTENT)
