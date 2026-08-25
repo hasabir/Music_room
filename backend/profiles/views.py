@@ -314,6 +314,94 @@ class PendingFriendRequestListView(generics.ListAPIView):
         )
 
 
+@extend_schema(
+    summary="List my sent friend requests",
+    description="Returns friend requests you've sent that are still awaiting the other person's response.",
+    responses={200: FriendshipSerializer(many=True)},
+    tags=["profile"],
+)
+class SentFriendRequestListView(generics.ListAPIView):
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = FriendshipSerializer
+
+    def get_queryset(self):
+
+        return Friendship.objects.filter(
+            sender=self.request.user,
+            status="pending"
+        ).select_related(
+            "sender",
+            "receiver"
+        )
+
+
+@extend_schema(
+    summary="Search users",
+    description=(
+        "Searches users by first name, last name, or email (case-insensitive, "
+        "partial match). Excludes yourself. Each result includes your "
+        "relationship status with that user (`none`, `pending_sent`, "
+        "`pending_received`, or `friends`), plus the `friendship_id` when one "
+        "exists, so pending requests can be accepted/rejected directly from "
+        "search results."
+    ),
+    responses={200: OpenApiResponse(description="List of matching users with relationship_status.")},
+    tags=["profile"],
+)
+class UserSearchView(generics.GenericAPIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+
+        query = request.query_params.get("q", "").strip()
+        if not query:
+            return Response([])
+
+        users = list(User.objects.filter(
+            Q(first_name__icontains=query) |
+            Q(last_name__icontains=query) |
+            Q(email__icontains=query)
+        ).exclude(id=request.user.id)[:20])
+
+        sent = {
+            f.receiver_id: f
+            for f in Friendship.objects.filter(sender=request.user, receiver__in=users)
+        }
+        received = {
+            f.sender_id: f
+            for f in Friendship.objects.filter(receiver=request.user, sender__in=users)
+        }
+
+        results = []
+        for user in users:
+            sent_f = sent.get(user.id)
+            received_f = received.get(user.id)
+
+            if sent_f and sent_f.status == "accepted":
+                relationship, friendship_id = "friends", sent_f.id
+            elif received_f and received_f.status == "accepted":
+                relationship, friendship_id = "friends", received_f.id
+            elif sent_f and sent_f.status == "pending":
+                relationship, friendship_id = "pending_sent", sent_f.id
+            elif received_f and received_f.status == "pending":
+                relationship, friendship_id = "pending_received", received_f.id
+            else:
+                relationship, friendship_id = "none", None
+
+            results.append({
+                "id": user.id,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "email": user.email,
+                "relationship_status": relationship,
+                "friendship_id": friendship_id,
+            })
+
+        return Response(results)
+
+
 @extend_schema_view(
     get=extend_schema(
         summary="Get my full profile",

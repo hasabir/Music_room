@@ -7,6 +7,8 @@ from .views import (
     RemoveFriendView,
     FriendListView,
     PendingFriendRequestListView,
+    SentFriendRequestListView,
+    UserSearchView,
     MyProfileView,
     UserProfileView,
     MyActivityView,
@@ -27,6 +29,18 @@ urlpatterns = [
         "friends/requests/",
         PendingFriendRequestListView.as_view(),
         name="pending-friend-requests"
+    ),
+
+    path(
+        "friends/requests/sent/",
+        SentFriendRequestListView.as_view(),
+        name="sent-friend-requests"
+    ),
+
+    path(
+        "search/",
+        UserSearchView.as_view(),
+        name="user-search"
     ),
 
     path(
