@@ -123,6 +123,20 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     _load();
   }
 
+  Future<void> _onViewRequest(FriendRequest request, RelationshipStatus status) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ViewProfileScreen(
+          userId: request.otherUserId,
+          initialFullName: request.otherUserFullName,
+          relationshipStatus: status,
+          friendshipId: request.id,
+        ),
+      ),
+    );
+    _load();
+  }
+
   Future<void> _onRemoveFriend(Friend friend) async {
     try {
       await _profileApi.removeFriend(friend.id);
@@ -193,6 +207,10 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
                             sent: _sent,
                             onAccept: _onAccept,
                             onReject: _onReject,
+                            onTapReceived: (request) =>
+                                _onViewRequest(request, RelationshipStatus.pendingReceived),
+                            onTapSent: (request) =>
+                                _onViewRequest(request, RelationshipStatus.pendingSent),
                           ),
                   );
                 },
@@ -478,12 +496,16 @@ class _RequestsList extends StatelessWidget {
     required this.sent,
     required this.onAccept,
     required this.onReject,
+    required this.onTapReceived,
+    required this.onTapSent,
   });
 
   final List<FriendRequest> received;
   final List<FriendRequest> sent;
   final ValueChanged<FriendRequest> onAccept;
   final ValueChanged<FriendRequest> onReject;
+  final ValueChanged<FriendRequest> onTapReceived;
+  final ValueChanged<FriendRequest> onTapSent;
 
   @override
   Widget build(BuildContext context) {
@@ -498,7 +520,12 @@ class _RequestsList extends StatelessWidget {
           _SectionLabel('RECEIVED • ${received.length}'),
           const SizedBox(height: 10),
           for (final request in received) ...[
-            _ReceivedRequestRow(request: request, onAccept: onAccept, onReject: onReject),
+            _ReceivedRequestRow(
+              request: request,
+              onAccept: onAccept,
+              onReject: onReject,
+              onTap: onTapReceived,
+            ),
             const SizedBox(height: 12),
           ],
           const SizedBox(height: 8),
@@ -507,7 +534,7 @@ class _RequestsList extends StatelessWidget {
           _SectionLabel('SENT • ${sent.length}'),
           const SizedBox(height: 10),
           for (final request in sent) ...[
-            _SentRequestRow(request: request),
+            _SentRequestRow(request: request, onTap: onTapSent),
             const SizedBox(height: 12),
           ],
         ],
@@ -537,11 +564,17 @@ class _SectionLabel extends StatelessWidget {
 }
 
 class _ReceivedRequestRow extends StatelessWidget {
-  const _ReceivedRequestRow({required this.request, required this.onAccept, required this.onReject});
+  const _ReceivedRequestRow({
+    required this.request,
+    required this.onAccept,
+    required this.onReject,
+    required this.onTap,
+  });
 
   final FriendRequest request;
   final ValueChanged<FriendRequest> onAccept;
   final ValueChanged<FriendRequest> onReject;
+  final ValueChanged<FriendRequest> onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -554,20 +587,30 @@ class _ReceivedRequestRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _Avatar(
-            letter: request.otherUserFirstName.isNotEmpty
-                ? request.otherUserFirstName[0].toUpperCase()
-                : '?',
-          ),
-          const SizedBox(width: 14),
           Expanded(
-            child: Text(
-              request.otherUserFullName,
-              style: const TextStyle(
-                fontFamily: 'Sora',
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: _ConnectionsColors.body,
+            child: InkWell(
+              onTap: () => onTap(request),
+              borderRadius: BorderRadius.circular(14),
+              child: Row(
+                children: [
+                  _Avatar(
+                    letter: request.otherUserFirstName.isNotEmpty
+                        ? request.otherUserFirstName[0].toUpperCase()
+                        : '?',
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      request.otherUserFullName,
+                      style: const TextStyle(
+                        fontFamily: 'Sora',
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: _ConnectionsColors.body,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -584,55 +627,60 @@ class _ReceivedRequestRow extends StatelessWidget {
 }
 
 class _SentRequestRow extends StatelessWidget {
-  const _SentRequestRow({required this.request});
+  const _SentRequestRow({required this.request, required this.onTap});
 
   final FriendRequest request;
+  final ValueChanged<FriendRequest> onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _ConnectionsColors.card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _ConnectionsColors.border),
-      ),
-      child: Row(
-        children: [
-          _Avatar(
-            letter: request.otherUserFirstName.isNotEmpty
-                ? request.otherUserFirstName[0].toUpperCase()
-                : '?',
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              request.otherUserFullName,
-              style: const TextStyle(
-                fontFamily: 'Sora',
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: _ConnectionsColors.body,
+    return InkWell(
+      onTap: () => onTap(request),
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: _ConnectionsColors.card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _ConnectionsColors.border),
+        ),
+        child: Row(
+          children: [
+            _Avatar(
+              letter: request.otherUserFirstName.isNotEmpty
+                  ? request.otherUserFirstName[0].toUpperCase()
+                  : '?',
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                request.otherUserFullName,
+                style: const TextStyle(
+                  fontFamily: 'Sora',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: _ConnectionsColors.body,
+                ),
               ),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: _ConnectionsColors.tertiary),
-            ),
-            child: const Text(
-              'Requested',
-              style: TextStyle(
-                fontFamily: 'Sora',
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                color: _ConnectionsColors.tertiary,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _ConnectionsColors.tertiary),
+              ),
+              child: const Text(
+                'Requested',
+                style: TextStyle(
+                  fontFamily: 'Sora',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: _ConnectionsColors.tertiary,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

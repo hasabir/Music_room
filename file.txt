@@ -1,3 +1,98 @@
-give me only the prompt that i will give the ai coding agent.
+Music Room — Frontend (mobile/, Flutter) — current state
+==========================================================
 
-this is the reset password , it has to be linked with the backend , however the deep link is not implemented yet in the backend. there are the design pages, however the email will send an email with 6 digits in the next screen so the agent has 
+The mobile app is a Flutter client for the Django backend (backend/).
+Below is what's actually implemented vs. still a placeholder.
+
+1. Core / infrastructure (lib/core/)
+-------------------------------------
+- api_client.dart / api_config.dart: shared HTTP client wrapper (GET/POST/
+  PATCH/DELETE, list responses, multipart file upload) and centralized
+  endpoint URL builder. Base URL comes from mobile/.env (API_BASE_URL),
+  regenerated for the current machine's LAN IP via
+  scripts/update_api_ip.sh.
+- token_storage.dart: persists access/refresh JWTs.
+- splash_screen.dart: routes to Welcome (logged out) or Home (logged in)
+  based on stored tokens.
+- app_bottom_nav.dart / app_tab_navigation.dart: shared bottom navigation
+  (Home / Vote / Playlist / Profile tabs) used by every top-level screen.
+
+2. Auth (lib/auth/) — fully implemented
+-----------------------------------------
+- Email/password registration and login, with email verification flow
+  (pending screen, verified screen, expired-link screen).
+- Password reset via emailed code (request → code entry → new password).
+- Change password (while logged in).
+- Google Sign-In (google_auth_service.dart) — link/login via Google.
+- JWT session handling with automatic refresh-and-retry on 401, and
+  SessionExpiredException handling that routes back to Welcome when the
+  refresh token itself is invalid.
+- welcome_screen.dart is the logged-out landing screen.
+
+3. Profile (lib/profile/) — the most built-out feature area
+---------------------------------------------------------------
+- personal_profile.dart: the signed-in user's own Profile screen. Loads
+  GET /api/v1/profile/me/ and GET /api/v1/profile/friends/. Shows avatar
+  (editable, uploads via multipart PATCH), display name, bio, a Friends
+  count card, a Votes/Playlists stats row (both real backend counts), a
+  Details card (location, birthday [mock — no backend field], email), a
+  "Vibe Signature" card (favorite genres + mock instruments/gear), and
+  Playlists/Events-Hosted tabs (both still mock data — no
+  Playlist/Event API client wired up yet on mobile).
+- edit_profile_screen.dart: edits the profile via PATCH /api/v1/profile/
+  me/. Fields: display name (always public, fixed), bio/location/
+  favorite artist/phone number (each with its own Public / Friends Only /
+  Private visibility picker), a "Listening Activity" row gating access to
+  GET /profile/<id>/activity/, and email (always private, read-only, not
+  editable here). The screen is laid out as three live sections — Public,
+  Friends Only, Private — and a field moves between sections immediately
+  when its visibility picker changes.
+- music_preferences_screen.dart: edits favorite_genres and
+  favorite_artist.
+- view_profile_screen.dart: read-only view of another user's profile
+  (GET /api/v1/profile/profile/<id>/, filtered server-side by visibility
+  rules), with Add/Remove/Accept/Decline friend actions depending on
+  relationship status. Shows a real votes count; playlists count is still
+  mock (a real playlists_count exists on the backend serializer but isn't
+  wired up on this screen yet).
+- connections_screen.dart: Friends tab (accepted friends list, searchable)
+  and a Requests tab covering both received and sent friend requests.
+  Tapping any row (friend, received request, or sent request) opens that
+  user's ViewProfileScreen.
+- add_friends_screen.dart: search users by name/email and send/accept/
+  decline friend requests inline.
+- profile_api.dart / profile_models.dart: typed API client and response
+  models for all of the above (UserProfile, OtherUserProfile, Friend,
+  FriendRequest, SearchUser, RelationshipStatus).
+- profile_mock_data.dart: everything intentionally still local/mock
+  (documented per-field in the file) — suggested artists list, instruments/
+  gear chips, birthday, playlists count on View Profile, and the
+  Playlists/Events-Hosted tab content on the own Profile screen.
+
+4. Settings (lib/settings/)
+------------------------------
+- settings_screen.dart: entry point linking to password change and
+  connected accounts.
+- connected_accounts_screen.dart: link/unlink Google account
+  (POST /api/v1/auth/google/link/).
+- update_password_screen.dart: UI exists but intentionally does nothing
+  yet — no backend endpoint for updating password from Settings, so it
+  tells the user the feature isn't available rather than faking success.
+
+5. Home / Vote / Playlist tabs — NOT implemented yet
+--------------------------------------------------------
+- home_screen.dart: placeholder ("Welcome to home page" + logout button +
+  current user id debug text). The real Music Room home experience
+  (track voting, control delegation) is explicitly deferred.
+- vote_screen.dart: placeholder ("Vote — coming soon").
+- playlist_screen.dart: placeholder ("Playlist — coming soon").
+- lib/track_vote/ and lib/control_delegation/ directories exist but are
+  empty (just .gitkeep) — no code written yet.
+
+Summary
+-------
+Auth and Profile (including friends, friend requests, and now per-field
+profile visibility settings) are fully built against the real backend.
+Home, Vote, Playlist, track-voting, and control-delegation — the actual
+"Music Room" real-time listening/voting experience — are still
+placeholders with no functionality.

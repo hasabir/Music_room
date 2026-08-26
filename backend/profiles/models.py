@@ -49,7 +49,23 @@ class Friendship(models.Model):
 
 
 
+def _default_field_visibility():
+    return {
+        "bio": "public",
+        "location": "friends",
+        "favorite_artist": "friends",
+        "phone_number": "private",
+        "activity": "public",
+    }
+
+
 class Profile(models.Model):
+
+    VISIBILITY_CHOICES = [
+        ("public", "Public"),
+        ("friends", "Friends Only"),
+        ("private", "Private"),
+    ]
 
     MUSIC_GENRE_CHOICES = [
         ("pop", "Pop"),
@@ -94,6 +110,13 @@ class Profile(models.Model):
 
     # Private information
     phone_number = models.CharField(max_length=30, blank=True)
+
+    # Per-field visibility for the fields above plus "activity" (which
+    # gates GET /profile/<id>/activity/ — see UserActivityView). Keyed by
+    # "bio", "location", "favorite_artist", "phone_number", "activity";
+    # values are one of VISIBILITY_CHOICES. display_name has no entry —
+    # it's always public and not user-configurable.
+    field_visibility = models.JSONField(default=_default_field_visibility)
 
     # Profile image
     profile_image = models.ImageField(

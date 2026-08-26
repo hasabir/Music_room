@@ -11,7 +11,7 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResp
 from user.models import User, ActionLog
 from authentication.utils import log_action
 
-from .models import Friendship, Profile
+from .models import Friendship, Profile, _default_field_visibility
 from .serializers import (
     FriendSerializer,
     FriendshipSerializer,
@@ -29,13 +29,22 @@ def _are_friends(user_a, user_b):
     ).exists()
 
 
+def _is_visible(tier, is_friend):
+    return tier == "public" or (tier == "friends" and is_friend)
+
+
 def _activity_queryset_for(target_user, viewer):
     """
     Activity visible to `viewer` about `target_user`:
     - the owner sees everything.
-    - friends see everything (public and private rooms/playlists).
-    - everyone else only sees activity tied to public rooms/playlists —
-      entries whose metadata["visibility"] == "private" are excluded.
+    - if `target_user` set their "activity" field visibility to "private",
+      nobody but the owner sees anything.
+    - if set to "friends", only friends see anything (everyone else gets
+      an empty queryset).
+    - friends always see everything (public and private rooms/playlists).
+    - otherwise (public tier, non-friend viewer), only activity tied to
+      public rooms/playlists is visible — entries whose
+      metadata["visibility"] == "private" are excluded.
     """
     qs = ActionLog.objects.filter(
         user=target_user
@@ -43,8 +52,17 @@ def _activity_queryset_for(target_user, viewer):
         Q(action__startswith="event.") | Q(action__startswith="playlist.")
     )
 
-    if viewer.id == target_user.id or _are_friends(viewer, target_user):
+    if viewer.id == target_user.id:
         return qs
+
+    is_friend = _are_friends(viewer, target_user)
+    if is_friend:
+        return qs
+
+    profile, _ = Profile.objects.get_or_create(user=target_user)
+    tier = profile.field_visibility.get("activity", _default_field_visibility()["activity"])
+    if tier in ("friends", "private"):
+        return qs.none()
 
     return qs.exclude(metadata__visibility="private")
 
@@ -440,11 +458,13 @@ class MyProfileView(generics.RetrieveUpdateAPIView):
     description=(
         "Returns another user's profile, filtered by visibility tier:\n\n"
         "- If you are viewing your own profile, all fields are returned.\n"
-        "- If you are friends with the target user, public + friends-only "
-        "fields are returned.\n"
-        "- Otherwise, only public fields are returned.\n\n"
-        "Private fields (e.g. phone number) are never returned here — "
-        "only visible via `GET /profile/me/`."
+        "- `display_name`, `profile_image`, `favorite_genres`, "
+        "`votes_count`, and `playlists_count` are always returned.\n"
+        "- `bio`, `location`, `favorite_artist`, and `phone_number` are "
+        "each returned only if their tier in `field_visibility` is "
+        "'public', or 'friends' and you're friends with the target user; "
+        "otherwise the key is omitted entirely. See `PATCH /profile/me/` "
+        "to change your own tiers."
     ),
     responses={200: OpenApiResponse(description="Profile data, filtered according to visibility rules above.")},
     tags=["profile"],
@@ -465,16 +485,24 @@ class UserProfileView(generics.GenericAPIView):
 
         data = {
             "display_name": profile.display_name,
-            "bio": profile.bio,
             "profile_image": profile.profile_image.url if profile.profile_image else None,
             "favorite_genres": profile.favorite_genres,
             "votes_count": serialized["votes_count"],
             "playlists_count": serialized["playlists_count"],
         }
 
-        if is_friend:
-            data["location"] = profile.location
-            data["favorite_artist"] = profile.favorite_artist
+        defaults = _default_field_visibility()
+        visibility = profile.field_visibility
+        field_values = {
+            "bio": profile.bio,
+            "location": profile.location,
+            "favorite_artist": profile.favorite_artist,
+            "phone_number": profile.phone_number,
+        }
+        for field, value in field_values.items():
+            tier = visibility.get(field, defaults[field])
+            if _is_visible(tier, is_friend):
+                data[field] = value
 
         log_action(request, "profile.viewed", user=request.user)
         return Response(data)
@@ -508,8 +536,10 @@ class MyActivityView(generics.ListAPIView):
         "- If you are viewing your own activity, everything is returned.\n"
         "- If you are friends with the target user, everything is returned "
         "(including activity tied to private rooms/playlists).\n"
-        "- Otherwise, only activity tied to public rooms/playlists is "
-        "returned."
+        "- Otherwise, the target user's `field_visibility.activity` tier "
+        "(see `Profile`/`PATCH /profile/me/`) decides: 'private' or "
+        "'friends' returns nothing, 'public' (the default) returns only "
+        "activity tied to public rooms/playlists."
     ),
     responses={200: ActivityLogSerializer(many=True)},
     tags=["profile"],

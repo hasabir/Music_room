@@ -60,6 +60,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "phone_number",
             "profile_image",
             "favorite_genres",
+            "field_visibility",
             "votes_count",
             "playlists_count",
             "created_at",
@@ -80,6 +81,27 @@ class ProfileSerializer(serializers.ModelSerializer):
         return Playlist.objects.filter(
             Q(owner=obj.user) | Q(collaborators__collaborator=obj.user)
         ).distinct().count()
+
+    def validate_field_visibility(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("field_visibility must be an object.")
+
+        allowed_fields = {"bio", "location", "favorite_artist", "phone_number", "activity"}
+        allowed_tiers = {tier for tier, _ in Profile.VISIBILITY_CHOICES}
+
+        for field, tier in value.items():
+            if field not in allowed_fields:
+                raise serializers.ValidationError(f"Unknown field '{field}'.")
+            if tier not in allowed_tiers:
+                raise serializers.ValidationError(f"Invalid visibility '{tier}' for '{field}'.")
+
+        return value
+
+    def update(self, instance, validated_data):
+        incoming_visibility = validated_data.pop("field_visibility", None)
+        if incoming_visibility is not None:
+            instance.field_visibility = {**instance.field_visibility, **incoming_visibility}
+        return super().update(instance, validated_data)
 
 
 def _actor_display_name(user):

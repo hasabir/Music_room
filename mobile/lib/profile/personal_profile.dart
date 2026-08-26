@@ -33,11 +33,12 @@ class _ProfileColors {
 
 /// The signed-in user's own Profile screen.
 ///
-/// Loads the real profile (`GET /api/v1/profile/me/`) and friends list
+/// Loads the real profile (`GET /api/v1/profile/me/`, which includes
+/// `votes_count`/`playlists_count`) and friends list
 /// (`GET /api/v1/profile/friends/`) from the backend. Handle, birthday,
-/// per-field privacy badges, instruments/gear, playlists, and events
-/// hosted are local placeholder data — see `profile_mock_data.dart` for
-/// why, and to swap them for real data later.
+/// per-field privacy badges, instruments/gear, and events hosted are
+/// local placeholder data — see `profile_mock_data.dart` for why, and to
+/// swap them for real data later.
 class PersonalProfileScreen extends StatefulWidget {
   const PersonalProfileScreen({super.key});
 
@@ -183,6 +184,11 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                         ),
                         const SizedBox(height: 16),
                         _FriendsCard(count: data.friends.length, onTap: _onFriends),
+                        const SizedBox(height: 16),
+                        _StatsRow(
+                          votes: data.profile.votesCount,
+                          playlists: data.profile.playlistsCount,
+                        ),
                         const SizedBox(height: 24),
                         const _DetailsLabel(),
                         const SizedBox(height: 10),
@@ -224,6 +230,9 @@ class _ProfileData {
       phoneNumber: '',
       profileImageUrl: null,
       favoriteGenres: [],
+      votesCount: 0,
+      playlistsCount: 0,
+      fieldVisibility: defaultFieldVisibility,
     ),
     friends: const [],
     authUser: const AuthUser(
@@ -488,6 +497,67 @@ class _FriendsCard extends StatelessWidget {
             const Icon(Icons.chevron_right_rounded, color: _ProfileColors.muted),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _StatsRow extends StatelessWidget {
+  const _StatsRow({required this.votes, required this.playlists});
+
+  final int votes;
+  final int playlists;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: _StatTile(value: '$votes', label: 'VOTES')),
+        const SizedBox(width: 12),
+        Expanded(child: _StatTile(value: '$playlists', label: 'PLAYLISTS')),
+      ],
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      decoration: BoxDecoration(
+        color: _ProfileColors.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _ProfileColors.cardBorder),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              fontFamily: 'Sora',
+              fontWeight: FontWeight.w800,
+              fontSize: 24,
+              color: _ProfileColors.headline,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Sora',
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+              color: _ProfileColors.muted,
+            ),
+          ),
+        ],
       ),
     );
   }

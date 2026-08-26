@@ -34,6 +34,7 @@ class ProfileApi {
     String? favoriteArtist,
     String? phoneNumber,
     List<String>? favoriteGenres,
+    Map<String, String>? fieldVisibility,
   }) async {
     final body = <String, dynamic>{
       if (displayName != null) 'display_name': displayName,
@@ -42,6 +43,7 @@ class ProfileApi {
       if (favoriteArtist != null) 'favorite_artist': favoriteArtist,
       if (phoneNumber != null) 'phone_number': phoneNumber,
       if (favoriteGenres != null) 'favorite_genres': favoriteGenres,
+      if (fieldVisibility != null) 'field_visibility': fieldVisibility,
     };
 
     final response = await _authorizedPatch(ApiConfig.myProfileUri(), body: body);

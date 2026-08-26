@@ -28,6 +28,18 @@ const Map<String, String> musicGenreLabels = {
   'soundtrack': 'Soundtrack',
 };
 
+/// Matches the backend's `Profile._default_field_visibility()` — the tier
+/// each configurable field falls back to when a profile's
+/// `field_visibility` doesn't mention it (e.g. accounts created before
+/// this feature existed).
+const Map<String, String> defaultFieldVisibility = {
+  'bio': 'public',
+  'location': 'friends',
+  'favorite_artist': 'friends',
+  'phone_number': 'private',
+  'activity': 'public',
+};
+
 /// The current user's own profile, as returned by
 /// `GET /api/v1/profile/me/` (`ProfileSerializer`, all fields visible).
 class UserProfile {
@@ -40,6 +52,9 @@ class UserProfile {
     required this.phoneNumber,
     required this.profileImageUrl,
     required this.favoriteGenres,
+    required this.votesCount,
+    required this.playlistsCount,
+    required this.fieldVisibility,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
@@ -55,6 +70,15 @@ class UserProfile {
             ?.map((genre) => genre as String)
             .toList() ??
         const [],
+    votesCount: json['votes_count'] as int? ?? 0,
+    playlistsCount: json['playlists_count'] as int? ?? 0,
+    fieldVisibility: {
+      ...defaultFieldVisibility,
+      ...(json['field_visibility'] as Map<String, dynamic>?)?.map(
+            (key, value) => MapEntry(key, value as String),
+          ) ??
+          const {},
+    },
   );
 
   final int id;
@@ -65,6 +89,15 @@ class UserProfile {
   final String phoneNumber;
   final String? profileImageUrl;
   final List<String> favoriteGenres;
+  final int votesCount;
+  final int playlistsCount;
+
+  /// Per-field visibility tier ('public'/'friends'/'private'), keyed by
+  /// 'bio', 'location', 'favorite_artist', 'phone_number', 'activity'.
+  /// Always has an entry for every key (missing ones are backfilled from
+  /// [defaultFieldVisibility]). `display_name` has no entry — it's always
+  /// public.
+  final Map<String, String> fieldVisibility;
 }
 
 /// One accepted friend, as returned by `GET /api/v1/profile/friends/`
@@ -204,6 +237,7 @@ class OtherUserProfile {
     required this.favoriteGenres,
     required this.location,
     required this.favoriteArtist,
+    required this.votesCount,
   });
 
   factory OtherUserProfile.fromJson(Map<String, dynamic> json) => OtherUserProfile(
@@ -215,6 +249,7 @@ class OtherUserProfile {
         const [],
     location: json['location'] as String?,
     favoriteArtist: json['favorite_artist'] as String?,
+    votesCount: json['votes_count'] as int? ?? 0,
   );
 
   final String displayName;
@@ -223,4 +258,5 @@ class OtherUserProfile {
   final List<String> favoriteGenres;
   final String? location;
   final String? favoriteArtist;
+  final int votesCount;
 }

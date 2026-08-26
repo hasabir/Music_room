@@ -11,7 +11,7 @@ class ApiConfig {
   const ApiConfig._();
 
   static String get baseUrl =>
-      dotenv.env['API_BASE_URL'] ?? 'http://10.215.166.13:8000';
+      dotenv.env['API_BASE_URL'] ?? 'http://10.47.84.214:8000';
 
   static String get googleWebClientId => dotenv.env['GOOGLE_CLIENT_ID'] ?? '';
 

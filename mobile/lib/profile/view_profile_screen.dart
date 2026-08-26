@@ -22,7 +22,8 @@ class _ViewProfileColors {
 /// `GET /api/v1/profile/profile/<user_id>/` (filtered by visibility rules
 /// server-side) plus the friend-request actions already used elsewhere.
 ///
-/// Votes/Playlists counts are local placeholder data — see
+/// Votes count comes from the backend (`votes_count` on the profile
+/// response); Playlists count is still local placeholder data — see
 /// `profile_mock_data.dart`. "Listening Now" and a "Recent Activity" feed
 /// from the original design are deliberately not shown: there's no backend
 /// concept of either, and faking them would assert real-time behavior
@@ -127,6 +128,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
 
                   final profile = snapshot.data!;
                   final stats = mockProfileStatsFor(widget.userId);
+                  // final playlists = mockProfileStatsFor(widget.userId).playlists;
                   final name = profile.displayName.isNotEmpty
                       ? profile.displayName
                       : widget.initialFullName;
@@ -148,6 +150,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
                       ),
                       const SizedBox(height: 16),
                       _StatsRow(votes: stats.votes, playlists: stats.playlists),
+                      // _StatsRow(votes: profile.votesCount, playlists: playlists),
                     ],
                   );
                 },
