@@ -1,3 +1,12 @@
+const _monthNames = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/// Formats a birthday for display (e.g. "August 26, 2006"). Shared by the
+/// Edit Profile and Profile screens so the two stay in sync.
+String formatBirthday(DateTime date) => '${_monthNames[date.month - 1]} ${date.day}, ${date.year}';
+
 /// Human-readable labels for the backend's `Profile.MUSIC_GENRE_CHOICES`
 /// (see `backend/profiles/models.py`). Keys are the genre codes stored/sent
 /// to the API; values are what's shown in the UI.
@@ -37,6 +46,7 @@ const Map<String, String> defaultFieldVisibility = {
   'location': 'friends',
   'favorite_artist': 'friends',
   'phone_number': 'private',
+  'birthday': 'friends',
   'activity': 'public',
 };
 
@@ -50,6 +60,7 @@ class UserProfile {
     required this.location,
     required this.favoriteArtist,
     required this.phoneNumber,
+    required this.birthday,
     required this.profileImageUrl,
     required this.favoriteGenres,
     required this.votesCount,
@@ -64,6 +75,7 @@ class UserProfile {
     location: json['location'] as String? ?? '',
     favoriteArtist: json['favorite_artist'] as String? ?? '',
     phoneNumber: json['phone_number'] as String? ?? '',
+    birthday: json['birthday'] != null ? DateTime.parse(json['birthday'] as String) : null,
     profileImageUrl: json['profile_image'] as String?,
     favoriteGenres:
         (json['favorite_genres'] as List<dynamic>?)
@@ -87,16 +99,17 @@ class UserProfile {
   final String location;
   final String favoriteArtist;
   final String phoneNumber;
+  final DateTime? birthday;
   final String? profileImageUrl;
   final List<String> favoriteGenres;
   final int votesCount;
   final int playlistsCount;
 
   /// Per-field visibility tier ('public'/'friends'/'private'), keyed by
-  /// 'bio', 'location', 'favorite_artist', 'phone_number', 'activity'.
-  /// Always has an entry for every key (missing ones are backfilled from
-  /// [defaultFieldVisibility]). `display_name` has no entry — it's always
-  /// public.
+  /// 'bio', 'location', 'favorite_artist', 'phone_number', 'birthday',
+  /// 'activity'. Always has an entry for every key (missing ones are
+  /// backfilled from [defaultFieldVisibility]). `display_name` has no
+  /// entry — it's always public.
   final Map<String, String> fieldVisibility;
 }
 
@@ -237,6 +250,7 @@ class OtherUserProfile {
     required this.favoriteGenres,
     required this.location,
     required this.favoriteArtist,
+    required this.birthday,
     required this.votesCount,
   });
 
@@ -249,6 +263,7 @@ class OtherUserProfile {
         const [],
     location: json['location'] as String?,
     favoriteArtist: json['favorite_artist'] as String?,
+    birthday: json['birthday'] != null ? DateTime.parse(json['birthday'] as String) : null,
     votesCount: json['votes_count'] as int? ?? 0,
   );
 
@@ -258,5 +273,6 @@ class OtherUserProfile {
   final List<String> favoriteGenres;
   final String? location;
   final String? favoriteArtist;
+  final DateTime? birthday;
   final int votesCount;
 }

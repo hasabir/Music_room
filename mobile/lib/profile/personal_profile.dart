@@ -34,11 +34,10 @@ class _ProfileColors {
 /// The signed-in user's own Profile screen.
 ///
 /// Loads the real profile (`GET /api/v1/profile/me/`, which includes
-/// `votes_count`/`playlists_count`) and friends list
-/// (`GET /api/v1/profile/friends/`) from the backend. Handle, birthday,
-/// per-field privacy badges, instruments/gear, and events hosted are
-/// local placeholder data — see `profile_mock_data.dart` for why, and to
-/// swap them for real data later.
+/// `votes_count`/`playlists_count`/`birthday`/`field_visibility`) and
+/// friends list (`GET /api/v1/profile/friends/`) from the backend. Handle,
+/// instruments/gear, and events hosted are local placeholder data — see
+/// `profile_mock_data.dart` for why, and to swap them for real data later.
 class PersonalProfileScreen extends StatefulWidget {
   const PersonalProfileScreen({super.key});
 
@@ -228,6 +227,7 @@ class _ProfileData {
       location: '',
       favoriteArtist: '',
       phoneNumber: '',
+      birthday: null,
       profileImageUrl: null,
       favoriteGenres: [],
       votesCount: 0,
@@ -586,6 +586,12 @@ class _DetailsLabel extends StatelessWidget {
 
 enum _Privacy { public, friends, private }
 
+_Privacy _privacyFor(String tier) => switch (tier) {
+  'public' => _Privacy.public,
+  'private' => _Privacy.private,
+  _ => _Privacy.friends,
+};
+
 class _DetailsCard extends StatelessWidget {
   const _DetailsCard({required this.profile, required this.email});
 
@@ -601,14 +607,14 @@ class _DetailsCard extends StatelessWidget {
             icon: Icons.location_on_rounded,
             label: 'Location',
             value: profile.location.isNotEmpty ? profile.location : 'Not set',
-            privacy: _Privacy.public,
+            privacy: _privacyFor(profile.fieldVisibility['location']!),
           ),
           const _DetailDivider(),
           _DetailRow(
             icon: Icons.cake_rounded,
             label: 'Birthday',
-            value: mockBirthday ?? 'Not set',
-            privacy: _Privacy.friends,
+            value: profile.birthday != null ? formatBirthday(profile.birthday!) : 'Not set',
+            privacy: _privacyFor(profile.fieldVisibility['birthday']!),
           ),
           const _DetailDivider(),
           _DetailRow(
@@ -769,14 +775,14 @@ class _VibeSignatureCard extends StatelessWidget {
               _Chip(label: '+ Add', outlined: true, onTap: onEdit),
             ],
           ),
-          const SizedBox(height: 18),
-          const _ChipsLabel('INSTRUMENTS / GEAR'),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: mockInstruments.map((label) => _Chip(label: label)).toList(),
-          ),
+          // const SizedBox(height: 18),
+          // const _ChipsLabel('INSTRUMENTS / GEAR'),
+          // const SizedBox(height: 10),
+          // Wrap(
+          //   spacing: 8,
+          //   runSpacing: 8,
+          //   children: mockInstruments.map((label) => _Chip(label: label)).toList(),
+          // ),
         ],
       ),
     );

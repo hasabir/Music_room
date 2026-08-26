@@ -67,6 +67,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   /// hand this back to the caller even if the user never taps Save.
   late UserProfile _latestProfile;
   late Map<String, String> _visibility;
+  late DateTime? _birthday;
 
   bool _isSaving = false;
   bool _isUploadingPhoto = false;
@@ -77,6 +78,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.initState();
     _latestProfile = widget.profile;
     _visibility = Map.of(widget.profile.fieldVisibility);
+    _birthday = widget.profile.birthday;
     _displayNameController = TextEditingController(text: widget.profile.displayName);
     _bioController = TextEditingController(text: widget.profile.bio);
     _locationController = TextEditingController(text: widget.profile.location);
@@ -137,6 +139,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  Future<void> _pickBirthday() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _birthday ?? DateTime(now.year - 20, now.month, now.day),
+      firstDate: DateTime(now.year - 120),
+      lastDate: now,
+    );
+    if (picked != null) setState(() => _birthday = picked);
+  }
+
   Future<void> _save() async {
     setState(() {
       _isSaving = true;
@@ -150,12 +163,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         location: _locationController.text.trim(),
         favoriteArtist: _favoriteArtistController.text.trim(),
         phoneNumber: _phoneController.text.trim(),
+        birthday: _birthday,
+        clearBirthday: _birthday == null,
         fieldVisibility: _visibility,
       );
       if (!mounted) return;
       setState(() {
         _latestProfile = updated;
         _visibility = Map.of(updated.fieldVisibility);
+        _birthday = updated.birthday;
       });
       Navigator.of(context).pop(updated);
     } on ApiException catch (error) {
@@ -172,6 +188,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     'location',
     'favorite_artist',
     'phone_number',
+    'birthday',
     'activity',
   ];
 
@@ -188,7 +205,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     return switch (key) {
       'bio' => _EditField(
-        label: 'TAGLINE',
+        label: 'BIO',
         controller: _bioController,
         icon: Icons.format_quote_rounded,
         maxLines: 3,
@@ -215,6 +232,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         icon: Icons.phone_iphone_rounded,
         keyboardType: TextInputType.phone,
         trailing: _VisibilityDropdown(value: _visibility['phone_number']!, onChanged: onChanged),
+      ),
+      'birthday' => _BirthdayField(
+        birthday: _birthday,
+        onTap: _pickBirthday,
+        trailing: _VisibilityDropdown(value: _visibility['birthday']!, onChanged: onChanged),
       ),
       _ => _ListeningActivityRow(value: _visibility['activity']!, onChanged: onChanged),
     };
@@ -677,6 +699,72 @@ class _ListeningActivityRow extends StatelessWidget {
           ),
         ),
         _VisibilityDropdown(value: value, onChanged: onChanged),
+      ],
+    );
+  }
+}
+
+/// Tapping opens a date picker rather than a text field — otherwise laid
+/// out like [_EditField] so it sits consistently alongside the other
+/// configurable rows.
+class _BirthdayField extends StatelessWidget {
+  const _BirthdayField({required this.birthday, required this.onTap, required this.trailing});
+
+  final DateTime? birthday;
+  final VoidCallback onTap;
+  final Widget trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'BIRTHDAY',
+                style: TextStyle(
+                  fontFamily: 'Sora',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: _EditColors.label,
+                ),
+              ),
+            ),
+            trailing,
+          ],
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+            decoration: BoxDecoration(
+              color: _EditColors.background,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _EditColors.border),
+            ),
+            child: Row(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(left: 4, right: 12),
+                  child: Icon(Icons.cake_outlined, size: 18, color: _EditColors.muted),
+                ),
+                Text(
+                  birthday != null ? formatBirthday(birthday!) : 'Not set',
+                  style: TextStyle(
+                    fontFamily: 'Sora',
+                    color: birthday != null ? _EditColors.body : _EditColors.muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }

@@ -22,6 +22,7 @@ class ApiConfig {
   static const String resendVerificationEndpoint =
       '/api/v1/auth/resend-verification/';
   static const String logoutEndpoint = '/api/v1/auth/logout/';
+  static const String changePasswordEndpoint = '/api/v1/auth/change-password/';
   static const String googleLoginEndpoint = '/api/v1/auth/google/';
   static const String googleLinkEndpoint = '/api/v1/auth/google/link/';
   static const String tokenRefreshEndpoint = '/api/v1/auth/token/refresh/';
@@ -47,6 +48,7 @@ class ApiConfig {
       Uri.parse('$baseUrl$resendVerificationEndpoint');
   static Uri tokenRefreshUri() => Uri.parse('$baseUrl$tokenRefreshEndpoint');
   static Uri logoutUri() => Uri.parse('$baseUrl$logoutEndpoint');
+  static Uri changePasswordUri() => Uri.parse('$baseUrl$changePasswordEndpoint');
   static Uri googleLoginUri() => Uri.parse('$baseUrl$googleLoginEndpoint');
   static Uri googleLinkUri() => Uri.parse('$baseUrl$googleLinkEndpoint');
   static Uri passwordResetRequestUri() =>

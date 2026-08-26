@@ -10,10 +10,6 @@
 ///   field in rather than backing a real multi-artist relation.
 /// - "Instruments / Gear" on the Profile screen — `Profile` has no such
 ///   field; there's nothing per-user to show yet.
-/// - Birthday and per-field privacy badges (Public/Friends/Private) shown
-///   next to each detail row — `Profile` has no birthday field and no
-///   per-field visibility setting (fields are grouped into fixed
-///   public/friends/private tiers by convention, not user-configurable).
 /// - Playlists and "Events Hosted" shown on the Profile screen — the
 ///   mobile app has no `Playlist`/`Event` API client yet, even though
 ///   the backend models exist (`backend/playlists`, `backend/events`).
@@ -38,10 +34,6 @@ const mockSuggestedArtists = [
 /// "Vibe Signature" card — purely local, not tied to any user or backend
 /// field.
 const mockInstruments = ['Roland Juno-106', 'Ableton Push', 'Moog Sub 37'];
-
-/// The birthday shown on the Profile screen's Details section. Always
-/// `null` today since `Profile` has no birthday field.
-const String? mockBirthday = null;
 
 class MockPlaylist {
   const MockPlaylist({

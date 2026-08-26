@@ -293,6 +293,24 @@ class AuthApi {
     );
   }
 
+  /// Changes the signed-in user's password, via
+  /// `POST /auth/change-password/` (`ChangePasswordView`) — requires the
+  /// current password as proof, unlike the forgot-password email-code
+  /// flow ([confirmPasswordReset]).
+  ///
+  /// Throws [ApiException] (400) if `oldPassword` is wrong ("Current
+  /// password is incorrect."), if `newPassword` is the same as the old
+  /// one, or if it fails the backend's password validation rules.
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) {
+    return _authorizedPost(
+      ApiConfig.changePasswordUri(),
+      body: {'old_password': oldPassword, 'new_password': newPassword},
+    );
+  }
+
   VerificationCodeInfo? _devCodeFrom(
     Map<String, dynamic> response,
     String key,

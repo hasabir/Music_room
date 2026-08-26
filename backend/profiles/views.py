@@ -460,8 +460,9 @@ class MyProfileView(generics.RetrieveUpdateAPIView):
         "- If you are viewing your own profile, all fields are returned.\n"
         "- `display_name`, `profile_image`, `favorite_genres`, "
         "`votes_count`, and `playlists_count` are always returned.\n"
-        "- `bio`, `location`, `favorite_artist`, and `phone_number` are "
-        "each returned only if their tier in `field_visibility` is "
+        "- `bio`, `location`, `favorite_artist`, `phone_number`, and "
+        "`birthday` are each returned only if their tier in "
+        "`field_visibility` is "
         "'public', or 'friends' and you're friends with the target user; "
         "otherwise the key is omitted entirely. See `PATCH /profile/me/` "
         "to change your own tiers."
@@ -498,6 +499,7 @@ class UserProfileView(generics.GenericAPIView):
             "location": profile.location,
             "favorite_artist": profile.favorite_artist,
             "phone_number": profile.phone_number,
+            "birthday": profile.birthday,
         }
         for field, value in field_values.items():
             tier = visibility.get(field, defaults[field])

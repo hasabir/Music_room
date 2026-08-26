@@ -140,6 +140,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
                         name: name,
                         profileImageUrl: profile.profileImageUrl,
                         bio: profile.bio,
+                        birthday: profile.birthday,
                         genres: profile.favoriteGenres,
                         relationshipStatus: _relationshipStatus,
                         isActing: _isActing,
@@ -200,6 +201,7 @@ class _ProfileCard extends StatelessWidget {
     required this.name,
     required this.profileImageUrl,
     required this.bio,
+    required this.birthday,
     required this.genres,
     required this.relationshipStatus,
     required this.isActing,
@@ -212,6 +214,7 @@ class _ProfileCard extends StatelessWidget {
   final String name;
   final String? profileImageUrl;
   final String bio;
+  final DateTime? birthday;
   final List<String> genres;
   final RelationshipStatus relationshipStatus;
   final bool isActing;
@@ -281,6 +284,20 @@ class _ProfileCard extends StatelessWidget {
                 height: 1.4,
                 color: _ViewProfileColors.description,
               ),
+            ),
+          ],
+          if (birthday != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.cake_outlined, size: 14, color: _ViewProfileColors.muted),
+                const SizedBox(width: 6),
+                Text(
+                  formatBirthday(birthday!),
+                  style: const TextStyle(fontSize: 13, color: _ViewProfileColors.muted),
+                ),
+              ],
             ),
           ],
           if (genres.isNotEmpty) ...[

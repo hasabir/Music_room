@@ -27,12 +27,18 @@ class ProfileApi {
 
   /// Partially updates the signed-in user's profile. Only non-null
   /// parameters are sent, so callers can update a subset of fields.
+  ///
+  /// `birthday` is the one exception: since `null` already means "don't
+  /// touch this field" for every other parameter, clearing an existing
+  /// birthday needs [clearBirthday] instead of passing `birthday: null`.
   Future<UserProfile> updateMyProfile({
     String? displayName,
     String? bio,
     String? location,
     String? favoriteArtist,
     String? phoneNumber,
+    DateTime? birthday,
+    bool clearBirthday = false,
     List<String>? favoriteGenres,
     Map<String, String>? fieldVisibility,
   }) async {
@@ -42,6 +48,10 @@ class ProfileApi {
       if (location != null) 'location': location,
       if (favoriteArtist != null) 'favorite_artist': favoriteArtist,
       if (phoneNumber != null) 'phone_number': phoneNumber,
+      if (birthday != null)
+        'birthday': birthday.toIso8601String().split('T').first
+      else if (clearBirthday)
+        'birthday': null,
       if (favoriteGenres != null) 'favorite_genres': favoriteGenres,
       if (fieldVisibility != null) 'field_visibility': fieldVisibility,
     };

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../auth/auth_api.dart';
+import '../core/api/api_client.dart';
+
 class _UpdateColors {
   static const background = Color(0xFF0E0E15);
   static const title = Color(0xFFEDEDF5);
@@ -18,12 +21,8 @@ class _UpdateColors {
 /// password, as opposed to the "forgot password" email-code flow in
 /// `auth/reset_password_screen.dart` + `auth/change_password_screen.dart`.
 ///
-/// TODO: The backend has no authenticated "change password" endpoint yet
-/// (only the unauthenticated email-code reset flow — see
-/// `authentication/views.py`). This screen is fully built and validated
-/// client-side so it's ready to wire up once that endpoint exists; for
-/// now [_onUpdatePassword] stops short of calling anything and tells the
-/// user the feature isn't available yet, rather than faking success.
+/// Saves via `POST /api/v1/auth/change-password/` (`ChangePasswordView`,
+/// see `AuthApi.changePassword`).
 class UpdatePasswordScreen extends StatefulWidget {
   const UpdatePasswordScreen({super.key});
 
@@ -32,6 +31,7 @@ class UpdatePasswordScreen extends StatefulWidget {
 }
 
 class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
+  final _authApi = AuthApi();
   final _formKey = GlobalKey<FormState>();
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
@@ -60,18 +60,25 @@ class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
       _errorMessage = null;
     });
 
-    // No backend endpoint exists for this yet (see class doc). Simulate
-    // the round-trip delay so the loading state is exercised, then tell
-    // the user honestly rather than pretending it succeeded.
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-
-    if (!mounted) return;
-    setState(() => _isSubmitting = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Changing your password isn't available yet — check back soon."),
-      ),
-    );
+    try {
+      await _authApi.changePassword(
+        oldPassword: _currentPasswordController.text,
+        newPassword: _newPasswordController.text,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Password updated successfully.')));
+      Navigator.of(context).pop();
+    } on SessionExpiredException {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Your session has expired. Please sign in again.');
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = error.message);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   void _onBackToSignIn() {

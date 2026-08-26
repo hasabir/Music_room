@@ -58,6 +58,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "location",
             "favorite_artist",
             "phone_number",
+            "birthday",
             "profile_image",
             "favorite_genres",
             "field_visibility",
@@ -86,7 +87,9 @@ class ProfileSerializer(serializers.ModelSerializer):
         if not isinstance(value, dict):
             raise serializers.ValidationError("field_visibility must be an object.")
 
-        allowed_fields = {"bio", "location", "favorite_artist", "phone_number", "activity"}
+        allowed_fields = {
+            "bio", "location", "favorite_artist", "phone_number", "birthday", "activity",
+        }
         allowed_tiers = {tier for tier, _ in Profile.VISIBILITY_CHOICES}
 
         for field, tier in value.items():
