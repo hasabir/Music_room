@@ -56,6 +56,12 @@ class ProfileSerializer(serializers.ModelSerializer):
     votes_count = serializers.SerializerMethodField()
     playlists_count = serializers.SerializerMethodField()
 
+    # Whichever of `profile_image` / `avatar_external_url` /
+    # `avatar_preset_id` is actually active, resolved by `avatar_type` —
+    # see `get_avatar`. This is the one thing a client needs to render an
+    # avatar without caring which of the three sources set it.
+    avatar = serializers.SerializerMethodField()
+
     class Meta:
         model = Profile
         fields = [
@@ -68,6 +74,9 @@ class ProfileSerializer(serializers.ModelSerializer):
             "phone_number",
             "birthday",
             "profile_image",
+            "avatar",
+            "avatar_type",
+            "avatar_preset_id",
             "favorite_genres",
             "field_visibility",
             "votes_count",
@@ -77,6 +86,14 @@ class ProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "avatar",
+            # `avatar_type` is inferred server-side from whichever of
+            # `profile_image` / `avatar_preset_id` arrives in a request —
+            # see `validate`/`update` — never set directly. In particular
+            # a client can never set it to "external_url": that source is
+            # only ever assigned server-side at social-sign-in account
+            # creation (see `profiles.services.create_profile_for_user`).
+            "avatar_type",
             "votes_count",
             "playlists_count",
             "created_at",
@@ -90,6 +107,13 @@ class ProfileSerializer(serializers.ModelSerializer):
         return Playlist.objects.filter(
             Q(owner=obj.user) | Q(collaborators__collaborator=obj.user)
         ).distinct().count()
+
+    def get_avatar(self, obj):
+        if obj.avatar_type == "custom":
+            return obj.profile_image.url if obj.profile_image else None
+        if obj.avatar_type == "external_url":
+            return obj.avatar_external_url or None
+        return obj.avatar_preset_id or None
 
     def validate_field_visibility(self, value):
         if not isinstance(value, dict):
@@ -118,6 +142,19 @@ class ProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("This username is already taken.")
         return username
 
+    def validate(self, attrs):
+        # A profile shows exactly one avatar. Uploading a custom image
+        # (this is how `MyProfileView`'s multipart PATCH arrives) always
+        # wins over whatever preset was picked before — and picking a
+        # preset always replaces a previously uploaded custom image.
+        # Mirrors `PlaylistSerializer.validate`'s identical
+        # cover_image/cover_preset handling.
+        if attrs.get("profile_image"):
+            attrs["avatar_preset_id"] = ""
+        elif attrs.get("avatar_preset_id"):
+            attrs["profile_image"] = None
+        return attrs
+
     def update(self, instance, validated_data):
         user_data = validated_data.pop("user", {})
         username = user_data.get("username")
@@ -127,6 +164,14 @@ class ProfileSerializer(serializers.ModelSerializer):
         incoming_visibility = validated_data.pop("field_visibility", None)
         if incoming_visibility is not None:
             instance.field_visibility = {**instance.field_visibility, **incoming_visibility}
+        # `avatar_type` isn't client-writable (see Meta.read_only_fields)
+        # — it's inferred here from whichever avatar source this request
+        # actually touched, then persisted along with everything else by
+        # the `super().update()` call below.
+        if validated_data.get("profile_image"):
+            instance.avatar_type = "custom"
+        elif validated_data.get("avatar_preset_id"):
+            instance.avatar_type = "preset"
         return super().update(instance, validated_data)
 
 

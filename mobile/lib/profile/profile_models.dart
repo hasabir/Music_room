@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 const _monthNames = [
   'January',
   'February',
@@ -61,6 +63,55 @@ const Map<String, String> defaultFieldVisibility = {
   'activity': 'public',
 };
 
+/// Allowed values for `Profile.avatar_type`
+/// (`backend/profiles/models.py`: `Profile.AVATAR_TYPE_CHOICES`). Says how
+/// to interpret [UserProfile.avatar] / [OtherUserProfile.avatar]:
+/// [profileAvatarTypePreset] is a preset id — resolve via
+/// [AvatarPreset.byId]; [profileAvatarTypeExternalUrl] and
+/// [profileAvatarTypeCustom] are both plain image URLs, rendered the same
+/// way (`Image.network`) regardless of which one it is.
+const String profileAvatarTypePreset = 'preset';
+const String profileAvatarTypeExternalUrl = 'external_url';
+const String profileAvatarTypeCustom = 'custom';
+
+/// One of the built-in avatar-grid images, as an alternative to a social
+/// sign-in photo or uploading a custom [UserProfile.profileImageUrl]. IDs
+/// mirror `Profile.AVATAR_PRESET_CHOICES` in `backend/profiles/models.py`
+/// — the backend only knows these as opaque ids; this class owns the
+/// id -> bundled-asset mapping, the same way `PlaylistCoverPreset` /
+/// `EventCoverPreset` work for their own preset grids.
+class AvatarPreset {
+  const AvatarPreset._(this.id, this.assetPath, this.glowColor);
+
+  final String id;
+  final String assetPath;
+  final Color glowColor;
+
+  static const _basePath = 'assets/images/avatars';
+  static const p1 = AvatarPreset._('1', '$_basePath/avatar1.jpg', Color(0xFFFF7A59));
+  static const p2 = AvatarPreset._('2', '$_basePath/avatar2.jpg', Color(0xFF818CF8));
+  static const p3 = AvatarPreset._('3', '$_basePath/avatar3.jpg', Color(0xFF2FD9F4));
+  static const p4 = AvatarPreset._('4', '$_basePath/avatar4.jpg', Color(0xFFFBBF24));
+  static const p5 = AvatarPreset._('5', '$_basePath/avatar5.jpg', Color(0xFF38BDF8));
+  static const p6 = AvatarPreset._('6', '$_basePath/avatar6.jpg', Color(0xFF34D399));
+  static const p7 = AvatarPreset._('7', '$_basePath/avatar9.jpg', Color(0xFFA78BFA));
+  static const p8 = AvatarPreset._('8', '$_basePath/avatart7.jpg', Color(0xFFF472B6));
+  static const p9 = AvatarPreset._('9', '$_basePath/avatart8.jpg', Color(0xFFFF7A59));
+  static const p10 = AvatarPreset._('10', '$_basePath/avatart9.jpg', Color(0xFF2FD9F4));
+  static const p11 = AvatarPreset._('11', '$_basePath/avatart10.jpg', Color(0xFF34D399));
+
+  /// All 11 presets, in the order they're offered in the avatar grid.
+  static const all = [p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11];
+
+  static AvatarPreset? byId(String? id) {
+    if (id == null || id.isEmpty) return null;
+    for (final preset in all) {
+      if (preset.id == id) return preset;
+    }
+    return null;
+  }
+}
+
 /// The current user's own profile, as returned by
 /// `GET /api/v1/profile/me/` (`ProfileSerializer`, all fields visible).
 class UserProfile {
@@ -74,6 +125,9 @@ class UserProfile {
     required this.phoneNumber,
     required this.birthday,
     required this.profileImageUrl,
+    required this.avatar,
+    required this.avatarType,
+    required this.avatarPresetId,
     required this.favoriteGenres,
     required this.votesCount,
     required this.playlistsCount,
@@ -92,6 +146,9 @@ class UserProfile {
         ? DateTime.parse(json['birthday'] as String)
         : null,
     profileImageUrl: json['profile_image'] as String?,
+    avatar: json['avatar'] as String?,
+    avatarType: json['avatar_type'] as String? ?? profileAvatarTypePreset,
+    avatarPresetId: json['avatar_preset_id'] as String? ?? '',
     favoriteGenres:
         (json['favorite_genres'] as List<dynamic>?)
             ?.map((genre) => genre as String)
@@ -117,6 +174,22 @@ class UserProfile {
   final String phoneNumber;
   final DateTime? birthday;
   final String? profileImageUrl;
+
+  /// The one value to render regardless of source — a preset id when
+  /// [avatarType] is [profileAvatarTypePreset] (resolve via
+  /// [AvatarPreset.byId]), otherwise a plain image URL. See
+  /// `ProfileAvatarView` for the shared rendering logic.
+  final String? avatar;
+
+  /// One of [profileAvatarTypePreset] / [profileAvatarTypeExternalUrl] /
+  /// [profileAvatarTypeCustom].
+  final String avatarType;
+
+  /// The picked preset's id when [avatarType] is [profileAvatarTypePreset]
+  /// — blank otherwise. Only meaningful for pre-selecting the current
+  /// choice in the avatar grid picker; use [avatar] to render.
+  final String avatarPresetId;
+
   final List<String> favoriteGenres;
   final int votesCount;
   final int playlistsCount;
@@ -278,6 +351,8 @@ class OtherUserProfile {
     required this.displayName,
     required this.bio,
     required this.profileImageUrl,
+    required this.avatar,
+    required this.avatarType,
     required this.favoriteGenres,
     required this.location,
     required this.favoriteArtist,
@@ -291,6 +366,8 @@ class OtherUserProfile {
         displayName: json['display_name'] as String? ?? '',
         bio: json['bio'] as String? ?? '',
         profileImageUrl: json['profile_image'] as String?,
+        avatar: json['avatar'] as String?,
+        avatarType: json['avatar_type'] as String? ?? profileAvatarTypePreset,
         favoriteGenres:
             (json['favorite_genres'] as List<dynamic>?)
                 ?.map((genre) => genre as String)
@@ -308,6 +385,14 @@ class OtherUserProfile {
   final String displayName;
   final String bio;
   final String? profileImageUrl;
+
+  /// See [UserProfile.avatar] — always present, avatar is public
+  /// information (`UserProfileView` docstring).
+  final String? avatar;
+
+  /// See [UserProfile.avatarType].
+  final String avatarType;
+
   final List<String> favoriteGenres;
   final String? location;
   final String? favoriteArtist;

@@ -458,8 +458,9 @@ class MyProfileView(generics.RetrieveUpdateAPIView):
     description=(
         "Returns another user's profile, filtered by visibility tier:\n\n"
         "- If you are viewing your own profile, all fields are returned.\n"
-        "- `display_name`, `profile_image`, `favorite_genres`, "
-        "`votes_count`, and `playlists_count` are always returned.\n"
+        "- `display_name`, `profile_image`, `avatar`, `avatar_type`, "
+        "`favorite_genres`, `votes_count`, and `playlists_count` are "
+        "always returned — avatar is public information.\n"
         "- `bio`, `location`, `favorite_artist`, `phone_number`, and "
         "`birthday` are each returned only if their tier in "
         "`field_visibility` is "
@@ -487,6 +488,8 @@ class UserProfileView(generics.GenericAPIView):
         data = {
             "display_name": profile.display_name,
             "profile_image": profile.profile_image.url if profile.profile_image else None,
+            "avatar": serialized["avatar"],
+            "avatar_type": serialized["avatar_type"],
             "favorite_genres": profile.favorite_genres,
             "votes_count": serialized["votes_count"],
             "playlists_count": serialized["playlists_count"],

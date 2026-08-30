@@ -6,6 +6,7 @@ import '../auth/email_verification_pending_screen.dart';
 import '../auth/welcome_screen.dart';
 import '../core/auth/token_storage.dart';
 import '../profile/edit_profile_screen.dart';
+import '../profile/profile_avatar.dart';
 import '../profile/profile_models.dart';
 import 'connected_accounts_screen.dart';
 import 'update_password_screen.dart';
@@ -117,15 +118,19 @@ class SettingsScreen extends StatelessWidget {
             ),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: _SettingsColors.border,
-                  backgroundImage: profile.profileImageUrl != null
-                      ? NetworkImage(profile.profileImageUrl!)
-                      : null,
-                  child: profile.profileImageUrl == null
-                      ? const Icon(Icons.person_rounded, color: _SettingsColors.muted, size: 30)
-                      : null,
+                ClipOval(
+                  child: SizedBox(
+                    width: 60,
+                    height: 60,
+                    child: ProfileAvatarImage(
+                      avatar: profile.avatar,
+                      avatarType: profile.avatarType,
+                      fallback: const ColoredBox(
+                        color: _SettingsColors.border,
+                        child: Icon(Icons.person_rounded, color: _SettingsColors.muted, size: 30),
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 14),
                 Expanded(

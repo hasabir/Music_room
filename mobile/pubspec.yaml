@@ -71,6 +71,7 @@ flutter:
     - assets/images/
     - assets/images/playlist_covers/
     - assets/images/event_covers/
+    - assets/images/avatars/
     - .env
 
   # An image asset can refer to one or more resolution-specific "variants", see

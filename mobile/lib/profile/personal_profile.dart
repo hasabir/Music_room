@@ -16,6 +16,7 @@ import 'connections_screen.dart';
 import 'edit_profile_screen.dart';
 import 'music_preferences_screen.dart';
 import 'profile_api.dart';
+import 'profile_avatar.dart';
 import 'profile_mock_data.dart';
 import 'profile_models.dart';
 
@@ -260,6 +261,9 @@ class _ProfileData {
       phoneNumber: '',
       birthday: null,
       profileImageUrl: null,
+      avatar: null,
+      avatarType: profileAvatarTypePreset,
+      avatarPresetId: '',
       favoriteGenres: [],
       votesCount: 0,
       playlistsCount: 0,
@@ -428,13 +432,11 @@ class _ProfileCard extends StatelessWidget {
               ),
             ),
             child: ClipOval(
-              child: profile.profileImageUrl != null
-                  ? Image.network(
-                      profile.profileImageUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const _AvatarFallback(),
-                    )
-                  : const _AvatarFallback(),
+              child: ProfileAvatarImage(
+                avatar: profile.avatar,
+                avatarType: profile.avatarType,
+                fallback: const _AvatarFallback(),
+              ),
             ),
           ),
           const SizedBox(height: 18),

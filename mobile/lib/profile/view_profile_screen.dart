@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api/api_client.dart';
 import 'profile_api.dart';
+import 'profile_avatar.dart';
 import 'profile_models.dart';
 
 class _ViewProfileColors {
@@ -142,7 +143,8 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
                     children: [
                       _ProfileCard(
                         name: name,
-                        profileImageUrl: profile.profileImageUrl,
+                        avatar: profile.avatar,
+                        avatarType: profile.avatarType,
                         bio: profile.bio,
                         birthday: profile.birthday,
                         genres: profile.favoriteGenres,
@@ -203,7 +205,8 @@ class _Header extends StatelessWidget {
 class _ProfileCard extends StatelessWidget {
   const _ProfileCard({
     required this.name,
-    required this.profileImageUrl,
+    required this.avatar,
+    required this.avatarType,
     required this.bio,
     required this.birthday,
     required this.genres,
@@ -217,7 +220,8 @@ class _ProfileCard extends StatelessWidget {
   });
 
   final String name;
-  final String? profileImageUrl;
+  final String? avatar;
+  final String avatarType;
   final String bio;
   final DateTime? birthday;
   final List<String> genres;
@@ -250,13 +254,11 @@ class _ProfileCard extends StatelessWidget {
               gradient: LinearGradient(colors: [_ViewProfileColors.tertiary, _ViewProfileColors.headline]),
             ),
             child: ClipOval(
-              child: profileImageUrl != null
-                  ? Image.network(
-                      profileImageUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const _AvatarFallback(),
-                    )
-                  : const _AvatarFallback(),
+              child: ProfileAvatarImage(
+                avatar: avatar,
+                avatarType: avatarType,
+                fallback: const _AvatarFallback(),
+              ),
             ),
           ),
           const SizedBox(height: 18),

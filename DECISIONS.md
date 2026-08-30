@@ -1,5 +1,47 @@
 # Architecture decisions
 
+## Profile avatars: external URL stored as-is, not downloaded/re-hosted
+
+**Decision:** when a new account's avatar comes from a social sign-in photo (currently just
+Google — see below), the profile stores that provider URL directly in
+`Profile.avatar_external_url` and serves it as-is. The image is never downloaded and
+re-hosted on our own storage/CDN.
+
+**Why:** downloading and re-hosting would mean fetching the image server-side at signup,
+storing it (media storage, same as a custom-uploaded avatar), and keeping it in sync if the
+provider photo ever changes — real work for a project at this scope. Storing the URL directly
+is a few lines. The tradeoff we're accepting: Google/Facebook-hosted photo URLs can go stale
+or expire over time (the provider changes the photo, revokes access, changes their URL
+scheme), and when that happens the avatar just breaks (the client's `Image.network` call
+fails) with no server-side fallback — nothing re-fetches or repairs it automatically. Given
+this project's scope, that's an acceptable tradeoff for the implementation simplicity it buys.
+
+**Scope note:** only Google sign-in exists in this codebase (`GoogleLoginView`). The
+`backend/apps/users/` directory has `facebook_id` fields suggesting Facebook sign-in was
+planned, but it's dead code — not in `INSTALLED_APPS`, not wired to any URL. Avatar
+assignment was implemented for email/password and Google only; there's no Facebook OAuth
+flow to hook a photo-URL check into.
+
+**Data model:** kept `Profile.profile_image` (a Django `ImageField`) exactly as it already
+worked for custom-uploaded avatars — untouched, no migration of the working upload mechanism.
+Added `avatar_type` (`preset` / `external_url` / `custom`) and `avatar_preset_id` alongside
+it. The API unifies these into one `avatar` value (`ProfileSerializer.get_avatar`) so a
+client only ever needs `avatar` + `avatar_type` to render any of the three sources
+uniformly — it doesn't need to know the raw storage split underneath. `avatar_type` is
+never client-writable; it's inferred server-side from whichever of `profile_image` /
+`avatar_preset_id` a request actually touches (mirroring how `Playlist.cover_image` /
+`cover_preset` already enforce mutual exclusivity), and `external_url` specifically can only
+ever be set by `create_profile_for_user` at account-creation time — never through
+`PATCH /profile/me/`, so a user can't hotlink an arbitrary image via that field.
+
+**Random assignment lives in the model, not in application code:** `avatar_preset_id`'s
+field `default` is a callable (`_random_avatar_preset_id`) that picks randomly from
+`AVATAR_PRESET_IDS`. This means *every* newly created `Profile` row gets a random preset for
+free — regardless of which code path creates it (email verification, Google sign-in with no
+photo, or any other `Profile.objects.get_or_create` safety net elsewhere in the codebase) —
+with no dedicated "assign an avatar" call required at each call site. `create_profile_for_user`
+only needs to *override* that default when a social photo URL is available.
+
 ## Event playback: Option B — every client plays locally, synced to a shared backend clock
 
 **Decision:** each user's phone independently streams and plays the current song's audio

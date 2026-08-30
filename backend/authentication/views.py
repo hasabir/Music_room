@@ -463,7 +463,10 @@ class GoogleLoginView(generics.GenericAPIView):
                     update_fields=["is_email_verified"]
                 )
 
-                create_profile_for_user(user)
+                create_profile_for_user(
+                    user,
+                    avatar_external_url=serializer.validated_data.get("picture") or None,
+                )
 
             SocialAccount.objects.create(
                 user=user,

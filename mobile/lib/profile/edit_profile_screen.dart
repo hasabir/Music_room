@@ -3,7 +3,10 @@ import 'package:image_picker/image_picker.dart';
 
 import '../core/api/api_client.dart';
 import 'profile_api.dart';
+import 'profile_avatar.dart';
 import 'profile_models.dart';
+
+enum _AvatarEditChoice { camera, gallery, presetGrid }
 
 class _EditColors {
   static const background = Color(0xFF0E0E15);
@@ -108,7 +111,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _onEditPhoto() async {
-    final source = await showModalBottomSheet<ImageSource>(
+    final choice = await showModalBottomSheet<_AvatarEditChoice>(
       context: context,
       backgroundColor: _EditColors.card,
       shape: const RoundedRectangleBorder(
@@ -127,7 +130,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 'Take a photo',
                 style: TextStyle(color: _EditColors.body),
               ),
-              onTap: () => Navigator.of(context).pop(ImageSource.camera),
+              onTap: () =>
+                  Navigator.of(context).pop(_AvatarEditChoice.camera),
             ),
             ListTile(
               leading: const Icon(
@@ -138,16 +142,36 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 'Choose from gallery',
                 style: TextStyle(color: _EditColors.body),
               ),
-              onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+              onTap: () =>
+                  Navigator.of(context).pop(_AvatarEditChoice.gallery),
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.grid_view_rounded,
+                color: _EditColors.headline,
+              ),
+              title: const Text(
+                'Choose a preset avatar',
+                style: TextStyle(color: _EditColors.body),
+              ),
+              onTap: () =>
+                  Navigator.of(context).pop(_AvatarEditChoice.presetGrid),
             ),
           ],
         ),
       ),
     );
-    if (source == null) return;
+    if (choice == null || !mounted) return;
+
+    if (choice == _AvatarEditChoice.presetGrid) {
+      await _onChoosePresetAvatar();
+      return;
+    }
 
     final picked = await _imagePicker.pickImage(
-      source: source,
+      source: choice == _AvatarEditChoice.camera
+          ? ImageSource.camera
+          : ImageSource.gallery,
       imageQuality: 85,
     );
     if (picked == null || !mounted) return;
@@ -155,6 +179,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isUploadingPhoto = true);
     try {
       final updated = await _profileApi.uploadProfileImage(picked.path);
+      if (!mounted) return;
+      setState(() => _latestProfile = updated);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _isUploadingPhoto = false);
+    }
+  }
+
+  Future<void> _onChoosePresetAvatar() async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: _EditColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => _AvatarPresetGrid(
+        currentPresetId: _latestProfile.avatarType == profileAvatarTypePreset
+            ? _latestProfile.avatarPresetId
+            : null,
+      ),
+    );
+    if (selected == null || !mounted) return;
+
+    setState(() => _isUploadingPhoto = true);
+    try {
+      final updated = await _profileApi.updateMyProfile(
+        avatarPresetId: selected,
+      );
       if (!mounted) return;
       setState(() => _latestProfile = updated);
     } on ApiException catch (error) {
@@ -302,7 +357,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 children: [
                   Center(
                     child: _AvatarEditor(
-                      imageUrl: _latestProfile.profileImageUrl,
+                      avatar: _latestProfile.avatar,
+                      avatarType: _latestProfile.avatarType,
                       isUploading: _isUploadingPhoto,
                       onEdit: _onEditPhoto,
                     ),
@@ -430,12 +486,14 @@ class _Header extends StatelessWidget {
 
 class _AvatarEditor extends StatelessWidget {
   const _AvatarEditor({
-    required this.imageUrl,
+    required this.avatar,
+    required this.avatarType,
     required this.onEdit,
     this.isUploading = false,
   });
 
-  final String? imageUrl;
+  final String? avatar;
+  final String avatarType;
   final VoidCallback onEdit;
   final bool isUploading;
 
@@ -457,13 +515,11 @@ class _AvatarEditor extends StatelessWidget {
               ),
             ),
             child: ClipOval(
-              child: imageUrl != null
-                  ? Image.network(
-                      imageUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const _AvatarFallback(),
-                    )
-                  : const _AvatarFallback(),
+              child: ProfileAvatarImage(
+                avatar: avatar,
+                avatarType: avatarType,
+                fallback: const _AvatarFallback(),
+              ),
             ),
           ),
           if (isUploading)
@@ -524,6 +580,83 @@ class _AvatarFallback extends StatelessWidget {
       child: Icon(Icons.person_rounded, color: _EditColors.muted, size: 52),
     );
   }
+}
+
+/// The avatar-grid picker, opened from [_EditProfileScreenState._onEditPhoto]
+/// alongside the existing camera/gallery options. Pops the chosen preset's
+/// id, or nothing if dismissed.
+class _AvatarPresetGrid extends StatelessWidget {
+  const _AvatarPresetGrid({required this.currentPresetId});
+
+  final String? currentPresetId;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Choose an avatar',
+            style: TextStyle(
+              fontFamily: 'Sora',
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: _EditColors.body,
+            ),
+          ),
+          const SizedBox(height: 16),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: 4,
+            mainAxisSpacing: 14,
+            crossAxisSpacing: 14,
+            children: [
+              for (final preset in AvatarPreset.all)
+                _AvatarPresetTile(
+                  preset: preset,
+                  isSelected: preset.id == currentPresetId,
+                  onTap: () => Navigator.of(context).pop(preset.id),
+                ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _AvatarPresetTile extends StatelessWidget {
+  const _AvatarPresetTile({
+    required this.preset,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final AvatarPreset preset;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: isSelected ? preset.glowColor : _EditColors.border,
+          width: isSelected ? 3 : 1,
+        ),
+      ),
+      child: ClipOval(
+        child: Image.asset(preset.assetPath, fit: BoxFit.cover),
+      ),
+    ),
+  );
 }
 
 class _SectionDivider extends StatelessWidget {

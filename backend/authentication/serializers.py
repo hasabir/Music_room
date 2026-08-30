@@ -181,6 +181,10 @@ class GoogleLoginSerializer(serializers.Serializer):
         attrs["email"] = email
         attrs["first_name"] = idinfo.get("given_name", "")
         attrs["last_name"] = idinfo.get("family_name", "")
+        # Standard OIDC claim, present whenever the Google account has a
+        # profile photo. Used to seed a new account's avatar — see
+        # `GoogleLoginView` / DECISIONS.md.
+        attrs["picture"] = idinfo.get("picture", "")
 
         return attrs
 

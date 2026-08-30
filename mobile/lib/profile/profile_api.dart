@@ -45,6 +45,7 @@ class ProfileApi {
     bool clearBirthday = false,
     List<String>? favoriteGenres,
     Map<String, String>? fieldVisibility,
+    String? avatarPresetId,
   }) async {
     final body = <String, dynamic>{
       if (username != null) 'username': username,
@@ -59,6 +60,9 @@ class ProfileApi {
         'birthday': null,
       if (favoriteGenres != null) 'favorite_genres': favoriteGenres,
       if (fieldVisibility != null) 'field_visibility': fieldVisibility,
+      // Picking a preset also clears any previously uploaded custom
+      // image, server-side — see `ProfileSerializer.validate`.
+      if (avatarPresetId != null) 'avatar_preset_id': avatarPresetId,
     };
 
     final response = await _authorizedPatch(
