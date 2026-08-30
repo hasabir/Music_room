@@ -60,6 +60,9 @@ class TrackPreviewTests(APITestCase):
 
 
 class TrackTrendingTests(APITestCase):
+    AUDIUS_TRENDING_URL = "https://api.audius.co/v1/tracks/trending"
+    DEEZER_CHART_URL = "https://api.deezer.com/chart/0/tracks"
+
     def setUp(self):
         self.user = User.objects.create_user(
             email="listener@test.com",
@@ -68,10 +71,27 @@ class TrackTrendingTests(APITestCase):
         )
         self.client.force_authenticate(self.user)
 
-    @patch("api.views.requests.get")
-    def test_returns_deezer_chart_tracks_in_the_common_shape(self, mock_get):
-        deezer_response = Mock()
-        deezer_response.json.return_value = {
+    def _mock_response(self, json_data):
+        response = Mock()
+        response.json.return_value = json_data
+        return response
+
+    def _audius_payload(self):
+        return {
+            "data": [
+                {
+                    "id": 555,
+                    "title": "Audius Hit",
+                    "user": {"name": "Indie Artist"},
+                    "artwork": {"480x480": "https://cdn.example.test/audius-art.jpg"},
+                    "duration": 210,
+                    "is_streamable": True,
+                },
+            ]
+        }
+
+    def _deezer_payload(self):
+        return {
             "data": [
                 {
                     "id": 999,
@@ -83,24 +103,76 @@ class TrackTrendingTests(APITestCase):
                 },
             ]
         }
-        mock_get.return_value = deezer_response
+
+    @patch("api.views.requests.get")
+    def test_combines_audius_trending_and_deezer_chart_tracks(self, mock_get):
+        def fake_get(url, **kwargs):
+            if url == self.AUDIUS_TRENDING_URL:
+                return self._mock_response(self._audius_payload())
+            if url == self.DEEZER_CHART_URL:
+                return self._mock_response(self._deezer_payload())
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        mock_get.side_effect = fake_get
 
         response = self.client.get("/api/v1/tracks/trending/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        mock_get.assert_called_once_with("https://api.deezer.com/chart/0/tracks", timeout=5)
-        self.assertEqual(response.data, [{
-            "external_id": "999",
-            "title": "Chart Topper",
-            "artist": "Big Artist",
-            "album_art_url": "https://cdn.example.test/art.jpg",
-            "preview_url": "https://cdn.example.test/preview.mp3",
-            "duration_seconds": 200,
-            "playback_type": "preview",
-        }])
+        # Audius (full-length) results lead, then Deezer previews — same
+        # source priority as search.
+        self.assertEqual(response.data, [
+            {
+                "external_id": "audius:555",
+                "title": "Audius Hit",
+                "artist": "Indie Artist",
+                "album_art_url": "https://cdn.example.test/audius-art.jpg",
+                "preview_url": "https://api.audius.co/v1/tracks/555/stream",
+                "duration_seconds": 210,
+                "playback_type": "full",
+            },
+            {
+                "external_id": "999",
+                "title": "Chart Topper",
+                "artist": "Big Artist",
+                "album_art_url": "https://cdn.example.test/art.jpg",
+                "preview_url": "https://cdn.example.test/preview.mp3",
+                "duration_seconds": 200,
+                "playback_type": "preview",
+            },
+        ])
 
     @patch("api.views.requests.get")
-    def test_reports_a_gateway_error_when_deezer_is_unreachable(self, mock_get):
+    def test_deezer_chart_still_returned_when_audius_is_unreachable(self, mock_get):
+        def fake_get(url, **kwargs):
+            if url == self.AUDIUS_TRENDING_URL:
+                raise requests.RequestException("boom")
+            return self._mock_response(self._deezer_payload())
+
+        mock_get.side_effect = fake_get
+
+        response = self.client.get("/api/v1/tracks/trending/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["title"], "Chart Topper")
+
+    @patch("api.views.requests.get")
+    def test_audius_trending_still_returned_when_deezer_is_unreachable(self, mock_get):
+        def fake_get(url, **kwargs):
+            if url == self.AUDIUS_TRENDING_URL:
+                return self._mock_response(self._audius_payload())
+            raise requests.RequestException("boom")
+
+        mock_get.side_effect = fake_get
+
+        response = self.client.get("/api/v1/tracks/trending/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["title"], "Audius Hit")
+
+    @patch("api.views.requests.get")
+    def test_reports_a_gateway_error_when_both_sources_are_unreachable(self, mock_get):
         mock_get.side_effect = requests.RequestException("boom")
 
         response = self.client.get("/api/v1/tracks/trending/")

@@ -24,8 +24,9 @@ class _SuggestColors {
 /// Deezer/Audius-backed song search for an event's queue, using the same
 /// search endpoint and the same "FULL SONG" / "30 SEC PREVIEW" badge as
 /// playlist add-song — see [_PlaybackBadge]. Before the user types
-/// anything, it shows Deezer's trending chart (`PlaylistApi.fetchTrending`)
-/// as a default "popular now" list; typing switches to a debounced search
+/// anything, it shows a "popular now" list (`PlaylistApi.fetchTrending`)
+/// combining Audius's trending full tracks and Deezer's top chart, same
+/// source priority as search; typing switches to a debounced search
 /// against the query, and clearing the query falls back to the
 /// already-fetched trending list rather than an empty prompt. Unlike the
 /// playlist screen, there's no tap-to-preview audio here: the user opening

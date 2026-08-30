@@ -46,14 +46,33 @@ def _is_audius_streamable(track):
     return value not in (False, "false", "False", 0, "0")
 
 
-def _search_audius(query):
-    """Returns full-length, streamable Audius tracks without failing search."""
+def _format_audius_track(track):
+    """Maps one raw Audius API track object to this API's common track
+    shape — shared by search and trending. Mirrors `_format_deezer_track`
+    so a client can treat every result the same way regardless of source."""
+    track_id = str(track.get("id", ""))
+    artwork = track.get("artwork") or {}
+    artist = track.get("user") or {}
+    return {
+        "external_id": f"{AUDIOUS_EXTERNAL_ID_PREFIX}{track_id}",
+        "title": track.get("title", ""),
+        "artist": artist.get("name", artist.get("handle", "")),
+        "album_art_url": artwork.get("480x480", artwork.get("_480x480", "")),
+        # Stored in the existing field for backward compatibility. It is
+        # a full, legal Audius stream — not a Deezer preview.
+        "preview_url": _audius_stream_url(track_id),
+        "duration_seconds": track.get("duration"),
+        "playback_type": "full",
+    }
+
+
+def _fetch_audius_tracks(url, params):
+    """Shared fetch/filter logic for any Audius tracks-list endpoint
+    (search, trending, ...) — full-length, streamable tracks only, in this
+    API's common shape, without failing the caller if Audius is
+    unreachable."""
     try:
-        response = requests.get(
-            f"{AUDIOUS_API_URL}/tracks/search",
-            params={"query": query, "limit": 10},
-            timeout=5,
-        )
+        response = requests.get(url, params=params, timeout=5)
         response.raise_for_status()
         payload = response.json()
     except (requests.RequestException, ValueError):
@@ -67,20 +86,22 @@ def _search_audius(query):
         track_id = str(track.get("id", ""))
         if not track_id or not _is_audius_streamable(track):
             continue
-        artwork = track.get("artwork") or {}
-        artist = track.get("user") or {}
-        tracks.append({
-            "external_id": f"{AUDIOUS_EXTERNAL_ID_PREFIX}{track_id}",
-            "title": track.get("title", ""),
-            "artist": artist.get("name", artist.get("handle", "")),
-            "album_art_url": artwork.get("480x480", artwork.get("_480x480", "")),
-            # Stored in the existing field for backward compatibility. It is
-            # a full, legal Audius stream — not a Deezer preview.
-            "preview_url": _audius_stream_url(track_id),
-            "duration_seconds": track.get("duration"),
-            "playback_type": "full",
-        })
+        tracks.append(_format_audius_track(track))
     return tracks
+
+
+def _search_audius(query):
+    """Returns full-length, streamable Audius tracks matching `query`,
+    without failing search if Audius is unreachable."""
+    return _fetch_audius_tracks(
+        f"{AUDIOUS_API_URL}/tracks/search", {"query": query, "limit": 10}
+    )
+
+
+def _trending_audius():
+    """Returns Audius's current trending full-length, streamable tracks,
+    without failing trending if Audius is unreachable."""
+    return _fetch_audius_tracks(f"{AUDIOUS_API_URL}/tracks/trending", {"limit": 10})
 
 
 @extend_schema(
@@ -131,10 +152,10 @@ class TrackSearchView(APIView):
 @extend_schema(
     summary="List trending tracks",
     description=(
-        "Returns Deezer's current top chart tracks, in the same shape as "
-        "search results (`playback_type` always `preview` here) — meant "
-        "as the default 'popular now' list before a user has typed a "
-        "search query."
+        "Returns Audius's current trending full-length tracks first when "
+        "available, then Deezer's top chart as 30-second previews — same "
+        "combined shape and same source priority as search. Meant as the "
+        "default 'popular now' list before a user has typed a search query."
     ),
     responses={
         200: OpenApiResponse(description="List of trending tracks."),
@@ -147,18 +168,22 @@ class TrackTrendingView(APIView):
     throttle_classes = [TrackSearchRateThrottle]
 
     def get(self, request):
+        full_tracks = _trending_audius()
+
         try:
             response = requests.get(DEEZER_CHART_TRACKS_URL, timeout=5)
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError):
+            if full_tracks:
+                return Response(full_tracks)
             return Response(
                 {"detail": "Unable to reach the music search service. Please try again."},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        tracks = [_format_deezer_track(track) for track in payload.get("data", [])]
-        return Response(tracks)
+        preview_tracks = [_format_deezer_track(track) for track in payload.get("data", [])]
+        return Response([*full_tracks, *preview_tracks])
 
 
 @extend_schema(

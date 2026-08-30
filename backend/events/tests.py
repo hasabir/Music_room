@@ -402,6 +402,30 @@ class PlaybackSyncTests(APITestCase):
         event_song = EventSong.objects.get(id=add_a.data["id"])
         self.assertEqual(event_song.song.playback_type, "preview")
 
+    def test_played_song_can_be_added_again_starting_fresh(self):
+        add_a = self._add_song("Song A", "Artist A")
+        self._add_song("Song B", "Artist B")
+
+        self.client.post(f"{self.queue_url}{add_a.data['id']}/vote/", {})
+        self._backdate_current_song(31)
+
+        response = self._add_song("Song A", "Artist A")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["id"], add_a.data["id"])  # same row, revived
+        self.assertEqual(response.data["vote_count"], 0)  # old votes cleared
+        self.assertEqual(response.data["status"], "queued")
+        self.assertIn(
+            "Song A", [s["song"]["title"] for s in self.client.get(self.queue_url).data]
+        )
+
+    def test_still_queued_song_cannot_be_added_again(self):
+        self._add_song("Song A", "Artist A")
+
+        response = self._add_song("Song A", "Artist A")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class VotePermissionModeTests(APITestCase):

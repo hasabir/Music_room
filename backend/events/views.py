@@ -2,6 +2,7 @@
 from django.db import IntegrityError , transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -143,7 +144,9 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
             "Adds a new song to this event's queue. If a song with the "
             "same title and artist already exists in the catalog, it "
             "is reused instead of creating a duplicate. Fails if the "
-            "song is already in this event's queue."
+            "song is already in this event's queue (`queued` or "
+            "`playing`) — but a song that's already been played can be "
+            "added again, starting fresh with no votes."
         ),
         request=AddSongToQueueSerializer,
         responses={
@@ -199,12 +202,31 @@ class EventQueueView(APIView):
             },
         )
 
+        # Catch the event up to now first — otherwise a song whose real
+        # playtime already elapsed could still read as stale `playing`
+        # data from before this request, and get wrongly rejected below as
+        # "already in the queue" instead of being recognized as revivable.
+        event.sync_current_song()
+
         event_song, created = EventSong.objects.get_or_create(
             event=event, song=song, defaults={"added_by": request.user}
         )
+        revived = False
         if not created:
-            return Response({"detail": "This song is already in the queue."},
-                             status=status.HTTP_400_BAD_REQUEST)
+            if event_song.status != "played":
+                return Response({"detail": "This song is already in the queue."},
+                                 status=status.HTTP_400_BAD_REQUEST)
+            # It already had its turn and dropped out of the queue (see
+            # `Event.sync_current_song`) — `unique_together` means it can't
+            # become a second row, so bring this same one back instead:
+            # fresh votes, fresh position, credited to whoever just
+            # re-suggested it, same as any other newly-added song.
+            revived = True
+            event_song.votes.all().delete()
+            event_song.status = "queued"
+            event_song.added_by = request.user
+            event_song.added_at = timezone.now()
+            event_song.save(update_fields=["status", "added_by", "added_at"])
 
         log_action(request, "event.song_added", user=request.user, metadata={
             "event_id": event.id,
@@ -212,6 +234,7 @@ class EventQueueView(APIView):
             "visibility": event.visibility,
             "song_title": song.title,
             "artist": song.artist,
+            "revived": revived,
         })
         event.sync_current_song()
         # `sync_current_song` may have mutated this exact row's `status`
