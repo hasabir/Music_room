@@ -11,7 +11,7 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = [
-            "id", "host", "title", "visibility", "vote_permission",
+            "id", "host", "title", "description", "cover_preset", "visibility", "vote_permission",
             "venue_center_latitude", "venue_center_longitude", "allowed_distance_meters",
             "voting_opens_at", "voting_closes_at",
             "song_count", "voting_is_open",
@@ -96,4 +96,3 @@ class EventMembershipSerializer(serializers.ModelSerializer):
         model = EventMembership
         fields = ["id", "event", "member", "joined_at"]
         read_only_fields = fields
- 

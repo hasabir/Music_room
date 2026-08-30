@@ -143,6 +143,34 @@ class ApiClient {
     _decode(response);
   }
 
+  /// Like [delete], but for the rare endpoint that returns a JSON body on
+  /// success (e.g. vote retraction, which reports the updated vote count).
+  Future<Map<String, dynamic>> deleteWithResponse(
+    Uri uri, {
+    String? accessToken,
+  }) async {
+    late final http.Response response;
+    try {
+      response = await _httpClient
+          .delete(
+            uri,
+            headers: accessToken == null
+                ? null
+                : {'Authorization': 'Bearer $accessToken'},
+          )
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw ApiException(0, 'The request timed out. Please try again.');
+    } catch (error) {
+      throw ApiException(
+        0,
+        'Unable to connect to the server. Please try again.',
+      );
+    }
+
+    return _decode(response);
+  }
+
   Future<Map<String, dynamic>> get(Uri uri, {String? accessToken}) async {
     late final http.Response response;
     try {

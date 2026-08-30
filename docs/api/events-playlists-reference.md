@@ -45,6 +45,7 @@ All endpoints require `IsAuthenticated` (a valid auth token) unless noted. Base 
   - `"everyone"` — any user who can see the event can vote
   - `"invited_only"` — only the host and invited guests (`EventGuest` rows) can vote
   - `"location_time_restricted"` — only people at the venue, during the time window, can vote
+- **`cover_preset`** (`CharField`, max_length=20, default `"party"`) — the bundled visual chosen for the event. Allowed values: `"party"`, `"night_vibe"`, `"dj"`, `"summer_vibe"`, `"rain"`, `"coding_vibe"`, `"after_dark"`, `"vibes"`.
 
 **Location+time-boxed license is represented as flat fields directly on `Event`** — not a separate model. These fields are `null=True, blank=True` and are only meaningful/required when `vote_permission == "location_time_restricted"`:
 
@@ -76,6 +77,7 @@ Creates an event; caller becomes host.
 ```json
 {
   "title": "string, max 100 chars, required",
+  "cover_preset": "one of the bundled event-cover preset ids, optional, default \"party\"",
   "visibility": "\"public\" | \"private\", optional, default \"public\"",
   "vote_permission": "\"everyone\" | \"invited_only\" | \"location_time_restricted\", optional, default \"everyone\"",
   "venue_center_latitude": "float, optional (required if vote_permission=location_time_restricted)",
@@ -93,6 +95,7 @@ Creates an event; caller becomes host.
   "id": 1,
   "host": "user@example.com",
   "title": "string",
+  "cover_preset": "party",
   "visibility": "public",
   "vote_permission": "everyone",
   "venue_center_latitude": null,

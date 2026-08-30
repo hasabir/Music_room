@@ -51,6 +51,7 @@ class ApiConfig {
   static const String userSearchEndpoint = '/api/v1/profile/search/';
   static const String playlistsEndpoint = '/api/v1/playlists/';
   static const String trackSearchEndpoint = '/api/v1/tracks/search/';
+  static const String eventsEndpoint = '/api/v1/events/';
 
   static Uri registerUri() => Uri.parse('$baseUrl$registerEndpoint');
   static Uri loginUri() => Uri.parse('$baseUrl$loginEndpoint');
@@ -122,4 +123,18 @@ class ApiConfig {
   ) => Uri.parse(
     '$baseUrl$playlistsEndpoint$playlistId/access-requests/$requestId/decide/',
   );
+
+  static Uri eventsUri() => Uri.parse('$baseUrl$eventsEndpoint');
+  static Uri eventDetailUri(int eventId) =>
+      Uri.parse('$baseUrl$eventsEndpoint$eventId/');
+  static Uri eventQueueUri(int eventId) =>
+      Uri.parse('$baseUrl$eventsEndpoint$eventId/queue/');
+  static Uri eventVoteUri(int eventId, int eventSongId) =>
+      Uri.parse('$baseUrl$eventsEndpoint$eventId/queue/$eventSongId/vote/');
+  static Uri eventGuestsUri(int eventId) =>
+      Uri.parse('$baseUrl$eventsEndpoint$eventId/guests/');
+  static Uri eventGuestDetailUri(int eventId, int userId) =>
+      Uri.parse('$baseUrl$eventsEndpoint$eventId/guests/$userId/');
+  static Uri eventJoinUri(int eventId) =>
+      Uri.parse('$baseUrl$eventsEndpoint$eventId/join/');
 }

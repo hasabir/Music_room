@@ -15,6 +15,16 @@ class Event(models.Model):
         ("invited_only", "Only invited guests can vote"),
         ("location_time_restricted", "Only people at the venue, during the time window, can vote"),
     ]
+    COVER_PRESET_CHOICES = [
+        ("party", "Party"),
+        ("night_vibe", "Night vibe"),
+        ("dj", "DJ"),
+        ("summer_vibe", "Summer vibe"),
+        ("rain", "Rain"),
+        ("coding_vibe", "Coding vibe"),
+        ("after_dark", "After dark"),
+        ("vibes", "Vibes"),
+    ]
 
     host = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -23,6 +33,8 @@ class Event(models.Model):
         help_text="The user who created this event."
     )
     title = models.CharField(max_length=100)
+    description = models.TextField(max_length=500, blank=True, default="")
+    cover_preset = models.CharField(max_length=20, choices=COVER_PRESET_CHOICES, default="party")
 
     visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default="public")
     vote_permission = models.CharField(max_length=30, choices=VOTE_PERMISSION_CHOICES, default="everyone")

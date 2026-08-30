@@ -1,5 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- For Create Event's "use my current location" button (geolocator),
+         prefilling the venue center for a location-and-time-restricted
+         event. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- usesCleartextTraffic is required while ApiConfig.baseUrl points at a
          plain-http dev backend (see lib/core/api/api_config.dart). Remove
          this once the app talks to an https:// backend. -->
