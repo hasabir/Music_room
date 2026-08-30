@@ -80,6 +80,11 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
     setState(() => _relationshipStatus = RelationshipStatus.pendingSent);
   });
 
+  Future<void> _onCancel() => _runAction(() async {
+    await _profileApi.cancelFriendRequest(widget.userId);
+    setState(() => _relationshipStatus = RelationshipStatus.none);
+  });
+
   Future<void> _onRemove() => _runAction(() async {
     await _profileApi.removeFriend(widget.userId);
     setState(() => _relationshipStatus = RelationshipStatus.none);
@@ -146,6 +151,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
                         isActing: _isActing,
                         onAdd: _onAdd,
                         onRemove: _onRemove,
+                        onCancel: _onCancel,
                         onAccept: _onAccept,
                         onDecline: _onDecline,
                       ),
@@ -207,6 +213,7 @@ class _ProfileCard extends StatelessWidget {
     required this.isActing,
     required this.onAdd,
     required this.onRemove,
+    required this.onCancel,
     required this.onAccept,
     required this.onDecline,
   });
@@ -220,6 +227,7 @@ class _ProfileCard extends StatelessWidget {
   final bool isActing;
   final VoidCallback onAdd;
   final VoidCallback onRemove;
+  final VoidCallback onCancel;
   final VoidCallback onAccept;
   final VoidCallback onDecline;
 
@@ -270,6 +278,7 @@ class _ProfileCard extends StatelessWidget {
             isActing: isActing,
             onAdd: onAdd,
             onRemove: onRemove,
+            onCancel: onCancel,
             onAccept: onAccept,
             onDecline: onDecline,
           ),
@@ -321,6 +330,7 @@ class _RelationshipAction extends StatelessWidget {
     required this.isActing,
     required this.onAdd,
     required this.onRemove,
+    required this.onCancel,
     required this.onAccept,
     required this.onDecline,
   });
@@ -329,6 +339,7 @@ class _RelationshipAction extends StatelessWidget {
   final bool isActing;
   final VoidCallback onAdd;
   final VoidCallback onRemove;
+  final VoidCallback onCancel;
   final VoidCallback onAccept;
   final VoidCallback onDecline;
 
@@ -347,11 +358,24 @@ class _RelationshipAction extends StatelessWidget {
         color: _ViewProfileColors.destructive,
         onTap: isActing ? null : onRemove,
       ),
-      RelationshipStatus.pendingSent => const _OutlinedActionButton(
-        label: 'Requested',
-        icon: Icons.person_add_alt_1_rounded,
-        color: _ViewProfileColors.tertiary,
-        onTap: null,
+      RelationshipStatus.pendingSent => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const _OutlinedActionButton(
+            label: 'Requested',
+            icon: Icons.person_add_alt_1_rounded,
+            color: _ViewProfileColors.tertiary,
+            onTap: null,
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: isActing ? null : onCancel,
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: _ViewProfileColors.destructive),
+            ),
+          ),
+        ],
       ),
       RelationshipStatus.pendingReceived => Row(
         mainAxisSize: MainAxisSize.min,

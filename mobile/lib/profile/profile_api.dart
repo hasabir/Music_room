@@ -128,6 +128,31 @@ class ProfileApi {
     }
   }
 
+  /// Cancels a pending friend request the signed-in user sent to [userId].
+  ///
+  /// TODO: The backend has no cancel-sent-request endpoint yet (only
+  /// `RejectFriendRequestView`, restricted to the *receiver* of a
+  /// request, and `RemoveFriendView`, restricted to already-`accepted`
+  /// friendships — see `profiles/views.py`). This targets
+  /// `DELETE .../friends/<user_id>/cancel/`, matching the naming
+  /// convention of the existing endpoints, ready to work once that route
+  /// is added server-side.
+  Future<void> cancelFriendRequest(int userId) async {
+    final accessToken = await _tokenStorage.readAccessToken();
+    if (accessToken == null) throw SessionExpiredException();
+
+    try {
+      await _apiClient.delete(ApiConfig.cancelFriendRequestUri(userId), accessToken: accessToken);
+    } on ApiException catch (error) {
+      if (error.statusCode != 401) rethrow;
+      final refreshedToken = await _refreshOrThrow();
+      await _apiClient.delete(
+        ApiConfig.cancelFriendRequestUri(userId),
+        accessToken: refreshedToken,
+      );
+    }
+  }
+
   /// Searches users by name/email, annotated with the signed-in user's
   /// relationship to each result. Returns an empty list for a blank query.
   Future<List<SearchUser>> searchUsers(String query) async {

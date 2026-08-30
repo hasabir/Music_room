@@ -71,6 +71,8 @@ class ApiConfig {
       Uri.parse('$baseUrl/api/v1/profile/friends/$userId/add/');
   static Uri removeFriendUri(int userId) =>
       Uri.parse('$baseUrl/api/v1/profile/friends/$userId/remove/');
+  static Uri cancelFriendRequestUri(int userId) =>
+      Uri.parse('$baseUrl/api/v1/profile/friends/$userId/cancel/');
   static Uri userProfileUri(int userId) =>
       Uri.parse('$baseUrl/api/v1/profile/profile/$userId/');
   static Uri userSearchUri(String query) =>
