@@ -37,10 +37,12 @@ class PlaylistCollaboratorsScreen extends StatefulWidget {
   final String playlistTitle;
 
   @override
-  State<PlaylistCollaboratorsScreen> createState() => _PlaylistCollaboratorsScreenState();
+  State<PlaylistCollaboratorsScreen> createState() =>
+      _PlaylistCollaboratorsScreenState();
 }
 
-class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScreen> {
+class _PlaylistCollaboratorsScreenState
+    extends State<PlaylistCollaboratorsScreen> {
   final _playlistApi = PlaylistApi();
   final _tokenStorage = TokenStorage();
 
@@ -49,6 +51,7 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
   List<PlaylistCollaborator> _collaborators = const [];
   List<PlaylistAccessRequest> _pendingRequests = const [];
   final _decidingRequestIds = <int>{};
+  final _savingCollaboratorIds = <int>{};
 
   @override
   void initState() {
@@ -86,13 +89,22 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
     }
   }
 
-  Future<void> _onDecideRequest(PlaylistAccessRequest request, {required bool approve}) async {
+  Future<void> _onDecideRequest(
+    PlaylistAccessRequest request, {
+    required bool approve,
+  }) async {
     setState(() => _decidingRequestIds.add(request.id));
     try {
-      await _playlistApi.decideAccessRequest(widget.playlistId, request.id, approve: approve);
+      await _playlistApi.decideAccessRequest(
+        widget.playlistId,
+        request.id,
+        approve: approve,
+      );
       if (!mounted) return;
       setState(() {
-        _pendingRequests = _pendingRequests.where((r) => r.id != request.id).toList();
+        _pendingRequests = _pendingRequests
+            .where((r) => r.id != request.id)
+            .toList();
         _decidingRequestIds.remove(request.id);
       });
       if (approve) _load();
@@ -108,14 +120,16 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
   Future<void> _signOutAndReturnToWelcome() async {
     await _tokenStorage.clear();
     if (!mounted) return;
-    Navigator.of(
-      context,
-    ).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const WelcomeScreen()), (route) => false);
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+      (route) => false,
+    );
   }
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _onAddCollaborators() async {
@@ -123,7 +137,9 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
       MaterialPageRoute(
         builder: (_) => AddCollaboratorsScreen(
           playlistId: widget.playlistId,
-          existingCollaboratorIds: _collaborators.map((c) => c.collaborator).toSet(),
+          existingCollaboratorIds: _collaborators
+              .map((c) => c.collaborator)
+              .toSet(),
         ),
       ),
     );
@@ -138,7 +154,10 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text(
           'Remove Collaborator?',
-          style: TextStyle(fontFamily: 'Sora', color: _CollaboratorsColors.body),
+          style: TextStyle(
+            fontFamily: 'Sora',
+            color: _CollaboratorsColors.body,
+          ),
         ),
         content: Text(
           '${collaborator.collaboratorEmail} will lose access to edit this playlist.',
@@ -147,11 +166,17 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: _CollaboratorsColors.muted)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: _CollaboratorsColors.muted),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Remove', style: TextStyle(color: Colors.redAccent)),
+            child: const Text(
+              'Remove',
+              style: TextStyle(color: Colors.redAccent),
+            ),
           ),
         ],
       ),
@@ -163,15 +188,54 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
     final confirmed = await _confirmRemove(collaborator);
     if (!confirmed) return;
 
-    setState(() => _collaborators = _collaborators.where((c) => c.id != collaborator.id).toList());
+    setState(
+      () => _collaborators = _collaborators
+          .where((c) => c.id != collaborator.id)
+          .toList(),
+    );
 
     try {
-      await _playlistApi.removeCollaborator(widget.playlistId, collaborator.collaborator);
+      await _playlistApi.removeCollaborator(
+        widget.playlistId,
+        collaborator.collaborator,
+      );
     } on SessionExpiredException {
       await _signOutAndReturnToWelcome();
     } on ApiException catch (error) {
       _showMessage(error.message);
       _load();
+    }
+  }
+
+  Future<void> _updatePermissions(
+    PlaylistCollaborator collaborator, {
+    bool? canAddSongs,
+    bool? canReorderSongs,
+    bool? canManageCollaborators,
+  }) async {
+    setState(() => _savingCollaboratorIds.add(collaborator.id));
+    try {
+      final updated = await _playlistApi.updateCollaboratorPermissions(
+        widget.playlistId,
+        collaborator.collaborator,
+        canAddSongs: canAddSongs ?? collaborator.canAddSongs,
+        canReorderSongs: canReorderSongs ?? collaborator.canReorderSongs,
+        canManageCollaborators:
+            canManageCollaborators ?? collaborator.canManageCollaborators,
+      );
+      if (!mounted) return;
+      setState(() {
+        _collaborators = _collaborators
+            .map((item) => item.id == updated.id ? updated : item)
+            .toList();
+        _savingCollaboratorIds.remove(collaborator.id);
+      });
+    } on SessionExpiredException {
+      await _signOutAndReturnToWelcome();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _savingCollaboratorIds.remove(collaborator.id));
+      _showMessage(error.message);
     }
   }
 
@@ -182,7 +246,10 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
       body: SafeArea(
         child: Column(
           children: [
-            _Header(playlistTitle: widget.playlistTitle, onAdd: _onAddCollaborators),
+            _Header(
+              playlistTitle: widget.playlistTitle,
+              onAdd: _onAddCollaborators,
+            ),
             Expanded(child: _buildBody()),
           ],
         ),
@@ -192,7 +259,9 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: _CollaboratorsColors.headline));
+      return const Center(
+        child: CircularProgressIndicator(color: _CollaboratorsColors.headline),
+      );
     }
 
     if (_error != null) {
@@ -229,11 +298,26 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
           if (_collaborators.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('No collaborators yet.', style: TextStyle(color: _CollaboratorsColors.muted)),
+              child: Text(
+                'No collaborators yet.',
+                style: TextStyle(color: _CollaboratorsColors.muted),
+              ),
             )
           else
             for (final collaborator in _collaborators) ...[
-              _CollaboratorRow(collaborator: collaborator, onRemove: () => _onRemove(collaborator)),
+              _CollaboratorRow(
+                collaborator: collaborator,
+                isSaving: _savingCollaboratorIds.contains(collaborator.id),
+                onRemove: () => _onRemove(collaborator),
+                onAddSongsChanged: (value) =>
+                    _updatePermissions(collaborator, canAddSongs: value),
+                onReorderChanged: (value) =>
+                    _updatePermissions(collaborator, canReorderSongs: value),
+                onManageChanged: (value) => _updatePermissions(
+                  collaborator,
+                  canManageCollaborators: value,
+                ),
+              ),
               const SizedBox(height: 12),
             ],
         ],
@@ -256,7 +340,10 @@ class _Header extends StatelessWidget {
         children: [
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.arrow_back_rounded, color: _CollaboratorsColors.body),
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+              color: _CollaboratorsColors.body,
+            ),
           ),
           Expanded(
             child: Column(
@@ -275,15 +362,24 @@ class _Header extends StatelessWidget {
                   playlistTitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: _CollaboratorsColors.muted),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: _CollaboratorsColors.muted,
+                  ),
                 ),
               ],
             ),
           ),
           IconButton(
             onPressed: onAdd,
-            style: IconButton.styleFrom(backgroundColor: _CollaboratorsColors.card, shape: const CircleBorder()),
-            icon: const Icon(Icons.person_add_alt_1_rounded, color: _CollaboratorsColors.body),
+            style: IconButton.styleFrom(
+              backgroundColor: _CollaboratorsColors.card,
+              shape: const CircleBorder(),
+            ),
+            icon: const Icon(
+              Icons.person_add_alt_1_rounded,
+              color: _CollaboratorsColors.body,
+            ),
           ),
         ],
       ),
@@ -331,7 +427,9 @@ class _AccessRequestRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: _CollaboratorsColors.card,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _CollaboratorsColors.tertiary.withValues(alpha: 0.4)),
+        border: Border.all(
+          color: _CollaboratorsColors.tertiary.withValues(alpha: 0.4),
+        ),
       ),
       child: Row(
         children: [
@@ -339,8 +437,13 @@ class _AccessRequestRow extends StatelessWidget {
             radius: 20,
             backgroundColor: _CollaboratorsColors.border,
             child: Text(
-              request.requesterEmail.isNotEmpty ? request.requesterEmail[0].toUpperCase() : '?',
-              style: const TextStyle(color: _CollaboratorsColors.headline, fontWeight: FontWeight.w700),
+              request.requesterEmail.isNotEmpty
+                  ? request.requesterEmail[0].toUpperCase()
+                  : '?',
+              style: const TextStyle(
+                color: _CollaboratorsColors.headline,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           const SizedBox(width: 14),
@@ -360,16 +463,27 @@ class _AccessRequestRow extends StatelessWidget {
             const SizedBox(
               width: 18,
               height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2, color: _CollaboratorsColors.headline),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: _CollaboratorsColors.headline,
+              ),
             )
           else ...[
             IconButton(
               onPressed: onDeny,
-              icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 20),
+              icon: const Icon(
+                Icons.close_rounded,
+                color: Colors.redAccent,
+                size: 20,
+              ),
             ),
             IconButton(
               onPressed: onApprove,
-              icon: const Icon(Icons.check_rounded, color: _CollaboratorsColors.tertiary, size: 20),
+              icon: const Icon(
+                Icons.check_rounded,
+                color: _CollaboratorsColors.tertiary,
+                size: 20,
+              ),
             ),
           ],
         ],
@@ -379,10 +493,21 @@ class _AccessRequestRow extends StatelessWidget {
 }
 
 class _CollaboratorRow extends StatelessWidget {
-  const _CollaboratorRow({required this.collaborator, required this.onRemove});
+  const _CollaboratorRow({
+    required this.collaborator,
+    required this.isSaving,
+    required this.onRemove,
+    required this.onAddSongsChanged,
+    required this.onReorderChanged,
+    required this.onManageChanged,
+  });
 
   final PlaylistCollaborator collaborator;
+  final bool isSaving;
   final VoidCallback onRemove;
+  final ValueChanged<bool> onAddSongsChanged;
+  final ValueChanged<bool> onReorderChanged;
+  final ValueChanged<bool> onManageChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -393,39 +518,135 @@ class _CollaboratorRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _CollaboratorsColors.border),
       ),
-      child: Row(
+      child: Column(
         children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: _CollaboratorsColors.border,
-            child: Text(
-              collaborator.collaboratorEmail.isNotEmpty
-                  ? collaborator.collaboratorEmail[0].toUpperCase()
-                  : '?',
-              style: const TextStyle(color: _CollaboratorsColors.headline, fontWeight: FontWeight.w700),
-            ),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: _CollaboratorsColors.border,
+                child: Text(
+                  collaborator.collaboratorEmail.isNotEmpty
+                      ? collaborator.collaboratorEmail[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                    color: _CollaboratorsColors.headline,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  collaborator.collaboratorEmail,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: 'Sora',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: _CollaboratorsColors.body,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: isSaving ? null : onRemove,
+                icon: const Icon(
+                  Icons.person_remove_rounded,
+                  color: Colors.redAccent,
+                  size: 20,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              collaborator.collaboratorEmail,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: 'Sora',
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: _CollaboratorsColors.body,
+          const Divider(color: _CollaboratorsColors.border),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: EdgeInsets.only(top: 2, bottom: 4),
+              child: Text(
+                'PERMISSIONS',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: _CollaboratorsColors.muted,
+                ),
               ),
             ),
           ),
-          IconButton(
-            onPressed: onRemove,
-            icon: const Icon(Icons.person_remove_rounded, color: Colors.redAccent, size: 20),
+          _PermissionSwitch(
+            icon: Icons.library_add_rounded,
+            label: 'Can add or remove songs',
+            description: 'Build and curate the playlist',
+            value: collaborator.canAddSongs,
+            enabled: !isSaving,
+            onChanged: onAddSongsChanged,
           ),
+          _PermissionSwitch(
+            icon: Icons.reorder_rounded,
+            label: 'Can reorder songs',
+            description: 'Change the playlist order',
+            value: collaborator.canReorderSongs,
+            enabled: !isSaving,
+            onChanged: onReorderChanged,
+          ),
+          _PermissionSwitch(
+            icon: Icons.group_add_rounded,
+            label: 'Can invite and remove people',
+            description: 'Manage the collaborator list',
+            value: collaborator.canManageCollaborators,
+            enabled: !isSaving,
+            onChanged: onManageChanged,
+          ),
+          if (isSaving)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: LinearProgressIndicator(
+                color: _CollaboratorsColors.tertiary,
+              ),
+            ),
         ],
       ),
     );
   }
+}
+
+class _PermissionSwitch extends StatelessWidget {
+  const _PermissionSwitch({
+    required this.icon,
+    required this.label,
+    required this.description,
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String label;
+  final String description;
+  final bool value;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => SwitchListTile.adaptive(
+    contentPadding: const EdgeInsets.symmetric(vertical: 1),
+    secondary: Icon(
+      icon,
+      color: value ? _CollaboratorsColors.tertiary : _CollaboratorsColors.muted,
+    ),
+    title: Text(
+      label,
+      style: const TextStyle(color: _CollaboratorsColors.body, fontSize: 13),
+    ),
+    subtitle: Text(
+      description,
+      style: const TextStyle(color: _CollaboratorsColors.muted, fontSize: 11),
+    ),
+    value: value,
+    onChanged: enabled ? onChanged : null,
+    activeThumbColor: _CollaboratorsColors.tertiary,
+  );
 }
 
 class _EmptyState extends StatelessWidget {
@@ -441,7 +662,11 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.group_add_rounded, size: 40, color: _CollaboratorsColors.muted),
+            const Icon(
+              Icons.group_add_rounded,
+              size: 40,
+              color: _CollaboratorsColors.muted,
+            ),
             const SizedBox(height: 12),
             const Text(
               'No collaborators yet.',
@@ -483,7 +708,11 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.wifi_off_rounded, color: _CollaboratorsColors.muted, size: 40),
+            const Icon(
+              Icons.wifi_off_rounded,
+              color: _CollaboratorsColors.muted,
+              size: 40,
+            ),
             const SizedBox(height: 12),
             Text(
               message,

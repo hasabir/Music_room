@@ -18,7 +18,13 @@ from authentication.utils import log_action
 from user.models import User
 
 from .models import Playlist, PlaylistCollaborator
-from .serializers import PlaylistCollaboratorSerializer, InviteCollaboratorSerializer
+from .serializers import (
+    CollaboratorPermissionsSerializer,
+    InviteCollaboratorSerializer,
+    PlaylistCollaboratorSerializer,
+)
+from .permissions import can_user_manage_collaborators
+from .broadcast import broadcast_playlist_update
 
 
 @extend_schema_view(
@@ -58,8 +64,8 @@ class PlaylistCollaboratorListView(APIView):
     def post(self, request, playlist_id):
         playlist = get_object_or_404(Playlist, id=playlist_id)
 
-        if playlist.owner_id != request.user.id:
-            return Response({"detail": "Only the owner can invite collaborators."},
+        if not can_user_manage_collaborators(request.user, playlist):
+            return Response({"detail": "You are not allowed to invite collaborators."},
                              status=status.HTTP_403_FORBIDDEN)
 
         serializer = InviteCollaboratorSerializer(data=request.data)
@@ -84,6 +90,7 @@ class PlaylistCollaboratorListView(APIView):
             "visibility": playlist.visibility,
             "invited_user_id": invited_user.id,
         })
+        broadcast_playlist_update(playlist)
 
         return Response(PlaylistCollaboratorSerializer(collaborator).data, status=status.HTTP_201_CREATED)
 
@@ -104,8 +111,8 @@ class PlaylistCollaboratorRemoveView(APIView):
     def delete(self, request, playlist_id, user_id):
         playlist = get_object_or_404(Playlist, id=playlist_id)
 
-        if playlist.owner_id != request.user.id:
-            return Response({"detail": "Only the owner can remove collaborators."},
+        if not can_user_manage_collaborators(request.user, playlist):
+            return Response({"detail": "You are not allowed to remove collaborators."},
                              status=status.HTTP_403_FORBIDDEN)
 
         deleted, _ = PlaylistCollaborator.objects.filter(playlist=playlist, collaborator_id=user_id).delete()
@@ -119,5 +126,24 @@ class PlaylistCollaboratorRemoveView(APIView):
             "visibility": playlist.visibility,
             "removed_user_id": user_id,
         })
+        broadcast_playlist_update(playlist)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def patch(self, request, playlist_id, user_id):
+        playlist = get_object_or_404(Playlist, id=playlist_id)
+        if playlist.owner_id != request.user.id:
+            return Response(
+                {"detail": "Only the owner can change collaborator permissions."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        collaborator = get_object_or_404(
+            PlaylistCollaborator, playlist=playlist, collaborator_id=user_id
+        )
+        serializer = CollaboratorPermissionsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        for field, value in serializer.validated_data.items():
+            setattr(collaborator, field, value)
+        collaborator.save(update_fields=list(serializer.validated_data))
+        broadcast_playlist_update(playlist)
+        return Response(PlaylistCollaboratorSerializer(collaborator).data)
