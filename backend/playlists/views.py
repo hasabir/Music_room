@@ -148,18 +148,29 @@ class PlaylistSongListView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        song, _ = Song.objects.get_or_create(
-            title__iexact=data["title"],
-            artist__iexact=data["artist"],
-            defaults={
-                "title": data["title"],
-                "artist": data["artist"],
-                "duration_seconds": data.get("duration_seconds"),
-                "external_id": data.get("external_id", ""),
-                "album_art_url": data.get("album_art_url", ""),
-                "preview_url": data.get("preview_url", ""),
-            },
-        )
+        song_defaults = {
+            "title": data["title"],
+            "artist": data["artist"],
+            "duration_seconds": data.get("duration_seconds"),
+            "external_id": data.get("external_id", ""),
+            "album_art_url": data.get("album_art_url", ""),
+            "preview_url": data.get("preview_url", ""),
+        }
+        external_id = data.get("external_id", "")
+        if external_id:
+            # A title/artist can exist at multiple providers. Keep the
+            # provider-specific entry so an Audius full stream never gets
+            # replaced by a same-named Deezer preview.
+            song, _ = Song.objects.get_or_create(
+                external_id=external_id,
+                defaults=song_defaults,
+            )
+        else:
+            song, _ = Song.objects.get_or_create(
+                title__iexact=data["title"],
+                artist__iexact=data["artist"],
+                defaults=song_defaults,
+            )
 
         if PlaylistSong.objects.filter(playlist=playlist, song=song).exists():
             return Response({"detail": "This song is already in the playlist."},

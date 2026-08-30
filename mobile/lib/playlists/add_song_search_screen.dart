@@ -24,10 +24,9 @@ class _AddSongColors {
 
 /// Search-and-add screen for a playlist's songs. Mirrors
 /// `add_collaborators_screen.dart`'s debounced-search pattern, but against
-/// `GET /api/v1/tracks/search/` (`TrackSearchView`, which proxies Deezer)
-/// instead of the user search endpoint. Tapping a result's artwork plays
-/// its 30-second `preview_url` straight from Deezer's CDN; only one
-/// preview plays at a time. Tapping "Add" sends the track's
+/// `GET /api/v1/tracks/search/` (`TrackSearchView`) instead of the user
+/// search endpoint. Audius results play in full; Deezer results remain
+/// 30-second previews. Tapping "Add" sends the track's
 /// title/artist/duration/external id to `PlaylistApi.addSong` — the exact
 /// same call a manually-typed song would make.
 class AddSongSearchScreen extends StatefulWidget {
@@ -115,7 +114,7 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
 
   Future<void> _onTogglePreview(TrackSearchResult track) async {
     if (track.previewUrl.isEmpty) {
-      _showSnack('No preview available for this track.');
+      _showSnack('No audio is available for this track.');
       return;
     }
 
@@ -130,7 +129,7 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
       final previewUrl = track.externalId.isEmpty
           ? track.previewUrl
           : await _playlistApi.resolvePreviewUrl(track.externalId);
-      if (previewUrl.isEmpty) throw StateError('No preview URL available.');
+      if (previewUrl.isEmpty) throw StateError('No audio URL available.');
       await _previewPlayer.stop();
       await _previewPlayer.play(UrlSource(previewUrl));
       if (!mounted) return;
@@ -138,7 +137,7 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _playingExternalId = null);
-      _showSnack('Could not play preview.');
+      _showSnack('Could not play this track.');
     }
   }
 
@@ -383,6 +382,8 @@ class _TrackRow extends StatelessWidget {
                         color: _AddSongColors.muted,
                       ),
                     ),
+                    const SizedBox(height: 4),
+                    _PlaybackBadge(isFullTrack: track.hasFullPlayback),
                   ],
                 ),
               ),
@@ -406,6 +407,34 @@ class _TrackRow extends StatelessWidget {
                 _GradientPillButton(label: 'Add', onTap: onAdd),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlaybackBadge extends StatelessWidget {
+  const _PlaybackBadge({required this.isFullTrack});
+
+  final bool isFullTrack;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isFullTrack ? _AddSongColors.tertiary : _AddSongColors.muted;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        isFullTrack ? 'FULL SONG' : '30 SEC PREVIEW',
+        style: TextStyle(
+          color: color,
+          fontFamily: 'Sora',
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
         ),
       ),
     );

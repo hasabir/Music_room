@@ -238,7 +238,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const _OrDivider(),
                 const SizedBox(height: 20),
                 _GoogleButton(
-                  onPressed: _isSubmitting ? null : () => _onContinueWithGoogle(),
+                  onPressed: _isSubmitting
+                      ? null
+                      : () => _onContinueWithGoogle(),
                 ),
                 const SizedBox(height: 24),
                 _LogInPrompt(onPressed: _onLogIn),

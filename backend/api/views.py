@@ -1,3 +1,5 @@
+import re
+
 import requests
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -14,16 +16,63 @@ class HomeView(APIView):
 
 DEEZER_SEARCH_URL = "https://api.deezer.com/search"
 DEEZER_TRACK_URL = "https://api.deezer.com/track/{external_id}"
+AUDIOUS_API_URL = "https://api.audius.co/v1"
+AUDIOUS_EXTERNAL_ID_PREFIX = "audius:"
+
+
+def _audius_stream_url(track_id):
+    return f"{AUDIOUS_API_URL}/tracks/{track_id}/stream"
+
+
+def _is_audius_streamable(track):
+    value = track.get("is_streamable", track.get("isStreamable", True))
+    return value not in (False, "false", "False", 0, "0")
+
+
+def _search_audius(query):
+    """Returns full-length, streamable Audius tracks without failing search."""
+    try:
+        response = requests.get(
+            f"{AUDIOUS_API_URL}/tracks/search",
+            params={"query": query, "limit": 10},
+            timeout=5,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError):
+        return []
+
+    if not isinstance(payload, dict):
+        return []
+
+    tracks = []
+    for track in payload.get("data", []):
+        track_id = str(track.get("id", ""))
+        if not track_id or not _is_audius_streamable(track):
+            continue
+        artwork = track.get("artwork") or {}
+        artist = track.get("user") or {}
+        tracks.append({
+            "external_id": f"{AUDIOUS_EXTERNAL_ID_PREFIX}{track_id}",
+            "title": track.get("title", ""),
+            "artist": artist.get("name", artist.get("handle", "")),
+            "album_art_url": artwork.get("480x480", artwork.get("_480x480", "")),
+            # Stored in the existing field for backward compatibility. It is
+            # a full, legal Audius stream — not a Deezer preview.
+            "preview_url": _audius_stream_url(track_id),
+            "duration_seconds": track.get("duration"),
+            "playback_type": "full",
+        })
+    return tracks
 
 
 @extend_schema(
     summary="Search for tracks",
     description=(
-        "Proxies Deezer's track search so the mobile app never needs its "
-        "own API key. Each result includes a 30-second `preview_url` the "
-        "client can play directly, plus `external_id`/`title`/`artist`/"
-        "`duration_seconds` — the exact shape needed to add the track to "
-        "a playlist or an event's queue."
+        "Returns legal, full-length Audius streams first when available, then "
+        "falls back to Deezer's 30-second previews. Each result includes a "
+        "`playback_type` of `full` or `preview` plus the fields needed to add "
+        "the track to a playlist or an event's queue."
     ),
     parameters=[
         OpenApiParameter(name="q", type=str, required=True, description="Search query (title, artist, ...)"),
@@ -44,17 +93,21 @@ class TrackSearchView(APIView):
         if not query:
             return Response({"detail": "Query parameter 'q' is required."}, status=status.HTTP_400_BAD_REQUEST)
 
+        full_tracks = _search_audius(query)
+
         try:
             response = requests.get(DEEZER_SEARCH_URL, params={"q": query}, timeout=5)
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError):
+            if full_tracks:
+                return Response(full_tracks)
             return Response(
                 {"detail": "Unable to reach the music search service. Please try again."},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        tracks = [
+        preview_tracks = [
             {
                 "external_id": str(track["id"]),
                 "title": track.get("title", ""),
@@ -62,21 +115,22 @@ class TrackSearchView(APIView):
                 "album_art_url": (track.get("album") or {}).get("cover_medium", ""),
                 "preview_url": track.get("preview", ""),
                 "duration_seconds": track.get("duration"),
+                "playback_type": "preview",
             }
             for track in payload.get("data", [])
         ]
-        return Response(tracks)
+        return Response([*full_tracks, *preview_tracks])
 
 
 @extend_schema(
-    summary="Resolve a fresh track preview URL",
+    summary="Resolve a playable track URL",
     description=(
-        "Fetches the current Deezer preview URL for a stable Deezer track ID. "
-        "Preview CDN URLs are signed and expire, so clients must resolve one "
-        "immediately before playback instead of persisting it."
+        "Returns an Audius full-stream URL or fetches a fresh Deezer preview "
+        "URL for a stable external track ID. Deezer preview CDN URLs are "
+        "signed and expire, so clients resolve them immediately before playback."
     ),
     responses={
-        200: OpenApiResponse(description="A current preview URL."),
+        200: OpenApiResponse(description="A current playable URL."),
         400: OpenApiResponse(description="The external ID is invalid."),
         404: OpenApiResponse(description="The track has no playable preview."),
         502: OpenApiResponse(description="Deezer is unreachable or returned an error."),
@@ -88,6 +142,15 @@ class TrackPreviewView(APIView):
     throttle_classes = [TrackPreviewRateThrottle]
 
     def get(self, request, external_id):
+        if external_id.startswith(AUDIOUS_EXTERNAL_ID_PREFIX):
+            audius_track_id = external_id.removeprefix(AUDIOUS_EXTERNAL_ID_PREFIX)
+            if not re.fullmatch(r"[A-Za-z0-9]+", audius_track_id):
+                return Response(
+                    {"detail": "An Audius track ID is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response({"preview_url": _audius_stream_url(audius_track_id)})
+
         if not external_id.isdecimal():
             return Response(
                 {"detail": "A Deezer numeric track ID is required."},

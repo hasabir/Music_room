@@ -102,14 +102,18 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
 
   Future<void> _onEditProfile(UserProfile profile, String email) async {
     final updated = await Navigator.of(context).push<UserProfile>(
-      MaterialPageRoute(builder: (_) => EditProfileScreen(profile: profile, email: email)),
+      MaterialPageRoute(
+        builder: (_) => EditProfileScreen(profile: profile, email: email),
+      ),
     );
     _applyUpdatedProfile(updated);
   }
 
   Future<void> _onMusicPreferences(UserProfile profile) async {
     final updated = await Navigator.of(context).push<UserProfile>(
-      MaterialPageRoute(builder: (_) => MusicPreferencesScreen(profile: profile)),
+      MaterialPageRoute(
+        builder: (_) => MusicPreferencesScreen(profile: profile),
+      ),
     );
     _applyUpdatedProfile(updated);
   }
@@ -123,9 +127,8 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
   }
 
   Future<void> _onFriends() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const ConnectionsScreen()));
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const ConnectionsScreen()));
     // Friend requests may have been accepted/declined/removed on that
     // screen, which would leave the friends count shown here stale.
     _refresh();
@@ -135,13 +138,16 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     final data = _currentData;
     if (data == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Still loading your profile — try again in a moment.')),
+        const SnackBar(
+          content: Text('Still loading your profile — try again in a moment.'),
+        ),
       );
       return;
     }
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => SettingsScreen(profile: data.profile, authUser: data.authUser),
+        builder: (_) =>
+            SettingsScreen(profile: data.profile, authUser: data.authUser),
       ),
     );
   }
@@ -162,7 +168,9 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
-                      child: CircularProgressIndicator(color: _ProfileColors.headline),
+                      child: CircularProgressIndicator(
+                        color: _ProfileColors.headline,
+                      ),
                     );
                   }
 
@@ -186,10 +194,14 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                         _ProfileCard(
                           profile: data.profile,
                           authUser: data.authUser,
-                          onEditProfile: () => _onEditProfile(data.profile, data.authUser.email),
+                          onEditProfile: () =>
+                              _onEditProfile(data.profile, data.authUser.email),
                         ),
                         const SizedBox(height: 16),
-                        _FriendsCard(count: data.friends.length, onTap: _onFriends),
+                        _FriendsCard(
+                          count: data.friends.length,
+                          onTap: _onFriends,
+                        ),
                         const SizedBox(height: 16),
                         _StatsRow(
                           votes: data.profile.votesCount,
@@ -198,7 +210,10 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                         const SizedBox(height: 24),
                         const _DetailsLabel(),
                         const SizedBox(height: 10),
-                        _DetailsCard(profile: data.profile, email: data.authUser.email),
+                        _DetailsCard(
+                          profile: data.profile,
+                          email: data.authUser.email,
+                        ),
                         const SizedBox(height: 16),
                         _VibeSignatureCard(
                           genres: data.profile.favoriteGenres,
@@ -207,7 +222,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                         const SizedBox(height: 24),
                         _ProfileContentTabs(
                           playlists: data.playlists,
-                          currentUserEmail: data.authUser.email,
+                          currentUsername: data.authUser.username,
                         ),
                       ],
                     ),
@@ -237,6 +252,7 @@ class _ProfileData {
   factory _ProfileData.empty() => _ProfileData(
     profile: const UserProfile(
       id: 0,
+      username: '',
       displayName: '',
       bio: '',
       location: '',
@@ -253,6 +269,7 @@ class _ProfileData {
     authUser: const AuthUser(
       id: 0,
       email: '',
+      username: '',
       firstName: '',
       lastName: '',
       isEmailVerified: false,
@@ -295,7 +312,11 @@ class _TopBar extends StatelessWidget {
                 colors: [_ProfileColors.gradientStart, _ProfileColors.tertiary],
               ),
             ),
-            child: const Icon(Icons.graphic_eq_rounded, color: Colors.white, size: 20),
+            child: const Icon(
+              Icons.graphic_eq_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
           ),
           const SizedBox(width: 10),
           const Text(
@@ -310,7 +331,10 @@ class _TopBar extends StatelessWidget {
           const Spacer(),
           IconButton(
             onPressed: onSettingsTap,
-            icon: const Icon(Icons.settings_rounded, color: _ProfileColors.body),
+            icon: const Icon(
+              Icons.settings_rounded,
+              color: _ProfileColors.body,
+            ),
           ),
         ],
       ),
@@ -332,7 +356,11 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.wifi_off_rounded, color: _ProfileColors.muted, size: 40),
+            const Icon(
+              Icons.wifi_off_rounded,
+              color: _ProfileColors.muted,
+              size: 40,
+            ),
             const SizedBox(height: 12),
             Text(
               message,
@@ -356,7 +384,11 @@ class _ErrorState extends StatelessWidget {
 }
 
 class _ProfileCard extends StatelessWidget {
-  const _ProfileCard({required this.profile, required this.authUser, required this.onEditProfile});
+  const _ProfileCard({
+    required this.profile,
+    required this.authUser,
+    required this.onEditProfile,
+  });
 
   final UserProfile profile;
   final AuthUser authUser;
@@ -371,7 +403,10 @@ class _ProfileCard extends StatelessWidget {
   /// A `@handle`-style label derived from the display name, purely for
   /// visual presentation — `Profile` has no username/handle field.
   String? get _handle {
-    final slug = _displayName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final slug = _displayName.toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9]'),
+      '',
+    );
     return slug.isEmpty ? null : '@$slug';
   }
 
@@ -447,12 +482,17 @@ class _ProfileCard extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: _ProfileColors.tertiary,
                 side: const BorderSide(color: _ProfileColors.tertiary),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
               ),
               icon: const Icon(Icons.edit_rounded, size: 18),
               label: const Text(
                 'Edit Profile',
-                style: TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  fontFamily: 'Sora',
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -488,7 +528,11 @@ class _FriendsCard extends StatelessWidget {
       child: _Card(
         child: Row(
           children: [
-            const Icon(Icons.groups_rounded, size: 20, color: _ProfileColors.headline),
+            const Icon(
+              Icons.groups_rounded,
+              size: 20,
+              color: _ProfileColors.headline,
+            ),
             const SizedBox(width: 10),
             const Expanded(
               child: Text(
@@ -503,7 +547,10 @@ class _FriendsCard extends StatelessWidget {
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: _ProfileColors.chip, borderRadius: BorderRadius.circular(12)),
+              decoration: BoxDecoration(
+                color: _ProfileColors.chip,
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Text(
                 '$count',
                 style: const TextStyle(
@@ -515,7 +562,10 @@ class _FriendsCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.chevron_right_rounded, color: _ProfileColors.muted),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: _ProfileColors.muted,
+            ),
           ],
         ),
       ),
@@ -533,9 +583,13 @@ class _StatsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _StatTile(value: '$votes', label: 'VOTES')),
+        Expanded(
+          child: _StatTile(value: '$votes', label: 'VOTES'),
+        ),
         const SizedBox(width: 12),
-        Expanded(child: _StatTile(value: '$playlists', label: 'PLAYLISTS')),
+        Expanded(
+          child: _StatTile(value: '$playlists', label: 'PLAYLISTS'),
+        ),
       ],
     );
   }
@@ -634,7 +688,9 @@ class _DetailsCard extends StatelessWidget {
           _DetailRow(
             icon: Icons.cake_rounded,
             label: 'Birthday',
-            value: profile.birthday != null ? formatBirthday(profile.birthday!) : 'Not set',
+            value: profile.birthday != null
+                ? formatBirthday(profile.birthday!)
+                : 'Not set',
             privacy: _privacyFor(profile.fieldVisibility['birthday']!),
           ),
           const _DetailDivider(),
@@ -701,7 +757,13 @@ class _DetailRow extends StatelessWidget {
         const SizedBox(height: 6),
         Padding(
           padding: const EdgeInsets.only(left: 26),
-          child: Text(value, style: const TextStyle(fontSize: 14, color: _ProfileColors.description)),
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              color: _ProfileColors.description,
+            ),
+          ),
         ),
       ],
     );
@@ -716,9 +778,21 @@ class _PrivacyBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, icon, color) = switch (privacy) {
-      _Privacy.public => ('Public', Icons.public_rounded, _ProfileColors.badgePublic),
-      _Privacy.friends => ('Friends', Icons.people_alt_rounded, _ProfileColors.badgeFriends),
-      _Privacy.private => ('Private', Icons.lock_rounded, _ProfileColors.badgePrivate),
+      _Privacy.public => (
+        'Public',
+        Icons.public_rounded,
+        _ProfileColors.badgePublic,
+      ),
+      _Privacy.friends => (
+        'Friends',
+        Icons.people_alt_rounded,
+        _ProfileColors.badgeFriends,
+      ),
+      _Privacy.private => (
+        'Private',
+        Icons.lock_rounded,
+        _ProfileColors.badgePrivate,
+      ),
     };
 
     return Container(
@@ -734,7 +808,11 @@ class _PrivacyBadge extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
           ),
         ],
       ),
@@ -773,7 +851,10 @@ class _VibeSignatureCard extends StatelessWidget {
                     SizedBox(height: 2),
                     Text(
                       'Aesthetic & tonal preferences',
-                      style: TextStyle(fontSize: 12, color: _ProfileColors.muted),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _ProfileColors.muted,
+                      ),
                     ),
                   ],
                 ),
@@ -781,7 +862,11 @@ class _VibeSignatureCard extends StatelessWidget {
               IconButton(
                 onPressed: onEdit,
                 visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.edit_rounded, size: 18, color: _ProfileColors.headline),
+                icon: const Icon(
+                  Icons.edit_rounded,
+                  size: 18,
+                  color: _ProfileColors.headline,
+                ),
               ),
             ],
           ),
@@ -792,7 +877,9 @@ class _VibeSignatureCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              ...genres.map((code) => _Chip(label: musicGenreLabels[code] ?? code)),
+              ...genres.map(
+                (code) => _Chip(label: musicGenreLabels[code] ?? code),
+              ),
               _Chip(label: '+ Add', outlined: true, onTap: onEdit),
             ],
           ),
@@ -844,7 +931,9 @@ class _Chip extends StatelessWidget {
       decoration: BoxDecoration(
         color: outlined ? Colors.transparent : _ProfileColors.chip,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: outlined ? _ProfileColors.tertiary : _ProfileColors.cardBorder),
+        border: Border.all(
+          color: outlined ? _ProfileColors.tertiary : _ProfileColors.cardBorder,
+        ),
       ),
       child: Text(
         label,
@@ -858,7 +947,11 @@ class _Chip extends StatelessWidget {
     );
 
     if (onTap == null) return chip;
-    return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(20), child: chip);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: chip,
+    );
   }
 }
 
@@ -868,14 +961,18 @@ enum _ProfileContentTab { playlists, eventsHosted }
 /// it, or if it's private (the list endpoint only ever returns a private
 /// playlist to its owner or an invited collaborator, so either way it's
 /// "mine" — mirrors the same filter in `playlist_list_screen.dart`).
-bool _isMyPlaylist(Playlist playlist, String currentUserEmail) =>
-    playlist.owner == currentUserEmail || playlist.visibility == playlistVisibilityPrivate;
+bool _isMyPlaylist(Playlist playlist, String currentUsername) =>
+    playlist.owner == currentUsername ||
+    playlist.visibility == playlistVisibilityPrivate;
 
 class _ProfileContentTabs extends StatefulWidget {
-  const _ProfileContentTabs({required this.playlists, required this.currentUserEmail});
+  const _ProfileContentTabs({
+    required this.playlists,
+    required this.currentUsername,
+  });
 
   final List<Playlist> playlists;
-  final String currentUserEmail;
+  final String currentUsername;
 
   @override
   State<_ProfileContentTabs> createState() => _ProfileContentTabsState();
@@ -885,17 +982,20 @@ class _ProfileContentTabsState extends State<_ProfileContentTabs> {
   var _tab = _ProfileContentTab.playlists;
 
   void _onOpenPlaylist(Playlist playlist) {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => PlaylistDetailScreen(playlistId: playlist.id)));
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PlaylistDetailScreen(playlistId: playlist.id),
+      ),
+    );
   }
 
-  void _onCreatePlaylist() => navigateToTab(context, AppTab.profile, AppTab.playlist);
+  void _onCreatePlaylist() =>
+      navigateToTab(context, AppTab.profile, AppTab.playlist);
 
   @override
   Widget build(BuildContext context) {
     final myPlaylists = widget.playlists
-        .where((p) => _isMyPlaylist(p, widget.currentUserEmail))
+        .where((p) => _isMyPlaylist(p, widget.currentUsername))
         .toList();
 
     return Column(
@@ -912,7 +1012,8 @@ class _ProfileContentTabsState extends State<_ProfileContentTabs> {
             _TabButton(
               label: 'Events Hosted',
               isSelected: _tab == _ProfileContentTab.eventsHosted,
-              onTap: () => setState(() => _tab = _ProfileContentTab.eventsHosted),
+              onTap: () =>
+                  setState(() => _tab = _ProfileContentTab.eventsHosted),
             ),
             const Spacer(),
             const Icon(Icons.sort_rounded, color: _ProfileColors.muted),
@@ -932,7 +1033,10 @@ class _ProfileContentTabsState extends State<_ProfileContentTabs> {
             ...myPlaylists.map(
               (playlist) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: _PlaylistCard(playlist: playlist, onTap: () => _onOpenPlaylist(playlist)),
+                child: _PlaylistCard(
+                  playlist: playlist,
+                  onTap: () => _onOpenPlaylist(playlist),
+                ),
               ),
             )
         else
@@ -950,7 +1054,11 @@ class _ProfileContentTabsState extends State<_ProfileContentTabs> {
 }
 
 class _TabButton extends StatelessWidget {
-  const _TabButton({required this.label, required this.isSelected, required this.onTap});
+  const _TabButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   final String label;
   final bool isSelected;
@@ -1010,7 +1118,10 @@ class _PlaylistCard extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
                 gradient: const LinearGradient(
-                  colors: [_ProfileColors.gradientStart, _ProfileColors.tertiary],
+                  colors: [
+                    _ProfileColors.gradientStart,
+                    _ProfileColors.tertiary,
+                  ],
                 ),
               ),
               child: const Icon(Icons.queue_music_rounded, color: Colors.white),
@@ -1034,7 +1145,9 @@ class _PlaylistCard extends StatelessWidget {
                     children: [
                       VisibilityBadge(visibility: playlist.visibility),
                       const SizedBox(width: 6),
-                      EditPermissionBadge(editPermission: playlist.editPermission),
+                      EditPermissionBadge(
+                        editPermission: playlist.editPermission,
+                      ),
                     ],
                   ),
                 ],
@@ -1042,7 +1155,10 @@ class _PlaylistCard extends StatelessWidget {
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(color: _ProfileColors.chip, borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(
+                color: _ProfileColors.chip,
+                borderRadius: BorderRadius.circular(10),
+              ),
               child: Text(
                 '${playlist.songCount} Tracks',
                 style: const TextStyle(
@@ -1078,8 +1194,14 @@ class _HostedEventCard extends StatelessWidget {
           Container(
             width: 52,
             height: 52,
-            decoration: BoxDecoration(color: _ProfileColors.chip, borderRadius: BorderRadius.circular(14)),
-            child: const Icon(Icons.podcasts_rounded, color: _ProfileColors.headline),
+            decoration: BoxDecoration(
+              color: _ProfileColors.chip,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.podcasts_rounded,
+              color: _ProfileColors.headline,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -1096,7 +1218,13 @@ class _HostedEventCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(event.subtitle, style: const TextStyle(fontSize: 12, color: _ProfileColors.muted)),
+                Text(
+                  event.subtitle,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: _ProfileColors.muted,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1130,7 +1258,11 @@ class _CreatePlaylistButton extends StatelessWidget {
             SizedBox(height: 6),
             Text(
               'Create New Playlist',
-              style: TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w600, color: _ProfileColors.muted),
+              style: TextStyle(
+                fontFamily: 'Sora',
+                fontWeight: FontWeight.w600,
+                color: _ProfileColors.muted,
+              ),
             ),
           ],
         ),

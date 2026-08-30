@@ -157,7 +157,7 @@ class PlaylistSong {
     required this.songDurationSeconds,
     required this.songPreviewUrl,
     required this.position,
-    required this.addedByEmail,
+    required this.addedByUsername,
     required this.addedAt,
   });
 
@@ -172,7 +172,7 @@ class PlaylistSong {
     songDurationSeconds: json['song_duration_seconds'] as int?,
     songPreviewUrl: json['song_preview_url'] as String? ?? '',
     position: json['position'] as int,
-    addedByEmail: json['added_by_email'] as String?,
+    addedByUsername: json['added_by_username'] as String?,
     addedAt: DateTime.parse(json['added_at'] as String),
   );
 
@@ -199,7 +199,7 @@ class PlaylistSong {
 
   /// Null if the user who added this song has since been deleted
   /// (`added_by` is `SET_NULL` on the backend).
-  final String? addedByEmail;
+  final String? addedByUsername;
   final DateTime addedAt;
 }
 
@@ -211,7 +211,7 @@ class PlaylistCollaborator {
     required this.id,
     required this.playlist,
     required this.collaborator,
-    required this.collaboratorEmail,
+    required this.collaboratorUsername,
     required this.invitedAt,
     required this.canAddSongs,
     required this.canReorderSongs,
@@ -223,7 +223,7 @@ class PlaylistCollaborator {
         id: json['id'] as int,
         playlist: json['playlist'] as int,
         collaborator: json['collaborator'] as int,
-        collaboratorEmail: json['collaborator_email'] as String? ?? '',
+        collaboratorUsername: json['collaborator_username'] as String? ?? '',
         invitedAt: DateTime.parse(json['invited_at'] as String),
         canAddSongs: json['can_add_songs'] as bool? ?? true,
         canReorderSongs: json['can_reorder_songs'] as bool? ?? true,
@@ -236,7 +236,7 @@ class PlaylistCollaborator {
 
   /// The invited user's id.
   final int collaborator;
-  final String collaboratorEmail;
+  final String collaboratorUsername;
   final DateTime invitedAt;
   final bool canAddSongs;
   final bool canReorderSongs;
@@ -259,7 +259,7 @@ class PlaylistAccessRequest {
     required this.id,
     required this.playlist,
     required this.requester,
-    required this.requesterEmail,
+    required this.requesterUsername,
     required this.status,
     required this.requestedAt,
     required this.decidedAt,
@@ -270,7 +270,7 @@ class PlaylistAccessRequest {
         id: json['id'] as int,
         playlist: json['playlist'] as int,
         requester: json['requester'] as int,
-        requesterEmail: json['requester_email'] as String? ?? '',
+        requesterUsername: json['requester_username'] as String? ?? '',
         status: json['status'] as String? ?? playlistAccessRequestPending,
         requestedAt: DateTime.parse(json['requested_at'] as String),
         decidedAt: json['decided_at'] == null
@@ -281,7 +281,7 @@ class PlaylistAccessRequest {
   final int id;
   final int playlist;
   final int requester;
-  final String requesterEmail;
+  final String requesterUsername;
 
   /// One of [playlistAccessRequestPending] / [playlistAccessRequestApproved]
   /// / [playlistAccessRequestDenied].
@@ -290,12 +290,8 @@ class PlaylistAccessRequest {
   final DateTime? decidedAt;
 }
 
-/// One track from `GET /api/v1/tracks/search/?q=...` (`TrackSearchView`,
-/// which proxies Deezer). [previewUrl] is only a short-lived search result;
-/// playback resolves a fresh URL from [externalId]. Adding the track to a
-/// playlist only ever sends
-/// [title]/[artist]/[durationSeconds]/[externalId] to the backend, same as
-/// a manually-typed song (`PlaylistApi.addSong`).
+/// One track from `GET /api/v1/tracks/search/?q=...`. Audius results have a
+/// legal full stream; Deezer results remain 30-second previews.
 class TrackSearchResult {
   const TrackSearchResult({
     required this.externalId,
@@ -304,6 +300,7 @@ class TrackSearchResult {
     required this.albumArtUrl,
     required this.previewUrl,
     required this.durationSeconds,
+    required this.playbackType,
   });
 
   factory TrackSearchResult.fromJson(Map<String, dynamic> json) =>
@@ -314,6 +311,7 @@ class TrackSearchResult {
         albumArtUrl: json['album_art_url'] as String? ?? '',
         previewUrl: json['preview_url'] as String? ?? '',
         durationSeconds: json['duration_seconds'] as int?,
+        playbackType: json['playback_type'] as String? ?? 'preview',
       );
 
   final String externalId;
@@ -321,8 +319,11 @@ class TrackSearchResult {
   final String artist;
   final String albumArtUrl;
 
-  /// 30-second preview clip. Can be blank if Deezer has no preview for
-  /// this track.
+  /// A full Audius stream or a 30-second Deezer preview, depending on
+  /// [playbackType].
   final String previewUrl;
   final int? durationSeconds;
+  final String playbackType;
+
+  bool get hasFullPlayback => playbackType == 'full';
 }

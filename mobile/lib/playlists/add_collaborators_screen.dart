@@ -112,7 +112,8 @@ class _AddCollaboratorsScreenState extends State<AddCollaboratorsScreen> {
 
   void _showSnack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -128,24 +129,33 @@ class _AddCollaboratorsScreenState extends State<AddCollaboratorsScreen> {
                 children: [
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.arrow_back_rounded, color: _AddCollaboratorsColors.body),
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: _AddCollaboratorsColors.body,
+                    ),
                   ),
                   Expanded(
                     child: TextField(
                       controller: _controller,
                       autofocus: true,
                       onChanged: _onQueryChanged,
-                      style: const TextStyle(color: _AddCollaboratorsColors.body),
+                      style: const TextStyle(
+                        color: _AddCollaboratorsColors.body,
+                      ),
                       decoration: InputDecoration(
-                        hintText: 'Search for people to invite...',
-                        hintStyle: const TextStyle(color: _AddCollaboratorsColors.muted),
+                        hintText: 'Search username to invite...',
+                        hintStyle: const TextStyle(
+                          color: _AddCollaboratorsColors.muted,
+                        ),
                         prefixIcon: const Icon(
                           Icons.search_rounded,
                           color: _AddCollaboratorsColors.tertiary,
                         ),
                         filled: true,
                         fillColor: _AddCollaboratorsColors.card,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 14,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(20),
                           borderSide: BorderSide.none,
@@ -166,12 +176,19 @@ class _AddCollaboratorsScreenState extends State<AddCollaboratorsScreen> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: _AddCollaboratorsColors.headline));
+      return const Center(
+        child: CircularProgressIndicator(
+          color: _AddCollaboratorsColors.headline,
+        ),
+      );
     }
 
     if (_error != null) {
       return Center(
-        child: Text(_error!, style: const TextStyle(color: _AddCollaboratorsColors.muted)),
+        child: Text(
+          _error!,
+          style: const TextStyle(color: _AddCollaboratorsColors.muted),
+        ),
       );
     }
 
@@ -179,7 +196,7 @@ class _AddCollaboratorsScreenState extends State<AddCollaboratorsScreen> {
     if (results == null) {
       return const Center(
         child: Text(
-          'Search by name or email to find people.',
+          'Search by username to find people.',
           style: TextStyle(color: _AddCollaboratorsColors.muted),
         ),
       );
@@ -187,7 +204,10 @@ class _AddCollaboratorsScreenState extends State<AddCollaboratorsScreen> {
 
     if (results.isEmpty) {
       return const Center(
-        child: Text('No users found.', style: TextStyle(color: _AddCollaboratorsColors.muted)),
+        child: Text(
+          'No users found.',
+          style: TextStyle(color: _AddCollaboratorsColors.muted),
+        ),
       );
     }
 
@@ -208,7 +228,11 @@ class _AddCollaboratorsScreenState extends State<AddCollaboratorsScreen> {
 }
 
 class _SearchResultRow extends StatelessWidget {
-  const _SearchResultRow({required this.user, required this.isInvited, required this.onInvite});
+  const _SearchResultRow({
+    required this.user,
+    required this.isInvited,
+    required this.onInvite,
+  });
 
   final SearchUser user;
   final bool isInvited;
@@ -229,14 +253,17 @@ class _SearchResultRow extends StatelessWidget {
             radius: 22,
             backgroundColor: _AddCollaboratorsColors.border,
             child: Text(
-              user.firstName.isNotEmpty ? user.firstName[0].toUpperCase() : '?',
-              style: const TextStyle(color: _AddCollaboratorsColors.headline, fontWeight: FontWeight.w700),
+              user.username.isNotEmpty ? user.username[0].toUpperCase() : '?',
+              style: const TextStyle(
+                color: _AddCollaboratorsColors.headline,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Text(
-              user.fullName,
+              user.publicName,
               style: const TextStyle(
                 fontFamily: 'Sora',
                 fontSize: 15,
@@ -251,7 +278,11 @@ class _SearchResultRow extends StatelessWidget {
             const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.check_circle_rounded, size: 14, color: _AddCollaboratorsColors.muted),
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 14,
+                  color: _AddCollaboratorsColors.muted,
+                ),
                 SizedBox(width: 4),
                 Text(
                   'COLLABORATOR',
@@ -289,12 +320,19 @@ class _GradientPillButton extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
           gradient: const LinearGradient(
-            colors: [_AddCollaboratorsColors.gradientStart, _AddCollaboratorsColors.gradientEnd],
+            colors: [
+              _AddCollaboratorsColors.gradientStart,
+              _AddCollaboratorsColors.gradientEnd,
+            ],
           ),
         ),
         child: Text(
           label,
-          style: const TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700, color: Colors.white),
+          style: const TextStyle(
+            fontFamily: 'Sora',
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
         ),
       ),
     );

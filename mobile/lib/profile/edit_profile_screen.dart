@@ -42,7 +42,11 @@ List<Widget> _joinWithSpacing(List<Widget> rows) => [
 ///
 /// Favorite genres are edited on the separate Music Preferences screen.
 class EditProfileScreen extends StatefulWidget {
-  const EditProfileScreen({super.key, required this.profile, required this.email});
+  const EditProfileScreen({
+    super.key,
+    required this.profile,
+    required this.email,
+  });
 
   final UserProfile profile;
   final String email;
@@ -56,6 +60,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _imagePicker = ImagePicker();
 
   late final TextEditingController _displayNameController;
+  late final TextEditingController _usernameController;
   late final TextEditingController _bioController;
   late final TextEditingController _locationController;
   late final TextEditingController _favoriteArtistController;
@@ -79,16 +84,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _latestProfile = widget.profile;
     _visibility = Map.of(widget.profile.fieldVisibility);
     _birthday = widget.profile.birthday;
-    _displayNameController = TextEditingController(text: widget.profile.displayName);
+    _displayNameController = TextEditingController(
+      text: widget.profile.displayName,
+    );
+    _usernameController = TextEditingController(text: widget.profile.username);
     _bioController = TextEditingController(text: widget.profile.bio);
     _locationController = TextEditingController(text: widget.profile.location);
-    _favoriteArtistController = TextEditingController(text: widget.profile.favoriteArtist);
+    _favoriteArtistController = TextEditingController(
+      text: widget.profile.favoriteArtist,
+    );
     _phoneController = TextEditingController(text: widget.profile.phoneNumber);
   }
 
   @override
   void dispose() {
     _displayNameController.dispose();
+    _usernameController.dispose();
     _bioController.dispose();
     _locationController.dispose();
     _favoriteArtistController.dispose();
@@ -108,13 +119,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.photo_camera_outlined, color: _EditColors.headline),
-              title: const Text('Take a photo', style: TextStyle(color: _EditColors.body)),
+              leading: const Icon(
+                Icons.photo_camera_outlined,
+                color: _EditColors.headline,
+              ),
+              title: const Text(
+                'Take a photo',
+                style: TextStyle(color: _EditColors.body),
+              ),
               onTap: () => Navigator.of(context).pop(ImageSource.camera),
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library_outlined, color: _EditColors.headline),
-              title: const Text('Choose from gallery', style: TextStyle(color: _EditColors.body)),
+              leading: const Icon(
+                Icons.photo_library_outlined,
+                color: _EditColors.headline,
+              ),
+              title: const Text(
+                'Choose from gallery',
+                style: TextStyle(color: _EditColors.body),
+              ),
               onTap: () => Navigator.of(context).pop(ImageSource.gallery),
             ),
           ],
@@ -123,7 +146,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
     if (source == null) return;
 
-    final picked = await _imagePicker.pickImage(source: source, imageQuality: 85);
+    final picked = await _imagePicker.pickImage(
+      source: source,
+      imageQuality: 85,
+    );
     if (picked == null || !mounted) return;
 
     setState(() => _isUploadingPhoto = true);
@@ -133,7 +159,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       setState(() => _latestProfile = updated);
     } on ApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     } finally {
       if (mounted) setState(() => _isUploadingPhoto = false);
     }
@@ -158,6 +185,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     try {
       final updated = await _profileApi.updateMyProfile(
+        username: _usernameController.text.trim(),
         displayName: _displayNameController.text.trim(),
         bio: _bioController.text.trim(),
         location: _locationController.text.trim(),
@@ -209,13 +237,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         controller: _bioController,
         icon: Icons.format_quote_rounded,
         maxLines: 3,
-        trailing: _VisibilityDropdown(value: _visibility['bio']!, onChanged: onChanged),
+        trailing: _VisibilityDropdown(
+          value: _visibility['bio']!,
+          onChanged: onChanged,
+        ),
       ),
       'location' => _EditField(
         label: 'LOCATION',
         controller: _locationController,
         icon: Icons.location_on_outlined,
-        trailing: _VisibilityDropdown(value: _visibility['location']!, onChanged: onChanged),
+        trailing: _VisibilityDropdown(
+          value: _visibility['location']!,
+          onChanged: onChanged,
+        ),
       ),
       'favorite_artist' => _EditField(
         label: 'FAVORITE ARTIST',
@@ -231,14 +265,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         controller: _phoneController,
         icon: Icons.phone_iphone_rounded,
         keyboardType: TextInputType.phone,
-        trailing: _VisibilityDropdown(value: _visibility['phone_number']!, onChanged: onChanged),
+        trailing: _VisibilityDropdown(
+          value: _visibility['phone_number']!,
+          onChanged: onChanged,
+        ),
       ),
       'birthday' => _BirthdayField(
         birthday: _birthday,
         onTap: _pickBirthday,
-        trailing: _VisibilityDropdown(value: _visibility['birthday']!, onChanged: onChanged),
+        trailing: _VisibilityDropdown(
+          value: _visibility['birthday']!,
+          onChanged: onChanged,
+        ),
       ),
-      _ => _ListeningActivityRow(value: _visibility['activity']!, onChanged: onChanged),
+      _ => _ListeningActivityRow(
+        value: _visibility['activity']!,
+        onChanged: onChanged,
+      ),
     };
   }
 
@@ -273,6 +316,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   const SizedBox(height: 16),
                   _FieldsCard(
                     children: _joinWithSpacing([
+                      _EditField(
+                        label: 'USERNAME',
+                        controller: _usernameController,
+                        icon: Icons.alternate_email_rounded,
+                      ),
                       _EditField(
                         label: 'DISPLAY NAME',
                         controller: _displayNameController,
@@ -321,10 +369,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 16),
-                    Text(_error!, style: const TextStyle(color: _EditColors.error)),
+                    Text(
+                      _error!,
+                      style: const TextStyle(color: _EditColors.error),
+                    ),
                   ],
                   const SizedBox(height: 28),
-                  _SaveButton(isSaving: _isSaving, onPressed: _save, label: 'Save Changes'),
+                  _SaveButton(
+                    isSaving: _isSaving,
+                    onPressed: _save,
+                    label: 'Save Changes',
+                  ),
                 ],
               ),
             ),
@@ -349,7 +404,10 @@ class _Header extends StatelessWidget {
         children: [
           IconButton(
             onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_rounded, color: _EditColors.headline),
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+              color: _EditColors.headline,
+            ),
           ),
           Expanded(
             child: Text(
@@ -419,7 +477,10 @@ class _AvatarEditor extends StatelessWidget {
                   child: SizedBox(
                     width: 28,
                     height: 28,
-                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
@@ -435,9 +496,15 @@ class _AvatarEditor extends StatelessWidget {
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
                   color: _EditColors.card,
-                  border: Border.fromBorderSide(BorderSide(color: _EditColors.border)),
+                  border: Border.fromBorderSide(
+                    BorderSide(color: _EditColors.border),
+                  ),
                 ),
-                child: const Icon(Icons.edit_rounded, size: 16, color: _EditColors.headline),
+                child: const Icon(
+                  Icons.edit_rounded,
+                  size: 16,
+                  color: _EditColors.headline,
+                ),
               ),
             ),
           ),
@@ -460,7 +527,11 @@ class _AvatarFallback extends StatelessWidget {
 }
 
 class _SectionDivider extends StatelessWidget {
-  const _SectionDivider({required this.icon, required this.label, required this.color});
+  const _SectionDivider({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
 
   final IconData icon;
   final String label;
@@ -517,7 +588,10 @@ class _FieldsCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _EditColors.border),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
     );
   }
 }
@@ -575,7 +649,10 @@ class _EditField extends StatelessWidget {
             prefixIconConstraints: const BoxConstraints(minWidth: 36),
             filled: true,
             fillColor: _EditColors.background,
-            contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 14,
+              horizontal: 12,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
               borderSide: const BorderSide(color: _EditColors.border),
@@ -664,7 +741,12 @@ class _VisibilityDropdown extends StatelessWidget {
           Expanded(
             child: Text(label, style: const TextStyle(color: _EditColors.body)),
           ),
-          if (isSelected) const Icon(Icons.check_rounded, size: 16, color: _EditColors.headline),
+          if (isSelected)
+            const Icon(
+              Icons.check_rounded,
+              size: 16,
+              color: _EditColors.headline,
+            ),
         ],
       ),
     );
@@ -685,7 +767,11 @@ class _ListeningActivityRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.graphic_eq_rounded, size: 18, color: _EditColors.muted),
+        const Icon(
+          Icons.graphic_eq_rounded,
+          size: 18,
+          color: _EditColors.muted,
+        ),
         const SizedBox(width: 12),
         const Expanded(
           child: Text(
@@ -708,7 +794,11 @@ class _ListeningActivityRow extends StatelessWidget {
 /// out like [_EditField] so it sits consistently alongside the other
 /// configurable rows.
 class _BirthdayField extends StatelessWidget {
-  const _BirthdayField({required this.birthday, required this.onTap, required this.trailing});
+  const _BirthdayField({
+    required this.birthday,
+    required this.onTap,
+    required this.trailing,
+  });
 
   final DateTime? birthday;
   final VoidCallback onTap;
@@ -752,13 +842,19 @@ class _BirthdayField extends StatelessWidget {
               children: [
                 const Padding(
                   padding: EdgeInsets.only(left: 4, right: 12),
-                  child: Icon(Icons.cake_outlined, size: 18, color: _EditColors.muted),
+                  child: Icon(
+                    Icons.cake_outlined,
+                    size: 18,
+                    color: _EditColors.muted,
+                  ),
                 ),
                 Text(
                   birthday != null ? formatBirthday(birthday!) : 'Not set',
                   style: TextStyle(
                     fontFamily: 'Sora',
-                    color: birthday != null ? _EditColors.body : _EditColors.muted,
+                    color: birthday != null
+                        ? _EditColors.body
+                        : _EditColors.muted,
                   ),
                 ),
               ],
@@ -771,7 +867,11 @@ class _BirthdayField extends StatelessWidget {
 }
 
 class _ReadOnlyField extends StatelessWidget {
-  const _ReadOnlyField({required this.label, required this.value, required this.icon});
+  const _ReadOnlyField({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
 
   final String label;
   final String value;
@@ -807,7 +907,10 @@ class _ReadOnlyField extends StatelessWidget {
               Expanded(
                 child: Text(
                   value,
-                  style: const TextStyle(color: _EditColors.muted, fontFamily: 'Sora'),
+                  style: const TextStyle(
+                    color: _EditColors.muted,
+                    fontFamily: 'Sora',
+                  ),
                 ),
               ),
             ],
@@ -819,7 +922,11 @@ class _ReadOnlyField extends StatelessWidget {
 }
 
 class _SaveButton extends StatelessWidget {
-  const _SaveButton({required this.isSaving, required this.onPressed, required this.label});
+  const _SaveButton({
+    required this.isSaving,
+    required this.onPressed,
+    required this.label,
+  });
 
   final bool isSaving;
   final VoidCallback onPressed;
@@ -842,13 +949,18 @@ class _SaveButton extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.transparent,
             shadowColor: Colors.transparent,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(27)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(27),
+            ),
           ),
           child: isSaving
               ? const SizedBox(
                   width: 22,
                   height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 )
               : Text(
                   label,

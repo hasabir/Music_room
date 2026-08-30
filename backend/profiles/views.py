@@ -357,7 +357,7 @@ class SentFriendRequestListView(generics.ListAPIView):
 @extend_schema(
     summary="Search users",
     description=(
-        "Searches users by first name, last name, or email (case-insensitive, "
+        "Searches users by username, first name, or last name (case-insensitive, "
         "partial match). Excludes yourself. Each result includes your "
         "relationship status with that user (`none`, `pending_sent`, "
         "`pending_received`, or `friends`), plus the `friendship_id` when one "
@@ -378,9 +378,9 @@ class UserSearchView(generics.GenericAPIView):
             return Response([])
 
         users = list(User.objects.filter(
+            Q(username__icontains=query) |
             Q(first_name__icontains=query) |
-            Q(last_name__icontains=query) |
-            Q(email__icontains=query)
+            Q(last_name__icontains=query)
         ).exclude(id=request.user.id)[:20])
 
         sent = {
@@ -410,9 +410,9 @@ class UserSearchView(generics.GenericAPIView):
 
             results.append({
                 "id": user.id,
+                "username": user.username,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
-                "email": user.email,
                 "relationship_status": relationship,
                 "friendship_id": friendship_id,
             })

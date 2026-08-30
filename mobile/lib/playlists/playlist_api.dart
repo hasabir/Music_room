@@ -138,16 +138,16 @@ class PlaylistApi {
     return PlaylistSong.fromJson(response);
   }
 
-  /// Searches Deezer (via the backend's proxy) for tracks matching [query].
-  /// Each result carries a 30-second `previewUrl` for in-app preview and
-  /// the exact fields [addSong] needs to add it to a playlist.
+  /// Searches the backend's legal music sources for tracks matching [query].
+  /// Audius results can stream in full; Deezer results provide a 30-second
+  /// preview. Every result carries the fields [addSong] needs.
   Future<List<TrackSearchResult>> searchTracks(String query) async {
     final response = await _authorizedGetList(ApiConfig.trackSearchUri(query));
     return response.map((json) => TrackSearchResult.fromJson(json)).toList();
   }
 
-  /// Gets a newly signed Deezer preview URL just before playback. Deezer's
-  /// CDN URLs expire, so playlist records must not be played directly.
+  /// Gets a playable URL just before playback. Deezer preview URLs are
+  /// signed and expire; Audius full-stream URLs are resolved here too.
   Future<String> resolvePreviewUrl(String externalId) async {
     final response = await _authorizedGet(
       ApiConfig.trackPreviewUri(externalId),

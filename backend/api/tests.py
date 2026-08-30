@@ -38,6 +38,15 @@ class TrackPreviewTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_resolves_audius_tracks_to_a_full_stream_url(self):
+        response = self.client.get("/api/v1/tracks/audius:AbC123/preview/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["preview_url"],
+            "https://api.audius.co/v1/tracks/AbC123/stream",
+        )
+
     @patch("api.views.requests.get")
     def test_reports_when_a_track_has_no_preview(self, mock_get):
         deezer_response = Mock()

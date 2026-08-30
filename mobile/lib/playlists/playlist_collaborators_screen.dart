@@ -160,7 +160,7 @@ class _PlaylistCollaboratorsScreenState
           ),
         ),
         content: Text(
-          '${collaborator.collaboratorEmail} will lose access to edit this playlist.',
+          '@${collaborator.collaboratorUsername} will lose access to edit this playlist.',
           style: const TextStyle(color: _CollaboratorsColors.muted),
         ),
         actions: [
@@ -437,8 +437,8 @@ class _AccessRequestRow extends StatelessWidget {
             radius: 20,
             backgroundColor: _CollaboratorsColors.border,
             child: Text(
-              request.requesterEmail.isNotEmpty
-                  ? request.requesterEmail[0].toUpperCase()
+              request.requesterUsername.isNotEmpty
+                  ? request.requesterUsername[0].toUpperCase()
                   : '?',
               style: const TextStyle(
                 color: _CollaboratorsColors.headline,
@@ -449,7 +449,7 @@ class _AccessRequestRow extends StatelessWidget {
           const SizedBox(width: 14),
           Expanded(
             child: Text(
-              request.requesterEmail,
+              '@${request.requesterUsername}',
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontFamily: 'Sora',
@@ -526,8 +526,8 @@ class _CollaboratorRow extends StatelessWidget {
                 radius: 20,
                 backgroundColor: _CollaboratorsColors.border,
                 child: Text(
-                  collaborator.collaboratorEmail.isNotEmpty
-                      ? collaborator.collaboratorEmail[0].toUpperCase()
+                  collaborator.collaboratorUsername.isNotEmpty
+                      ? collaborator.collaboratorUsername[0].toUpperCase()
                       : '?',
                   style: const TextStyle(
                     color: _CollaboratorsColors.headline,
@@ -538,7 +538,7 @@ class _CollaboratorRow extends StatelessWidget {
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
-                  collaborator.collaboratorEmail,
+                  '@${collaborator.collaboratorUsername}',
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontFamily: 'Sora',
