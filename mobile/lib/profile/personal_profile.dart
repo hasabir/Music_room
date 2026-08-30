@@ -1104,7 +1104,7 @@ class _PlaylistCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: _ProfileColors.card,
           borderRadius: BorderRadius.circular(20),
@@ -1112,20 +1112,7 @@ class _PlaylistCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                gradient: const LinearGradient(
-                  colors: [
-                    _ProfileColors.gradientStart,
-                    _ProfileColors.tertiary,
-                  ],
-                ),
-              ),
-              child: const Icon(Icons.queue_music_rounded, color: Colors.white),
-            ),
+            PlaylistCoverThumb(playlist: playlist, size: 56, radius: 14),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -1133,39 +1120,37 @@ class _PlaylistCard extends StatelessWidget {
                 children: [
                   Text(
                     playlist.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontFamily: 'Sora',
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
                       fontSize: 15,
                       color: _ProfileColors.body,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${playlist.songCount} ${playlist.songCount == 1 ? 'track' : 'tracks'} · ${playlist.owner}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: _ProfileColors.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       VisibilityBadge(visibility: playlist.visibility),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 8),
                       EditPermissionBadge(
                         editPermission: playlist.editPermission,
                       ),
                     ],
                   ),
                 ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: _ProfileColors.chip,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                '${playlist.songCount} Tracks',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: _ProfileColors.muted,
-                ),
               ),
             ),
           ],
