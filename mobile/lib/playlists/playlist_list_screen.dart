@@ -54,7 +54,10 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
 
   Future<_ListData> _load() async {
     try {
-      final results = await Future.wait([_playlistApi.listPlaylists(), _authApi.getCurrentUser()]);
+      final results = await Future.wait([
+        _playlistApi.listPlaylists(),
+        _authApi.getCurrentUser(),
+      ]);
       return _ListData(
         playlists: results[0] as List<Playlist>,
         authUser: results[1] as AuthUser,
@@ -67,22 +70,27 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
 
   Future<void> _refresh() async {
     final future = _load();
-    setState(() => _dataFuture = future);
-    await future.catchError((_) => const _ListData(playlists: [], authUser: null));
+    setState(() {
+      _dataFuture = future;
+    });
+    await future.catchError(
+      (_) => const _ListData(playlists: [], authUser: null),
+    );
   }
 
   Future<void> _signOutAndReturnToWelcome() async {
     await _tokenStorage.clear();
     if (!mounted) return;
-    Navigator.of(
-      context,
-    ).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const WelcomeScreen()), (route) => false);
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+      (route) => false,
+    );
   }
 
   Future<void> _onCreatePlaylist() async {
-    final created = await Navigator.of(
-      context,
-    ).push<Playlist>(MaterialPageRoute(builder: (_) => const CreatePlaylistScreen()));
+    final created = await Navigator.of(context).push<Playlist>(
+      MaterialPageRoute(builder: (_) => const CreatePlaylistScreen()),
+    );
     if (created != null) await _addPlaylistLocally(created);
   }
 
@@ -106,16 +114,24 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
 
     setState(() {
       _dataFuture = Future.value(
-        _ListData(playlists: [playlist, ...current!.playlists], authUser: current.authUser),
+        _ListData(
+          playlists: [playlist, ...current!.playlists],
+          authUser: current.authUser,
+        ),
       );
     });
   }
 
   Future<void> _onOpenPlaylist(Playlist playlist) async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => PlaylistDetailScreen(playlistId: playlist.id)));
-    _refresh();
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PlaylistDetailScreen(playlistId: playlist.id),
+      ),
+    );
+    // The detail screen can change the title/cover while this route is in the
+    // background. Await the authoritative list response before showing these
+    // cards again, rather than briefly rendering stale metadata.
+    await _refresh();
   }
 
   Future<void> _onDeletePlaylist(Playlist playlist) async {
@@ -124,7 +140,10 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: _PlaylistColors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Playlist?', style: TextStyle(fontFamily: 'Sora', color: _PlaylistColors.body)),
+        title: const Text(
+          'Delete Playlist?',
+          style: TextStyle(fontFamily: 'Sora', color: _PlaylistColors.body),
+        ),
         content: Text(
           '"${playlist.title}" and all of its songs will be permanently deleted.',
           style: const TextStyle(color: _PlaylistColors.muted),
@@ -132,11 +151,17 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: _PlaylistColors.muted)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: _PlaylistColors.muted),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.redAccent),
+            ),
           ),
         ],
       ),
@@ -150,7 +175,8 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       await _signOutAndReturnToWelcome();
     } on ApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -165,7 +191,10 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _TabSwitcher(tab: _tab, onChanged: (tab) => setState(() => _tab = tab)),
+              child: _TabSwitcher(
+                tab: _tab,
+                onChanged: (tab) => setState(() => _tab = tab),
+              ),
             ),
             const SizedBox(height: 8),
             Expanded(
@@ -174,7 +203,9 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
-                      child: CircularProgressIndicator(color: _PlaylistColors.headline),
+                      child: CircularProgressIndicator(
+                        color: _PlaylistColors.headline,
+                      ),
                     );
                   }
 
@@ -188,7 +219,11 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                   final data = snapshot.data!;
                   final email = data.authUser?.email ?? '';
                   final visible = data.playlists
-                      .where((p) => _tab == _PlaylistTab.mine ? _isMine(p, email) : !_isMine(p, email))
+                      .where(
+                        (p) => _tab == _PlaylistTab.mine
+                            ? _isMine(p, email)
+                            : !_isMine(p, email),
+                      )
                       .toList();
 
                   return RefreshIndicator(
@@ -201,14 +236,17 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                             children: [
                               _EmptyState(
                                 tab: _tab,
-                                onCreate: _tab == _PlaylistTab.mine ? _onCreatePlaylist : null,
+                                onCreate: _tab == _PlaylistTab.mine
+                                    ? _onCreatePlaylist
+                                    : null,
                               ),
                             ],
                           )
                         : ListView.separated(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                             itemCount: visible.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: 12),
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 12),
                             itemBuilder: (context, index) {
                               final playlist = visible[index];
                               return _PlaylistHeroCard(
@@ -241,7 +279,8 @@ enum _PlaylistTab { mine, discover }
 /// owner or an invited collaborator, so either way it's not something to
 /// "discover").
 bool _isMine(Playlist playlist, String currentUserEmail) =>
-    playlist.owner == currentUserEmail || playlist.visibility == playlistVisibilityPrivate;
+    playlist.owner == currentUserEmail ||
+    playlist.visibility == playlistVisibilityPrivate;
 
 class _ListData {
   const _ListData({required this.playlists, required this.authUser});
@@ -274,7 +313,10 @@ class _ListHeader extends StatelessWidget {
           ),
           IconButton(
             onPressed: onCreate,
-            style: IconButton.styleFrom(backgroundColor: _PlaylistColors.card, shape: const CircleBorder()),
+            style: IconButton.styleFrom(
+              backgroundColor: _PlaylistColors.card,
+              shape: const CircleBorder(),
+            ),
             icon: const Icon(Icons.add_rounded, color: _PlaylistColors.body),
           ),
         ],
@@ -293,7 +335,10 @@ class _TabSwitcher extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: _PlaylistColors.card, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: _PlaylistColors.card,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Row(
         children: [
           Expanded(
@@ -317,7 +362,11 @@ class _TabSwitcher extends StatelessWidget {
 }
 
 class _TabButton extends StatelessWidget {
-  const _TabButton({required this.label, required this.isSelected, required this.onTap});
+  const _TabButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   final String label;
   final bool isSelected;
@@ -401,7 +450,10 @@ class _PlaylistHeroCard extends StatelessWidget {
                     '${playlist.songCount} ${playlist.songCount == 1 ? 'track' : 'tracks'} · ${playlist.owner}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: _PlaylistColors.muted),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: _PlaylistColors.muted,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -409,16 +461,23 @@ class _PlaylistHeroCard extends StatelessWidget {
                     children: [
                       VisibilityBadge(visibility: playlist.visibility),
                       const SizedBox(width: 8),
-                      EditPermissionBadge(editPermission: playlist.editPermission),
+                      EditPermissionBadge(
+                        editPermission: playlist.editPermission,
+                      ),
                     ],
                   ),
                 ],
               ),
             ),
             PopupMenuButton<_PlaylistAction>(
-              icon: const Icon(Icons.more_vert_rounded, color: _PlaylistColors.muted),
+              icon: const Icon(
+                Icons.more_vert_rounded,
+                color: _PlaylistColors.muted,
+              ),
               color: _PlaylistColors.card,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
               onSelected: (action) {
                 switch (action) {
                   case _PlaylistAction.open:
@@ -430,12 +489,18 @@ class _PlaylistHeroCard extends StatelessWidget {
               itemBuilder: (context) => [
                 const PopupMenuItem(
                   value: _PlaylistAction.open,
-                  child: Text('Open', style: TextStyle(color: _PlaylistColors.body)),
+                  child: Text(
+                    'Open',
+                    style: TextStyle(color: _PlaylistColors.body),
+                  ),
                 ),
                 if (isOwner)
                   const PopupMenuItem(
                     value: _PlaylistAction.delete,
-                    child: Text('Delete', style: TextStyle(color: Colors.redAccent)),
+                    child: Text(
+                      'Delete',
+                      style: TextStyle(color: Colors.redAccent),
+                    ),
                   ),
               ],
             ),
@@ -462,9 +527,17 @@ class _EmptyState extends StatelessWidget {
 
     return Column(
       children: [
-        const Icon(Icons.queue_music_rounded, size: 40, color: _PlaylistColors.muted),
+        const Icon(
+          Icons.queue_music_rounded,
+          size: 40,
+          color: _PlaylistColors.muted,
+        ),
         const SizedBox(height: 12),
-        Text(message, textAlign: TextAlign.center, style: const TextStyle(color: _PlaylistColors.body)),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: _PlaylistColors.body),
+        ),
         if (onCreate != null) ...[
           const SizedBox(height: 16),
           OutlinedButton(
@@ -495,9 +568,17 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.wifi_off_rounded, color: _PlaylistColors.muted, size: 40),
+            const Icon(
+              Icons.wifi_off_rounded,
+              color: _PlaylistColors.muted,
+              size: 40,
+            ),
             const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: _PlaylistColors.body)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: _PlaylistColors.body),
+            ),
             const SizedBox(height: 16),
             OutlinedButton(
               onPressed: () => onRetry(),
@@ -513,4 +594,3 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
-

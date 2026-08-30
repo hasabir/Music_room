@@ -1,10 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../auth/auth_api.dart';
 import '../auth/auth_models.dart';
@@ -12,8 +11,10 @@ import '../auth/welcome_screen.dart';
 import '../core/api/api_client.dart';
 import '../core/api/api_config.dart';
 import '../core/auth/token_storage.dart';
+import '../core/playback/playback_controller.dart';
 import '../home/home_screen.dart';
 import 'add_song_search_screen.dart';
+import 'edit_playlist_screen.dart';
 import 'playlist_api.dart';
 import 'playlist_collaborators_screen.dart';
 import 'playlist_models.dart';
@@ -64,10 +65,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   final _playlistApi = PlaylistApi();
   final _authApi = AuthApi();
   final _tokenStorage = TokenStorage();
-  final _audioPlayer = AudioPlayer();
+  final _playback = PlaybackController.instance;
 
   Timer? _pollTimer;
-  StreamSubscription<void>? _previewCompleteSub;
+  StreamSubscription<String>? _previewCompleteSub;
   WebSocket? _playlistSocket;
   StreamSubscription<dynamic>? _playlistSocketSub;
   Timer? _liveUpdateReconnectTimer;
@@ -78,14 +79,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   /// `_PlaybackRow`), so this preview doubles as the only way to actually
   /// hear a song that's already in the playlist.
   int? _playingSongId;
-
-  /// Ids of the songs queued for shuffled auto-advance playback, in the
-  /// randomized order they'll play, plus where we are in that order.
-  /// Empty/-1 when playback isn't an auto-advancing shuffle (e.g. a single
-  /// song was tapped directly from the list).
-  List<int> _shuffleQueue = const [];
-  int _shuffleIndex = -1;
-  var _isShufflePlayback = false;
 
   var _isLoading = true;
   String? _loadError;
@@ -114,33 +107,35 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _playback.visiblePlaylistId = widget.playlistId;
+    final activeKey = _playback.state.value.trackKey;
+    final prefix = 'playlist:${widget.playlistId}:';
+    if (_playback.state.value.isPlaying &&
+        activeKey?.startsWith(prefix) == true) {
+      _playingSongId = int.tryParse(activeKey!.substring(prefix.length));
+    }
+    _playback.state.addListener(_syncPlaybackState);
     _loadAll();
     _pollTimer = Timer.periodic(_pollInterval, (_) => _pollSongs());
     _connectLiveUpdates();
-    _previewCompleteSub = _audioPlayer.onPlayerComplete.listen(
-      (_) {
-        if (mounted) unawaited(_advanceAfterPreview());
-      },
-      onError: (Object error, [StackTrace? stackTrace]) {
-        // A native playback error (e.g. an expired/broken preview URL)
-        // surfaces here rather than from the `play()` call that started
-        // it. Treat it like the track ending so a shuffle session skips
-        // past the broken preview instead of crashing.
-        if (!mounted) return;
-        _showMessage('Could not play preview.');
+    _previewCompleteSub = _playback.onCompleted.listen((trackKey) {
+      if (mounted && trackKey == _playbackKey(_playingSongId)) {
         unawaited(_advanceAfterPreview());
-      },
-    );
+      }
+    });
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
     _previewCompleteSub?.cancel();
+    _playback.state.removeListener(_syncPlaybackState);
     _liveUpdateReconnectTimer?.cancel();
     _playlistSocketSub?.cancel();
     _playlistSocket?.close();
-    _audioPlayer.dispose();
+    if (_playback.visiblePlaylistId == widget.playlistId) {
+      _playback.visiblePlaylistId = null;
+    }
     super.dispose();
   }
 
@@ -290,7 +285,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       _playlistSocketSub = socket.listen(
         _onLiveUpdate,
         onDone: _handleLiveUpdatesDisconnected,
-        onError: (_, __) => _handleLiveUpdatesDisconnected(),
+        onError: (error, stackTrace) => _handleLiveUpdatesDisconnected(),
         cancelOnError: true,
       );
     } catch (_) {
@@ -301,20 +296,45 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   }
 
   void _onLiveUpdate(dynamic message) {
-    if (message is! String || !mounted || _isDragging || _isSyncingOrder) return;
+    if (message is! String || !mounted || _isDragging || _isSyncingOrder) {
+      return;
+    }
     try {
       final payload = jsonDecode(message);
       if (payload is! Map<String, dynamic> ||
-          payload['playlist_id'] != widget.playlistId ||
-          payload['songs'] is! List) {
+          payload['playlist_id'] != widget.playlistId) {
         return;
       }
-      final songs = (payload['songs'] as List)
-          .whereType<Map>()
-          .map((song) => PlaylistSong.fromJson(Map<String, dynamic>.from(song)))
-          .toList();
-      setState(() => _songs = songs);
-    } on FormatException {
+      final playlist = payload['playlist'] is Map
+          ? Playlist.fromJson(
+              Map<String, dynamic>.from(payload['playlist'] as Map),
+            )
+          : null;
+      final songs = payload['songs'] is List
+          ? (payload['songs'] as List)
+                .whereType<Map>()
+                .map(
+                  (song) =>
+                      PlaylistSong.fromJson(Map<String, dynamic>.from(song)),
+                )
+                .toList()
+          : null;
+      final collaborators = payload['collaborators'] is List
+          ? (payload['collaborators'] as List)
+                .whereType<Map>()
+                .map(
+                  (item) => PlaylistCollaborator.fromJson(
+                    Map<String, dynamic>.from(item),
+                  ),
+                )
+                .toList()
+          : null;
+      setState(() {
+        if (playlist != null) _playlist = playlist;
+        if (songs != null) _songs = songs;
+        if (collaborators != null) _collaborators = collaborators;
+      });
+    } catch (_) {
       // Ignore a malformed broadcast. The fallback poll will reconcile state.
     }
   }
@@ -496,107 +516,92 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       return;
     }
 
-    _shuffleQueue = const [];
-    _shuffleIndex = -1;
-    _isShufflePlayback = false;
     await _playPreview(song);
   }
 
-  /// The header play button starts a shuffled auto-advance session across
-  /// every previewable song, rather than always going in list order.
+  /// The header play button starts from the first playable song and then
+  /// advances in the playlist's current order.
   Future<void> _onHeaderPlayTap() async {
     if (_playingSongId != null) {
       await _stopPlayback();
       return;
     }
 
-    final playable =
-        _songs
-            .where(
-              (s) => s.songExternalId.isNotEmpty || s.songPreviewUrl.isNotEmpty,
-            )
-            .toList()
-          ..shuffle(Random());
-    if (playable.isEmpty) {
+    final firstPlayable = _songs
+        .where(
+          (song) =>
+              song.songExternalId.isNotEmpty || song.songPreviewUrl.isNotEmpty,
+        )
+        .firstOrNull;
+    if (firstPlayable == null) {
       _showMessage('No preview available for this track.');
       return;
     }
 
-    _shuffleQueue = playable.map((s) => s.id).toList();
-    _shuffleIndex = 0;
-    _isShufflePlayback = true;
-    await _playPreview(playable.first);
+    await _playPreview(firstPlayable);
   }
 
-  Future<void> _playPreview(PlaylistSong song) async {
+  Future<bool> _playPreview(PlaylistSong song) async {
     try {
-      await _audioPlayer.stop();
       final previewUrl = song.songExternalId.isEmpty
           ? song.songPreviewUrl
           : await _playlistApi.resolvePreviewUrl(song.songExternalId);
       if (previewUrl.isEmpty) throw StateError('No preview URL available.');
-      await _audioPlayer.play(UrlSource(previewUrl));
-      if (!mounted) return;
+      await _playback.play(
+        url: previewUrl,
+        trackKey: _playbackKey(song.id),
+        title: song.songTitle,
+        artist: song.songArtist,
+        artworkUrl: song.songAlbumArtUrl,
+      );
+      if (!mounted) return false;
       setState(() => _playingSongId = song.id);
+      return true;
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() => _playingSongId = null);
       _showMessage('Could not play preview.');
+      return false;
     }
   }
 
   Future<void> _stopPlayback() async {
-    await _audioPlayer.stop();
+    await _playback.stop();
     if (!mounted) return;
     setState(() {
       _playingSongId = null;
-      _shuffleQueue = const [];
-      _shuffleIndex = -1;
-      _isShufflePlayback = false;
     });
   }
 
-  /// Advances a shuffle session to its next queued song when a preview
-  /// finishes naturally; a non-shuffle (single tap) preview just stops.
+  /// Reflects controls used outside this route (the mini-player's pause/stop
+  /// buttons, for example) in the playlist's own play indicators.
+  void _syncPlaybackState() {
+    if (!mounted) return;
+    final trackKey = _playback.state.value.trackKey;
+    final prefix = 'playlist:${widget.playlistId}:';
+    final songId = trackKey?.startsWith(prefix) == true
+        ? int.tryParse(trackKey!.substring(prefix.length))
+        : null;
+    if (songId != _playingSongId) setState(() => _playingSongId = songId);
+  }
+
+  /// Advances playback to the next playable song in the latest
+  /// server-provided playlist order.
   Future<void> _advanceAfterPreview() async {
-    if (!_isShufflePlayback) {
-      final playingSongId = _playingSongId;
-      final playingIndex = _songs.indexWhere((song) => song.id == playingSongId);
-      for (var index = playingIndex + 1; index < _songs.length; index++) {
-        final nextSong = _songs[index];
-        if (nextSong.songExternalId.isNotEmpty || nextSong.songPreviewUrl.isNotEmpty) {
-          await _playPreview(nextSong);
-          return;
-        }
-      }
-      if (!mounted) return;
-      setState(() => _playingSongId = null);
-      return;
-    }
-
-    while (_shuffleIndex >= 0 && _shuffleIndex + 1 < _shuffleQueue.length) {
-      _shuffleIndex++;
-      final nextId = _shuffleQueue[_shuffleIndex];
-      PlaylistSong? nextSong;
-      for (final s in _songs) {
-        if (s.id == nextId) {
-          nextSong = s;
-          break;
-        }
-      }
-      if (nextSong != null) {
-        await _playPreview(nextSong);
-        return;
+    final playingSongId = _playingSongId;
+    final playingIndex = _songs.indexWhere((song) => song.id == playingSongId);
+    for (var index = playingIndex + 1; index < _songs.length; index++) {
+      final nextSong = _songs[index];
+      if (nextSong.songExternalId.isNotEmpty ||
+          nextSong.songPreviewUrl.isNotEmpty) {
+        if (await _playPreview(nextSong)) return;
       }
     }
     if (!mounted) return;
-    setState(() {
-      _playingSongId = null;
-      _shuffleQueue = const [];
-      _shuffleIndex = -1;
-      _isShufflePlayback = false;
-    });
+    setState(() => _playingSongId = null);
   }
+
+  String _playbackKey(int? songId) => 'playlist:${widget.playlistId}:$songId';
 
   Future<void> _onManageCollaborators() async {
     final playlist = _playlist;
@@ -610,6 +615,34 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       ),
     );
     await _refetchCollaborators();
+  }
+
+  Future<void> _onEditPlaylist() async {
+    final playlist = _playlist;
+    if (playlist == null) return;
+    final edit = await Navigator.of(context).push<PlaylistEditResult>(
+      MaterialPageRoute(builder: (_) => EditPlaylistScreen(playlist: playlist)),
+    );
+    if (edit == null) return;
+    try {
+      var updated = await _playlistApi.updatePlaylist(
+        playlist.id,
+        title: edit.title,
+        coverPreset: edit.coverPath == null ? edit.coverPreset : null,
+      );
+      if (edit.coverPath != null) {
+        updated = await _playlistApi.uploadPlaylistCoverImage(
+          playlist.id,
+          edit.coverPath!,
+        );
+      }
+      if (!mounted) return;
+      setState(() => _playlist = updated);
+    } on SessionExpiredException {
+      await _signOutAndReturnToWelcome();
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    }
   }
 
   @override
@@ -628,7 +661,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             title: 'Playlist',
             canEdit: false,
             onAddSong: null,
-            isOwner: false,
+            showCollaboratorManagement: false,
             onManageCollaborators: null,
           ),
           const Expanded(
@@ -649,7 +682,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             title: isAccessDenied ? 'Music Room' : 'Playlist',
             canEdit: false,
             onAddSong: null,
-            isOwner: false,
+            showCollaboratorManagement: false,
             onManageCollaborators: null,
           ),
           Expanded(
@@ -679,6 +712,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         playlist.editPermission == playlistEditPermissionEveryone ||
         (playlist.editPermission == playlistEditPermissionInvitedOnly &&
             isCollaborator);
+    final needsInvitations =
+        playlist.visibility != playlistVisibilityPublic ||
+        playlist.editPermission != playlistEditPermissionEveryone;
+    final showInvitationControls = isOwner && needsInvitations;
 
     final header = Column(
       children: [
@@ -687,13 +724,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         _PlaybackRow(
           isPlaying: _playingSongId != null,
           onPlayTap: _songs.isEmpty ? _onPlaybackUnavailable : _onHeaderPlayTap,
-          onShuffleTap: _onPlaybackUnavailable,
         ),
-        if (_collaborators.isNotEmpty || isOwner) ...[
+        if (_collaborators.isNotEmpty || showInvitationControls) ...[
           const SizedBox(height: 14),
           _CollaboratorsRow(
             collaborators: _collaborators,
-            isOwner: isOwner,
+            showInvite: showInvitationControls,
             onInvite: _onManageCollaborators,
           ),
         ],
@@ -718,8 +754,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           title: 'Playlist',
           canEdit: canEdit,
           onAddSong: _onAddSong,
-          isOwner: isOwner,
+          showCollaboratorManagement: showInvitationControls,
           onManageCollaborators: _onManageCollaborators,
+          onEditPlaylist: isOwner ? _onEditPlaylist : null,
         ),
         Expanded(
           child: RefreshIndicator(
@@ -789,18 +826,20 @@ class _Header extends StatelessWidget {
     required this.title,
     required this.canEdit,
     required this.onAddSong,
-    required this.isOwner,
+    required this.showCollaboratorManagement,
     required this.onManageCollaborators,
+    this.onEditPlaylist,
   });
 
   final String title;
   final bool canEdit;
   final VoidCallback? onAddSong;
 
-  /// Managing collaborators is an owner-only action — the backend rejects
-  /// invite/remove from anyone else (`backend/playlists/views_collaborators.py`).
-  final bool isOwner;
+  /// Only shown when invitations are meaningful for this playlist's access
+  /// rule. A public, everyone-can-edit playlist does not need invites.
+  final bool showCollaboratorManagement;
   final VoidCallback? onManageCollaborators;
+  final VoidCallback? onEditPlaylist;
 
   @override
   Widget build(BuildContext context) {
@@ -826,7 +865,7 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
-          if (isOwner) ...[
+          if (showCollaboratorManagement) ...[
             IconButton(
               onPressed: onManageCollaborators,
               style: IconButton.styleFrom(
@@ -837,6 +876,17 @@ class _Header extends StatelessWidget {
                 Icons.group_rounded,
                 color: _PlaylistColors.body,
               ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          if (onEditPlaylist != null) ...[
+            IconButton(
+              onPressed: onEditPlaylist,
+              style: IconButton.styleFrom(
+                backgroundColor: _PlaylistColors.card,
+                shape: const CircleBorder(),
+              ),
+              icon: const Icon(Icons.edit_rounded, color: _PlaylistColors.body),
             ),
             const SizedBox(width: 8),
           ],
@@ -897,20 +947,12 @@ class _CoverHero extends StatelessWidget {
   }
 }
 
-/// Play/shuffle controls. The play button plays/pauses the 30-second
-/// preview of the playlist's top song (there's no full-track playback
-/// engine yet); shuffle still just surfaces a "not available yet"
-/// message.
+/// The playlist play control starts the first available preview.
 class _PlaybackRow extends StatelessWidget {
-  const _PlaybackRow({
-    required this.isPlaying,
-    required this.onPlayTap,
-    required this.onShuffleTap,
-  });
+  const _PlaybackRow({required this.isPlaying, required this.onPlayTap});
 
   final bool isPlaying;
   final VoidCallback onPlayTap;
-  final VoidCallback onShuffleTap;
 
   @override
   Widget build(BuildContext context) {
@@ -931,24 +973,6 @@ class _PlaybackRow extends StatelessWidget {
               isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
               color: _PlaylistColors.background,
               size: 30,
-            ),
-          ),
-        ),
-        const SizedBox(width: 16),
-        InkWell(
-          onTap: onShuffleTap,
-          customBorder: const CircleBorder(),
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: _PlaylistColors.cardBorder),
-            ),
-            child: const Icon(
-              Icons.shuffle_rounded,
-              color: _PlaylistColors.body,
-              size: 20,
             ),
           ),
         ),
@@ -1043,12 +1067,12 @@ class _EditLockedBanner extends StatelessWidget {
 class _CollaboratorsRow extends StatelessWidget {
   const _CollaboratorsRow({
     required this.collaborators,
-    required this.isOwner,
+    required this.showInvite,
     required this.onInvite,
   });
 
   final List<PlaylistCollaborator> collaborators;
-  final bool isOwner;
+  final bool showInvite;
   final VoidCallback? onInvite;
 
   static const _maxShown = 4;
@@ -1108,7 +1132,7 @@ class _CollaboratorsRow extends StatelessWidget {
               ],
             ),
           ),
-        if (isOwner) ...[
+        if (showInvite) ...[
           if (avatarSlots > 0) const SizedBox(width: 10),
           _InviteChip(onTap: onInvite),
         ],
@@ -1401,65 +1425,76 @@ class _SongRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _PlaylistColors.card,
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTogglePreview,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isPlaying
-              ? _PlaylistColors.tertiary
-              : _PlaylistColors.cardBorder,
-        ),
-      ),
-      child: Row(
-        children: [
-          _SongArt(
-            url: song.songAlbumArtUrl,
-            isPlaying: isPlaying,
-            onTap: onTogglePreview,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: _PlaylistColors.card,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isPlaying
+                  ? _PlaylistColors.tertiary
+                  : _PlaylistColors.cardBorder,
+            ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  song.songTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'Sora',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: _PlaylistColors.body,
-                  ),
+          child: Row(
+            children: [
+              _SongArt(
+                url: song.songAlbumArtUrl,
+                isPlaying: isPlaying,
+                onTap: onTogglePreview,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      song.songTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Sora',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: _PlaylistColors.body,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      song.songArtist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: _PlaylistColors.muted,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
+              ),
+              if (song.songDurationSeconds != null) ...[
+                const SizedBox(width: 8),
                 Text(
-                  song.songArtist,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  _formatDuration(song.songDurationSeconds!),
                   style: const TextStyle(
                     fontSize: 12,
                     color: _PlaylistColors.muted,
                   ),
                 ),
               ],
-            ),
+              if (dragHandle != null) ...[
+                const SizedBox(width: 8),
+                dragHandle!,
+              ],
+            ],
           ),
-          if (song.songDurationSeconds != null) ...[
-            const SizedBox(width: 8),
-            Text(
-              _formatDuration(song.songDurationSeconds!),
-              style: const TextStyle(
-                fontSize: 12,
-                color: _PlaylistColors.muted,
-              ),
-            ),
-          ],
-          if (dragHandle != null) ...[const SizedBox(width: 8), dragHandle!],
-        ],
+        ),
       ),
     );
   }
@@ -1595,4 +1630,110 @@ class _ErrorState extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PlaylistEdit {
+  const _PlaylistEdit({required this.title, this.coverPath});
+
+  final String title;
+  final String? coverPath;
+}
+
+class _EditPlaylistDialog extends StatefulWidget {
+  const _EditPlaylistDialog({required this.initialTitle});
+
+  final String initialTitle;
+
+  @override
+  State<_EditPlaylistDialog> createState() => _EditPlaylistDialogState();
+}
+
+class _EditPlaylistDialogState extends State<_EditPlaylistDialog> {
+  late final _titleController = TextEditingController(
+    text: widget.initialTitle,
+  );
+  String? _coverPath;
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickCover() async {
+    final image = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (image != null && mounted) setState(() => _coverPath = image.path);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: _PlaylistColors.card,
+    title: const Text(
+      'Edit playlist',
+      style: TextStyle(color: _PlaylistColors.body),
+    ),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _titleController,
+          maxLength: 100,
+          style: const TextStyle(color: _PlaylistColors.body),
+          decoration: const InputDecoration(labelText: 'Playlist name'),
+        ),
+        const SizedBox(height: 12),
+        InkWell(
+          onTap: _pickCover,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            height: 88,
+            decoration: BoxDecoration(
+              color: _PlaylistColors.chip,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _PlaylistColors.cardBorder),
+              image: _coverPath == null
+                  ? null
+                  : DecorationImage(
+                      image: FileImage(File(_coverPath!)),
+                      fit: BoxFit.cover,
+                    ),
+            ),
+            alignment: Alignment.center,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                _coverPath == null
+                    ? 'Choose cover image'
+                    : 'Tap to replace cover',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+      TextButton(
+        onPressed: () {
+          final title = _titleController.text.trim();
+          if (title.isEmpty) return;
+          Navigator.of(context)
+              .pop(_PlaylistEdit(title: title, coverPath: _coverPath));
+        },
+        child: const Text('Save'),
+      ),
+    ],
+  );
 }

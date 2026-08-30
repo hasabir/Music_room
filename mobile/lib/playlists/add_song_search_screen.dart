@@ -43,7 +43,7 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
   final _playlistApi = PlaylistApi();
   final _tokenStorage = TokenStorage();
   final _controller = TextEditingController();
-  final _audioPlayer = AudioPlayer();
+  final _previewPlayer = AudioPlayer();
   Timer? _debounce;
   StreamSubscription<void>? _completeSub;
 
@@ -64,7 +64,7 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
   @override
   void initState() {
     super.initState();
-    _completeSub = _audioPlayer.onPlayerComplete.listen((_) {
+    _completeSub = _previewPlayer.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _playingExternalId = null);
     });
   }
@@ -73,7 +73,7 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
   void dispose() {
     _debounce?.cancel();
     _completeSub?.cancel();
-    _audioPlayer.dispose();
+    _previewPlayer.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -120,19 +120,19 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
     }
 
     if (_playingExternalId == track.externalId) {
-      await _audioPlayer.stop();
+      await _previewPlayer.stop();
       if (!mounted) return;
       setState(() => _playingExternalId = null);
       return;
     }
 
     try {
-      await _audioPlayer.stop();
       final previewUrl = track.externalId.isEmpty
           ? track.previewUrl
           : await _playlistApi.resolvePreviewUrl(track.externalId);
       if (previewUrl.isEmpty) throw StateError('No preview URL available.');
-      await _audioPlayer.play(UrlSource(previewUrl));
+      await _previewPlayer.stop();
+      await _previewPlayer.play(UrlSource(previewUrl));
       if (!mounted) return;
       setState(() => _playingExternalId = track.externalId);
     } catch (_) {
@@ -333,66 +333,80 @@ class _TrackRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: _AddSongColors.card,
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTogglePreview,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isPlaying ? _AddSongColors.tertiary : _AddSongColors.border,
-        ),
-      ),
-      child: Row(
-        children: [
-          _AlbumArt(track: track, isPlaying: isPlaying, onTap: onTogglePreview),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  track.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'Sora',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: _AddSongColors.body,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  track.artist,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: _AddSongColors.muted,
-                  ),
-                ),
-              ],
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: _AddSongColors.card,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isPlaying
+                  ? _AddSongColors.tertiary
+                  : _AddSongColors.border,
             ),
           ),
-          const SizedBox(width: 8),
-          if (isAdding)
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: _AddSongColors.headline,
+          child: Row(
+            children: [
+              _AlbumArt(
+                track: track,
+                isPlaying: isPlaying,
+                onTap: onTogglePreview,
               ),
-            )
-          else if (isAdded)
-            const Icon(
-              Icons.check_circle_rounded,
-              size: 22,
-              color: _AddSongColors.tertiary,
-            )
-          else
-            _GradientPillButton(label: 'Add', onTap: onAdd),
-        ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      track.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Sora',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: _AddSongColors.body,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      track.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: _AddSongColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (isAdding)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: _AddSongColors.headline,
+                  ),
+                )
+              else if (isAdded)
+                const Icon(
+                  Icons.check_circle_rounded,
+                  size: 22,
+                  color: _AddSongColors.tertiary,
+                )
+              else
+                _GradientPillButton(label: 'Add', onTap: onAdd),
+            ],
+          ),
+        ),
       ),
     );
   }

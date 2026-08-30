@@ -19,6 +19,7 @@ from authentication.utils import log_action
 from .models import Playlist, PlaylistCollaborator, PlaylistAccessRequest
 from .serializers import PlaylistAccessRequestSerializer, DecideAccessRequestSerializer
 from .throttles import AccessRequestRateThrottle
+from .broadcast import broadcast_playlist_update
 
 
 @extend_schema_view(
@@ -149,5 +150,6 @@ class PlaylistAccessRequestDecideView(APIView):
             "requester_id": access_request.requester_id,
             "approved": approve,
         })
+        broadcast_playlist_update(playlist)
 
         return Response(PlaylistAccessRequestSerializer(access_request).data)

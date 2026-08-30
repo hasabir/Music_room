@@ -67,6 +67,11 @@ class PlaylistCollaborator(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="playlist_invitations"
     )
     invited_at = models.DateTimeField(auto_now_add=True)
+    # The owner can tailor what each invitee may do. Existing collaborators
+    # keep their previous edit capability after this migration.
+    can_add_songs = models.BooleanField(default=True)
+    can_reorder_songs = models.BooleanField(default=True)
+    can_manage_collaborators = models.BooleanField(default=False)
 
     class Meta:
         unique_together = ("playlist", "collaborator")

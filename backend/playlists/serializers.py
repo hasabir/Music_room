@@ -27,6 +27,9 @@ class PlaylistSerializer(serializers.ModelSerializer):
         # over whatever preset was set before.
         if attrs.get("cover_image"):
             attrs["cover_preset"] = ""
+        elif "cover_preset" in attrs:
+            # Choosing a built-in look replaces any previously uploaded photo.
+            attrs["cover_image"] = None
         return attrs
 
 
@@ -35,7 +38,10 @@ class PlaylistCollaboratorSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PlaylistCollaborator
-        fields = ["id", "playlist", "collaborator", "collaborator_email", "invited_at"]
+        fields = [
+            "id", "playlist", "collaborator", "collaborator_email", "invited_at",
+            "can_add_songs", "can_reorder_songs", "can_manage_collaborators",
+        ]
         read_only_fields = ["id", "invited_at", "collaborator_email"]
 
 
@@ -75,6 +81,12 @@ class PlaylistSongSerializer(serializers.ModelSerializer):
 class InviteCollaboratorSerializer(serializers.Serializer):
     """Used for POSTing a new collaborator invitation."""
     user_id = serializers.IntegerField()
+
+
+class CollaboratorPermissionsSerializer(serializers.Serializer):
+    can_add_songs = serializers.BooleanField()
+    can_reorder_songs = serializers.BooleanField()
+    can_manage_collaborators = serializers.BooleanField()
 
 
 class PlaylistAccessRequestSerializer(serializers.ModelSerializer):

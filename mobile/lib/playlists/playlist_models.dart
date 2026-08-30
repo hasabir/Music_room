@@ -213,6 +213,9 @@ class PlaylistCollaborator {
     required this.collaborator,
     required this.collaboratorEmail,
     required this.invitedAt,
+    required this.canAddSongs,
+    required this.canReorderSongs,
+    required this.canManageCollaborators,
   });
 
   factory PlaylistCollaborator.fromJson(Map<String, dynamic> json) =>
@@ -222,6 +225,10 @@ class PlaylistCollaborator {
         collaborator: json['collaborator'] as int,
         collaboratorEmail: json['collaborator_email'] as String? ?? '',
         invitedAt: DateTime.parse(json['invited_at'] as String),
+        canAddSongs: json['can_add_songs'] as bool? ?? true,
+        canReorderSongs: json['can_reorder_songs'] as bool? ?? true,
+        canManageCollaborators:
+            json['can_manage_collaborators'] as bool? ?? false,
       );
 
   final int id;
@@ -231,6 +238,9 @@ class PlaylistCollaborator {
   final int collaborator;
   final String collaboratorEmail;
   final DateTime invitedAt;
+  final bool canAddSongs;
+  final bool canReorderSongs;
+  final bool canManageCollaborators;
 }
 
 /// Allowed values for `PlaylistAccessRequest.status`

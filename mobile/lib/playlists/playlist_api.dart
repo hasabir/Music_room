@@ -206,6 +206,25 @@ class PlaylistApi {
     );
   }
 
+  /// Owner-only: changes which actions an invited collaborator may perform.
+  Future<PlaylistCollaborator> updateCollaboratorPermissions(
+    int playlistId,
+    int userId, {
+    required bool canAddSongs,
+    required bool canReorderSongs,
+    required bool canManageCollaborators,
+  }) async {
+    final response = await _authorizedPatch(
+      ApiConfig.playlistCollaboratorDetailUri(playlistId, userId),
+      body: {
+        'can_add_songs': canAddSongs,
+        'can_reorder_songs': canReorderSongs,
+        'can_manage_collaborators': canManageCollaborators,
+      },
+    );
+    return PlaylistCollaborator.fromJson(response);
+  }
+
   /// Requests collaborator access to a playlist you can't currently see
   /// (private) or can't edit (invited_only). Returns the existing pending
   /// request if you already have one.

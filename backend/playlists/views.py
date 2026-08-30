@@ -16,7 +16,7 @@ from .models import Playlist, PlaylistSong
 from .serializers import (
     PlaylistSerializer, AddSongToPlaylistSerializer, MoveSongSerializer, PlaylistSongSerializer
 )
-from .permissions import can_user_see_playlist, can_user_edit_playlist
+from .permissions import can_user_see_playlist, can_user_add_songs, can_user_reorder_songs
 from .services import add_song_to_playlist, remove_song_from_playlist, move_song
 from .broadcast import broadcast_playlist_update
 
@@ -94,7 +94,8 @@ class PlaylistDetailView(generics.RetrieveUpdateDestroyAPIView):
     def perform_update(self, serializer):
         if serializer.instance.owner_id != self.request.user.id:
             raise PermissionDenied("Only the owner can edit this playlist.")
-        serializer.save()
+        playlist = serializer.save()
+        broadcast_playlist_update(playlist)
 
     def perform_destroy(self, instance):
         if instance.owner_id != self.request.user.id:
@@ -139,7 +140,7 @@ class PlaylistSongListView(APIView):
 
     def post(self, request, playlist_id):
         playlist = get_object_or_404(Playlist, id=playlist_id)
-        allowed, reason = can_user_edit_playlist(request.user, playlist)
+        allowed, reason = can_user_add_songs(request.user, playlist)
         if not allowed:
             return Response({"detail": reason}, status=status.HTTP_403_FORBIDDEN)
 
@@ -196,7 +197,7 @@ class PlaylistSongDeleteView(APIView):
 
     def delete(self, request, playlist_id, playlist_song_id):
         playlist = get_object_or_404(Playlist, id=playlist_id)
-        allowed, reason = can_user_edit_playlist(request.user, playlist)
+        allowed, reason = can_user_add_songs(request.user, playlist)
         if not allowed:
             return Response({"detail": reason}, status=status.HTTP_403_FORBIDDEN)
 
@@ -242,7 +243,7 @@ class PlaylistSongMoveView(APIView):
     throttle_classes = [MoveSongRateThrottle] 
     def post(self, request, playlist_id, playlist_song_id):
         playlist = get_object_or_404(Playlist, id=playlist_id)
-        allowed, reason = can_user_edit_playlist(request.user, playlist)
+        allowed, reason = can_user_reorder_songs(request.user, playlist)
         if not allowed:
             return Response({"detail": reason}, status=status.HTTP_403_FORBIDDEN)
 
