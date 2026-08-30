@@ -7,6 +7,10 @@ import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
 import '../core/widgets/app_bottom_nav.dart';
 import '../core/widgets/app_tab_navigation.dart';
+import '../playlists/playlist_api.dart';
+import '../playlists/playlist_detail_screen.dart';
+import '../playlists/playlist_models.dart';
+import '../playlists/playlist_widgets.dart';
 import '../settings/settings_screen.dart';
 import 'connections_screen.dart';
 import 'edit_profile_screen.dart';
@@ -48,6 +52,7 @@ class PersonalProfileScreen extends StatefulWidget {
 class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
   final _profileApi = ProfileApi();
   final _authApi = AuthApi();
+  final _playlistApi = PlaylistApi();
   final _tokenStorage = TokenStorage();
 
   Future<_ProfileData>? _dataFuture;
@@ -64,11 +69,13 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
         _profileApi.getMyProfile(),
         _profileApi.getFriends(),
         _authApi.getCurrentUser(),
+        _playlistApi.listPlaylists(),
       ]);
       return _ProfileData(
         profile: results[0] as UserProfile,
         friends: results[1] as List<Friend>,
         authUser: results[2] as AuthUser,
+        playlists: results[3] as List<Playlist>,
       );
     } on SessionExpiredException {
       await _signOutAndReturnToWelcome();
@@ -198,7 +205,10 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                           onEdit: () => _onMusicPreferences(data.profile),
                         ),
                         const SizedBox(height: 24),
-                        const _ProfileContentTabs(),
+                        _ProfileContentTabs(
+                          playlists: data.playlists,
+                          currentUserEmail: data.authUser.email,
+                        ),
                       ],
                     ),
                   );
@@ -217,7 +227,12 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
 }
 
 class _ProfileData {
-  const _ProfileData({required this.profile, required this.friends, required this.authUser});
+  const _ProfileData({
+    required this.profile,
+    required this.friends,
+    required this.authUser,
+    required this.playlists,
+  });
 
   factory _ProfileData.empty() => _ProfileData(
     profile: const UserProfile(
@@ -244,14 +259,20 @@ class _ProfileData {
       registrationMethod: 'email',
       hasGoogleLinked: false,
     ),
+    playlists: const [],
   );
 
   final UserProfile profile;
   final List<Friend> friends;
   final AuthUser authUser;
+  final List<Playlist> playlists;
 
-  _ProfileData copyWith({UserProfile? profile}) =>
-      _ProfileData(profile: profile ?? this.profile, friends: friends, authUser: authUser);
+  _ProfileData copyWith({UserProfile? profile}) => _ProfileData(
+    profile: profile ?? this.profile,
+    friends: friends,
+    authUser: authUser,
+    playlists: playlists,
+  );
 }
 
 class _TopBar extends StatelessWidget {
@@ -843,8 +864,18 @@ class _Chip extends StatelessWidget {
 
 enum _ProfileContentTab { playlists, eventsHosted }
 
+/// A playlist counts as "mine" for this tab if the signed-in user owns
+/// it, or if it's private (the list endpoint only ever returns a private
+/// playlist to its owner or an invited collaborator, so either way it's
+/// "mine" — mirrors the same filter in `playlist_list_screen.dart`).
+bool _isMyPlaylist(Playlist playlist, String currentUserEmail) =>
+    playlist.owner == currentUserEmail || playlist.visibility == playlistVisibilityPrivate;
+
 class _ProfileContentTabs extends StatefulWidget {
-  const _ProfileContentTabs();
+  const _ProfileContentTabs({required this.playlists, required this.currentUserEmail});
+
+  final List<Playlist> playlists;
+  final String currentUserEmail;
 
   @override
   State<_ProfileContentTabs> createState() => _ProfileContentTabsState();
@@ -853,8 +884,20 @@ class _ProfileContentTabs extends StatefulWidget {
 class _ProfileContentTabsState extends State<_ProfileContentTabs> {
   var _tab = _ProfileContentTab.playlists;
 
+  void _onOpenPlaylist(Playlist playlist) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => PlaylistDetailScreen(playlistId: playlist.id)));
+  }
+
+  void _onCreatePlaylist() => navigateToTab(context, AppTab.profile, AppTab.playlist);
+
   @override
   Widget build(BuildContext context) {
+    final myPlaylists = widget.playlists
+        .where((p) => _isMyPlaylist(p, widget.currentUserEmail))
+        .toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -877,12 +920,21 @@ class _ProfileContentTabsState extends State<_ProfileContentTabs> {
         ),
         const SizedBox(height: 16),
         if (_tab == _ProfileContentTab.playlists)
-          ...mockPlaylists.map(
-            (playlist) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _PlaylistCard(playlist: playlist),
-            ),
-          )
+          if (myPlaylists.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                "You haven't made any playlists yet.",
+                style: TextStyle(color: _ProfileColors.muted),
+              ),
+            )
+          else
+            ...myPlaylists.map(
+              (playlist) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _PlaylistCard(playlist: playlist, onTap: () => _onOpenPlaylist(playlist)),
+              ),
+            )
         else
           ...mockHostedEvents.map(
             (event) => Padding(
@@ -891,11 +943,7 @@ class _ProfileContentTabsState extends State<_ProfileContentTabs> {
             ),
           ),
         const SizedBox(height: 4),
-        _CreatePlaylistButton(
-          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Creating playlists is coming soon.')),
-          ),
-        ),
+        _CreatePlaylistButton(onTap: _onCreatePlaylist),
       ],
     );
   }
@@ -937,63 +985,75 @@ class _TabButton extends StatelessWidget {
 }
 
 class _PlaylistCard extends StatelessWidget {
-  const _PlaylistCard({required this.playlist});
+  const _PlaylistCard({required this.playlist, required this.onTap});
 
-  final MockPlaylist playlist;
+  final Playlist playlist;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _ProfileColors.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _ProfileColors.cardBorder),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: const LinearGradient(
-                colors: [_ProfileColors.gradientStart, _ProfileColors.tertiary],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: _ProfileColors.card,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _ProfileColors.cardBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                gradient: const LinearGradient(
+                  colors: [_ProfileColors.gradientStart, _ProfileColors.tertiary],
+                ),
+              ),
+              child: const Icon(Icons.queue_music_rounded, color: Colors.white),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    playlist.title,
+                    style: const TextStyle(
+                      fontFamily: 'Sora',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: _ProfileColors.body,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      VisibilityBadge(visibility: playlist.visibility),
+                      const SizedBox(width: 6),
+                      EditPermissionBadge(editPermission: playlist.editPermission),
+                    ],
+                  ),
+                ],
               ),
             ),
-            child: const Icon(Icons.queue_music_rounded, color: Colors.white),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  playlist.title,
-                  style: const TextStyle(
-                    fontFamily: 'Sora',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                    color: _ProfileColors.body,
-                  ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(color: _ProfileColors.chip, borderRadius: BorderRadius.circular(10)),
+              child: Text(
+                '${playlist.songCount} Tracks',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: _ProfileColors.muted,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  playlist.subtitle,
-                  style: const TextStyle(fontSize: 12, color: _ProfileColors.muted),
-                ),
-              ],
+              ),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: _ProfileColors.chip, borderRadius: BorderRadius.circular(10)),
-            child: Text(
-              '${playlist.trackCount} Tracks',
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _ProfileColors.muted),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

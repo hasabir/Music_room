@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../core/api/api_client.dart';
 import 'profile_api.dart';
-import 'profile_mock_data.dart';
 import 'profile_models.dart';
 
 class _ViewProfileColors {
@@ -22,12 +21,14 @@ class _ViewProfileColors {
 /// `GET /api/v1/profile/profile/<user_id>/` (filtered by visibility rules
 /// server-side) plus the friend-request actions already used elsewhere.
 ///
-/// Votes count comes from the backend (`votes_count` on the profile
-/// response); Playlists count is still local placeholder data — see
-/// `profile_mock_data.dart`. "Listening Now" and a "Recent Activity" feed
-/// from the original design are deliberately not shown: there's no backend
-/// concept of either, and faking them would assert real-time behavior
-/// about a specific person rather than read as generic UI chrome.
+/// Votes and Playlists counts both come straight from the backend
+/// (`votes_count`/`playlists_count` on the profile response — both are
+/// always returned regardless of the visibility filtering applied to the
+/// rest of the profile, per `UserProfileView` on the backend). "Listening
+/// Now" and a "Recent Activity" feed from the original design are
+/// deliberately not shown: there's no backend concept of either, and
+/// faking them would assert real-time behavior about a specific person
+/// rather than read as generic UI chrome.
 class ViewProfileScreen extends StatefulWidget {
   const ViewProfileScreen({
     super.key,
@@ -132,8 +133,6 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
                   }
 
                   final profile = snapshot.data!;
-                  final stats = mockProfileStatsFor(widget.userId);
-                  // final playlists = mockProfileStatsFor(widget.userId).playlists;
                   final name = profile.displayName.isNotEmpty
                       ? profile.displayName
                       : widget.initialFullName;
@@ -156,8 +155,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
                         onDecline: _onDecline,
                       ),
                       const SizedBox(height: 16),
-                      _StatsRow(votes: stats.votes, playlists: stats.playlists),
-                      // _StatsRow(votes: profile.votesCount, playlists: playlists),
+                      _StatsRow(votes: profile.votesCount, playlists: profile.playlistsCount),
                     ],
                   );
                 },

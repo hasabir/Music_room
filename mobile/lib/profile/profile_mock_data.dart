@@ -10,14 +10,14 @@
 ///   field in rather than backing a real multi-artist relation.
 /// - "Instruments / Gear" on the Profile screen — `Profile` has no such
 ///   field; there's nothing per-user to show yet.
-/// - Playlists and "Events Hosted" shown on the Profile screen — the
-///   mobile app has no `Playlist`/`Event` API client yet, even though
-///   the backend models exist (`backend/playlists`, `backend/events`).
-/// - Votes/Playlists counts on the View Profile screen — there's no
-///   aggregate endpoint for either. Deliberately NOT mocking "Listening
-///   Now" or a "Recent Activity" feed there, since those would claim
-///   real-time behavior about a specific person rather than read as
-///   generic placeholder chrome.
+/// - "Events Hosted" on the Profile screen — the mobile app has no Event
+///   API client yet, even though the backend model exists
+///   (`backend/events`).
+///
+/// Playlists (both the Profile screen's "Playlists" tab and the View
+/// Profile screen's Playlists count) are wired to the real
+/// `lib/playlists/playlist_api.dart` client / `playlists_count` backend
+/// field and no longer live here.
 library;
 
 /// A fixed set of artist names offered as quick picks. Purely local — not
@@ -35,23 +35,6 @@ const mockSuggestedArtists = [
 /// field.
 const mockInstruments = ['Roland Juno-106', 'Ableton Push', 'Moog Sub 37'];
 
-class MockPlaylist {
-  const MockPlaylist({
-    required this.title,
-    required this.subtitle,
-    required this.trackCount,
-  });
-
-  final String title;
-  final String subtitle;
-  final int trackCount;
-}
-
-const mockPlaylists = [
-  MockPlaylist(title: 'Midnight Drive Vol. 4', subtitle: 'Synthwave • Outrun • Electronic', trackCount: 12),
-  MockPlaylist(title: 'Deep Focus State', subtitle: 'Dark Ambient • Drone', trackCount: 24),
-];
-
 class MockHostedEvent {
   const MockHostedEvent({required this.title, required this.subtitle});
 
@@ -63,18 +46,3 @@ const mockHostedEvents = [
   MockHostedEvent(title: 'Cybernetic Deep Dive', subtitle: '128 tuning in'),
   MockHostedEvent(title: 'Analog Resonance Vol. 3', subtitle: 'Starts in 2h'),
 ];
-
-class MockProfileStats {
-  const MockProfileStats({required this.votes, required this.playlists});
-
-  final int votes;
-  final int playlists;
-}
-
-/// Deterministic (not random) placeholder Votes/Playlists counts for the
-/// View Profile screen, derived from [userId] so the same user always
-/// shows the same numbers within a session.
-MockProfileStats mockProfileStatsFor(int userId) => MockProfileStats(
-  votes: 20 + (userId * 37) % 200,
-  playlists: 5 + (userId * 13) % 100,
-);

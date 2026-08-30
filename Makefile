@@ -94,15 +94,15 @@ flutter-setup:
 		echo "Usage: make flutter-setup PORT=5555"; \
 		exit 1; \
 	fi
-	@echo "Connecting to 10.32.54.146:$(PORT)..."
-	@adb connect 10.32.54.146:$(PORT) 2>&1 | grep -q "connected" || true
-	@if adb devices | grep -q "10.32.54.146:$(PORT)\s\+device"; then \
-		echo "✅ Connected to 10.32.54.146:$(PORT)"; \
+	@echo "Connecting to 10.238.233.157:$(PORT)..."
+	@adb connect 10.238.233.157:$(PORT) 2>&1 | grep -q "connected" || true
+	@if adb devices | grep -q "10.238.233.157:$(PORT)\s\+device"; then \
+		echo "✅ Connected to 10.238.233.157:$(PORT)"; \
 		echo "$(PORT)" > .flutter_device_port; \
 		echo "Device port saved to .flutter_device_port"; \
 	else \
-		echo "❌ Could not connect to 10.32.54.146:$(PORT)"; \
-		adb disconnect 10.32.54.146:$(PORT) > /dev/null 2>&1 || true; \
+		echo "❌ Could not connect to 10.238.233.157:$(PORT)"; \
+		adb disconnect 10.238.233.157:$(PORT) > /dev/null 2>&1 || true; \
 		exit 1; \
 	fi
 
@@ -110,7 +110,7 @@ flutter-run:
 	@if [ -f .flutter_device_port ]; then \
 		PORT=$$(cat .flutter_device_port); \
 		echo "Using device port: $$PORT"; \
-		cd mobile && flutter run -d 10.32.54.146:$$PORT; \
+		cd mobile && flutter run -d 10.238.233.157:$$PORT; \
 	else \
 		echo "❌ No device port found. Please run 'make flutter-setup PORT=<port>' first"; \
 		exit 1; \

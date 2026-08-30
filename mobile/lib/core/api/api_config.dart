@@ -11,7 +11,7 @@ class ApiConfig {
   const ApiConfig._();
 
   static String get baseUrl =>
-      dotenv.env['API_BASE_URL'] ?? 'http://10.47.84.214:8000';
+      dotenv.env['API_BASE_URL'] ?? 'http://110.238.233.13:8000';
 
   static String get googleWebClientId => dotenv.env['GOOGLE_CLIENT_ID'] ?? '';
 
@@ -39,6 +39,7 @@ class ApiConfig {
   static const String friendRequestsSentEndpoint =
       '/api/v1/profile/friends/requests/sent/';
   static const String userSearchEndpoint = '/api/v1/profile/search/';
+  static const String playlistsEndpoint = '/api/v1/playlists/';
 
   static Uri registerUri() => Uri.parse('$baseUrl$registerEndpoint');
   static Uri loginUri() => Uri.parse('$baseUrl$loginEndpoint');
@@ -77,4 +78,19 @@ class ApiConfig {
       Uri.parse('$baseUrl/api/v1/profile/profile/$userId/');
   static Uri userSearchUri(String query) =>
       Uri.parse('$baseUrl$userSearchEndpoint').replace(queryParameters: {'q': query});
+  static Uri playlistsUri() => Uri.parse('$baseUrl$playlistsEndpoint');
+  static Uri playlistDetailUri(int playlistId) =>
+      Uri.parse('$baseUrl$playlistsEndpoint$playlistId/');
+  static Uri playlistSongsUri(int playlistId) =>
+      Uri.parse('$baseUrl$playlistsEndpoint$playlistId/songs/');
+  static Uri playlistSongDetailUri(int playlistId, int playlistSongId) =>
+      Uri.parse('$baseUrl$playlistsEndpoint$playlistId/songs/$playlistSongId/');
+  static Uri playlistSongMoveUri(int playlistId, int playlistSongId) => Uri.parse(
+    '$baseUrl$playlistsEndpoint$playlistId/songs/$playlistSongId/move/',
+  );
+  static Uri playlistCollaboratorsUri(int playlistId) =>
+      Uri.parse('$baseUrl$playlistsEndpoint$playlistId/collaborators/');
+  static Uri playlistCollaboratorDetailUri(int playlistId, int userId) => Uri.parse(
+    '$baseUrl$playlistsEndpoint$playlistId/collaborators/$userId/',
+  );
 }

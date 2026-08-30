@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../home/home_screen.dart';
-import '../../playlist/playlist_screen.dart';
+import '../../playlists/playlist_list_screen.dart';
 import '../../profile/personal_profile.dart';
 import '../../vote/vote_screen.dart';
 import 'app_bottom_nav.dart';
@@ -16,7 +16,7 @@ void navigateToTab(BuildContext context, AppTab currentTab, AppTab tab) {
   final destination = switch (tab) {
     AppTab.home => const HomeScreen(),
     AppTab.vote => const VoteScreen(),
-    AppTab.playlist => const PlaylistScreen(),
+    AppTab.playlist => const PlaylistListScreen(),
     AppTab.profile => const PersonalProfileScreen(),
   };
 

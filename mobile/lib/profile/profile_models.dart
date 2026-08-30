@@ -252,6 +252,7 @@ class OtherUserProfile {
     required this.favoriteArtist,
     required this.birthday,
     required this.votesCount,
+    required this.playlistsCount,
   });
 
   factory OtherUserProfile.fromJson(Map<String, dynamic> json) => OtherUserProfile(
@@ -265,6 +266,7 @@ class OtherUserProfile {
     favoriteArtist: json['favorite_artist'] as String?,
     birthday: json['birthday'] != null ? DateTime.parse(json['birthday'] as String) : null,
     votesCount: json['votes_count'] as int? ?? 0,
+    playlistsCount: json['playlists_count'] as int? ?? 0,
   );
 
   final String displayName;
@@ -275,4 +277,8 @@ class OtherUserProfile {
   final String? favoriteArtist;
   final DateTime? birthday;
   final int votesCount;
+
+  /// Always present regardless of visibility filtering — see
+  /// `backend/profiles/views.py`'s `UserProfileView` docstring.
+  final int playlistsCount;
 }
