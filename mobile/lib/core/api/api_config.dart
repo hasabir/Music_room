@@ -51,6 +51,7 @@ class ApiConfig {
   static const String userSearchEndpoint = '/api/v1/profile/search/';
   static const String playlistsEndpoint = '/api/v1/playlists/';
   static const String trackSearchEndpoint = '/api/v1/tracks/search/';
+  static const String trackTrendingEndpoint = '/api/v1/tracks/trending/';
   static const String eventsEndpoint = '/api/v1/events/';
 
   static Uri registerUri() => Uri.parse('$baseUrl$registerEndpoint');
@@ -110,6 +111,7 @@ class ApiConfig {
   static Uri trackSearchUri(String query) =>
       Uri.parse('$baseUrl$trackSearchEndpoint')
           .replace(queryParameters: {'q': query});
+  static Uri trackTrendingUri() => Uri.parse('$baseUrl$trackTrendingEndpoint');
   static Uri trackPreviewUri(String externalId) => Uri.parse(
     '$baseUrl/api/v1/tracks/${Uri.encodeComponent(externalId)}/preview/',
   );

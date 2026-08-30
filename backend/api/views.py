@@ -15,9 +15,26 @@ class HomeView(APIView):
 
 
 DEEZER_SEARCH_URL = "https://api.deezer.com/search"
+DEEZER_CHART_TRACKS_URL = "https://api.deezer.com/chart/0/tracks"
 DEEZER_TRACK_URL = "https://api.deezer.com/track/{external_id}"
 AUDIOUS_API_URL = "https://api.audius.co/v1"
 AUDIOUS_EXTERNAL_ID_PREFIX = "audius:"
+
+
+def _format_deezer_track(track):
+    """Maps one raw Deezer API track object to this API's common track
+    shape — shared by search results and the trending chart, and matching
+    what `_search_audius` produces so a client can treat every result the
+    same way regardless of source."""
+    return {
+        "external_id": str(track["id"]),
+        "title": track.get("title", ""),
+        "artist": (track.get("artist") or {}).get("name", ""),
+        "album_art_url": (track.get("album") or {}).get("cover_medium", ""),
+        "preview_url": track.get("preview", ""),
+        "duration_seconds": track.get("duration"),
+        "playback_type": "preview",
+    }
 
 
 def _audius_stream_url(track_id):
@@ -107,19 +124,41 @@ class TrackSearchView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        preview_tracks = [
-            {
-                "external_id": str(track["id"]),
-                "title": track.get("title", ""),
-                "artist": (track.get("artist") or {}).get("name", ""),
-                "album_art_url": (track.get("album") or {}).get("cover_medium", ""),
-                "preview_url": track.get("preview", ""),
-                "duration_seconds": track.get("duration"),
-                "playback_type": "preview",
-            }
-            for track in payload.get("data", [])
-        ]
+        preview_tracks = [_format_deezer_track(track) for track in payload.get("data", [])]
         return Response([*full_tracks, *preview_tracks])
+
+
+@extend_schema(
+    summary="List trending tracks",
+    description=(
+        "Returns Deezer's current top chart tracks, in the same shape as "
+        "search results (`playback_type` always `preview` here) — meant "
+        "as the default 'popular now' list before a user has typed a "
+        "search query."
+    ),
+    responses={
+        200: OpenApiResponse(description="List of trending tracks."),
+        502: OpenApiResponse(description="Deezer is unreachable or returned an error."),
+    },
+    tags=["tracks"],
+)
+class TrackTrendingView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [TrackSearchRateThrottle]
+
+    def get(self, request):
+        try:
+            response = requests.get(DEEZER_CHART_TRACKS_URL, timeout=5)
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError):
+            return Response(
+                {"detail": "Unable to reach the music search service. Please try again."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        tracks = [_format_deezer_track(track) for track in payload.get("data", [])]
+        return Response(tracks)
 
 
 @extend_schema(

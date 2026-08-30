@@ -146,6 +146,14 @@ class PlaylistApi {
     return response.map((json) => TrackSearchResult.fromJson(json)).toList();
   }
 
+  /// Deezer's current top chart, in the same shape as [searchTracks] —
+  /// meant as the default "popular now" list before the user has typed a
+  /// search query.
+  Future<List<TrackSearchResult>> fetchTrending() async {
+    final response = await _authorizedGetList(ApiConfig.trackTrendingUri());
+    return response.map((json) => TrackSearchResult.fromJson(json)).toList();
+  }
+
   /// Gets a playable URL just before playback. Deezer preview URLs are
   /// signed and expire; Audius full-stream URLs are resolved here too.
   Future<String> resolvePreviewUrl(String externalId) async {

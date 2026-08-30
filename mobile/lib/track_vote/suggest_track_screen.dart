@@ -23,12 +23,17 @@ class _SuggestColors {
 
 /// Deezer/Audius-backed song search for an event's queue, using the same
 /// search endpoint and the same "FULL SONG" / "30 SEC PREVIEW" badge as
-/// playlist add-song — see [_PlaybackBadge]. Unlike the playlist screen,
-/// there's no tap-to-preview audio here: the user opening this is still
-/// inside the event, whose own track is already playing in the background
-/// (see `EventDetailScreen`), so there's no way for them to actually hear
-/// a separate preview clip over it. Adding a song sends it through
-/// `POST /events/<id>/queue/` instead of a playlist's add-song endpoint.
+/// playlist add-song — see [_PlaybackBadge]. Before the user types
+/// anything, it shows Deezer's trending chart (`PlaylistApi.fetchTrending`)
+/// as a default "popular now" list; typing switches to a debounced search
+/// against the query, and clearing the query falls back to the
+/// already-fetched trending list rather than an empty prompt. Unlike the
+/// playlist screen, there's no tap-to-preview audio here: the user opening
+/// this is still inside the event, whose own track is already playing in
+/// the background (see `EventDetailScreen`), so there's no way for them to
+/// actually hear a separate preview clip over it. Adding a song sends it
+/// through `POST /events/<id>/queue/` instead of a playlist's add-song
+/// endpoint.
 class SuggestTrackScreen extends StatefulWidget {
   const SuggestTrackScreen({super.key, required this.eventId});
   final int eventId;
@@ -43,11 +48,26 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
   final _tokenStorage = TokenStorage();
   final _controller = TextEditingController();
   Timer? _debounce;
-  List<TrackSearchResult>? _results;
+
+  /// Deezer's top chart, fetched once on screen load and shown before the
+  /// user types anything. Kept separate from [_searchResults] so clearing
+  /// the search field can fall back to it instantly, with no refetch.
+  List<TrackSearchResult>? _trending;
+  List<TrackSearchResult>? _searchResults;
   final Set<String> _adding = <String>{};
   final Set<String> _added = <String>{};
   var _isLoading = false;
   String? _error;
+
+  bool get _isSearching => _controller.text.trim().isNotEmpty;
+  List<TrackSearchResult>? get _results =>
+      _isSearching ? _searchResults : _trending;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTrending();
+  }
 
   @override
   void dispose() {
@@ -56,11 +76,35 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
     super.dispose();
   }
 
+  Future<void> _loadTrending() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final results = await _trackApi.fetchTrending();
+      if (!mounted) return;
+      setState(() {
+        _trending = results;
+        _isLoading = false;
+      });
+    } on SessionExpiredException {
+      await _signOut();
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = error.message;
+        });
+      }
+    }
+  }
+
   void _onQueryChanged(String query) {
     _debounce?.cancel();
     if (query.trim().isEmpty) {
       setState(() {
-        _results = null;
+        _searchResults = null;
         _isLoading = false;
         _error = null;
       });
@@ -75,7 +119,7 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
       final results = await _trackApi.searchTracks(query);
       if (!mounted || query != _controller.text) return;
       setState(() {
-        _results = results;
+        _searchResults = results;
         _isLoading = false;
         _error = null;
       });
@@ -199,29 +243,36 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
         ),
       );
     }
-    final results = _results;
-    if (results == null) {
-      return const Center(
-        child: Text(
-          'Search by title or artist to add a song.',
-          style: TextStyle(color: _SuggestColors.muted),
-        ),
-      );
-    }
+    final results = _results ?? const [];
     if (results.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
-          'No songs found.',
-          style: TextStyle(color: _SuggestColors.muted),
+          _isSearching ? 'No songs found.' : 'Nothing trending right now.',
+          style: const TextStyle(color: _SuggestColors.muted),
         ),
       );
     }
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-      itemCount: results.length,
+      itemCount: results.length + 1,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
-        final track = results[index];
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(
+              _isSearching ? 'RESULTS' : 'POPULAR NOW',
+              style: const TextStyle(
+                fontFamily: 'Sora',
+                fontSize: 11,
+                letterSpacing: 1,
+                fontWeight: FontWeight.w800,
+                color: _SuggestColors.tertiary,
+              ),
+            ),
+          );
+        }
+        final track = results[index - 1];
         final key = track.externalId.isEmpty
             ? '${track.title}\u0000${track.artist}'
             : track.externalId;

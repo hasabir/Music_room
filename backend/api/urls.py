@@ -1,9 +1,10 @@
 from django.urls import path, include
-from api.views import HomeView, TrackPreviewView, TrackSearchView
+from api.views import HomeView, TrackPreviewView, TrackSearchView, TrackTrendingView
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 urlpatterns = [
     # path('', HomeView.as_view(), name='home'),
     path('tracks/search/', TrackSearchView.as_view(), name='track_search'),
+    path('tracks/trending/', TrackTrendingView.as_view(), name='track_trending'),
     path('tracks/<str:external_id>/preview/', TrackPreviewView.as_view(), name='track_preview'),
     path('auth/',include("authentication.urls")),
     path('user/',include("user.urls")),
