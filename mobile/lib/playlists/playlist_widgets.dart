@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/api/api_config.dart';
 import 'playlist_models.dart';
 
 class PlaylistBadgeColors {
@@ -9,6 +10,7 @@ class PlaylistBadgeColors {
   static const visibilityPrivate = Color(0xFF908FA0);
   static const editEveryone = Color(0xFF6C6FF0);
   static const editInvitedOnly = Color(0xFFE05FA8);
+  static const editOwnerOnly = Color(0xFF908FA0);
 }
 
 /// A small pill showing a playlist's `visibility` ([playlistVisibilityPublic]
@@ -31,7 +33,8 @@ class VisibilityBadge extends StatelessWidget {
 }
 
 /// A small pill showing a playlist's `edit_permission`
-/// ([playlistEditPermissionEveryone] / [playlistEditPermissionInvitedOnly]).
+/// ([playlistEditPermissionEveryone] / [playlistEditPermissionInvitedOnly]
+/// / [playlistEditPermissionOwnerOnly]).
 class EditPermissionBadge extends StatelessWidget {
   const EditPermissionBadge({super.key, required this.editPermission});
 
@@ -39,11 +42,78 @@ class EditPermissionBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isOpen = editPermission == playlistEditPermissionEveryone;
-    return _Badge(
-      label: isOpen ? 'Open Edit' : 'Invite Only',
-      icon: isOpen ? Icons.edit_rounded : Icons.group_rounded,
-      color: isOpen ? PlaylistBadgeColors.editEveryone : PlaylistBadgeColors.editInvitedOnly,
+    switch (editPermission) {
+      case playlistEditPermissionEveryone:
+        return const _Badge(label: 'Open Edit', icon: Icons.edit_rounded, color: PlaylistBadgeColors.editEveryone);
+      case playlistEditPermissionOwnerOnly:
+        return const _Badge(
+          label: 'Only Me',
+          icon: Icons.lock_person_rounded,
+          color: PlaylistBadgeColors.editOwnerOnly,
+        );
+      default:
+        return const _Badge(
+          label: 'Invite Only',
+          icon: Icons.group_rounded,
+          color: PlaylistBadgeColors.editInvitedOnly,
+        );
+    }
+  }
+}
+
+/// A playlist's cover, wherever it's shown: an uploaded image if
+/// [Playlist.coverImageUrl] is set, the chosen [PlaylistCoverPreset]
+/// gradient if [Playlist.coverPreset] is set, or a generated gradient +
+/// icon as a last resort (matches the look every playlist had before
+/// covers existed).
+class PlaylistCoverThumb extends StatelessWidget {
+  const PlaylistCoverThumb({super.key, required this.playlist, required this.size, required this.radius});
+
+  final Playlist playlist;
+  final double size;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = ApiConfig.resolveMediaUrl(playlist.coverImageUrl);
+    final preset = PlaylistCoverPreset.byId(playlist.coverPreset);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: imageUrl != null
+            ? Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => _PresetOrFallback(preset: preset, size: size),
+              )
+            : _PresetOrFallback(preset: preset, size: size),
+      ),
+    );
+  }
+}
+
+class _PresetOrFallback extends StatelessWidget {
+  const _PresetOrFallback({required this.preset, required this.size});
+
+  final PlaylistCoverPreset? preset;
+  final double size;
+
+  static const _fallbackColors = [Color(0xFF8083FF), Color(0xFF494BD6)];
+
+  @override
+  Widget build(BuildContext context) {
+    if (preset != null) {
+      return Image.asset(preset!.assetPath, fit: BoxFit.cover, width: size, height: size);
+    }
+
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: _fallbackColors),
+      ),
+      child: Center(child: Icon(Icons.graphic_eq_rounded, color: Colors.white, size: size * 0.45)),
     );
   }
 }

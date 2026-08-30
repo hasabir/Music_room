@@ -8,5 +8,5 @@ echo "Running migrations..."
 python3 manage.py makemigrations --noinput
 python3 manage.py migrate --noinput
 
-echo "Starting Daphne server..."
-exec daphne -b 0.0.0.0 -p 8000 config.asgi:application
+echo "Starting Django dev server (auto-reload enabled)..."
+exec python3 manage.py runserver 0.0.0.0:8000

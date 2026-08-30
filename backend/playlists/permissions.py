@@ -38,4 +38,7 @@ def can_user_edit_playlist(user, playlist):
             return True, ""
         return False, "Only invited collaborators can edit this playlist."
 
+    if playlist.edit_permission == "owner_only":
+        return False, "Only the owner can edit this playlist."
+
     return False, "Editing is not allowed on this playlist."

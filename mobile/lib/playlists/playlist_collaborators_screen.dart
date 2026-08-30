@@ -47,6 +47,8 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
   var _isLoading = true;
   String? _error;
   List<PlaylistCollaborator> _collaborators = const [];
+  List<PlaylistAccessRequest> _pendingRequests = const [];
+  final _decidingRequestIds = <int>{};
 
   @override
   void initState() {
@@ -61,10 +63,16 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
     });
 
     try {
-      final collaborators = await _playlistApi.listCollaborators(widget.playlistId);
+      final results = await Future.wait([
+        _playlistApi.listCollaborators(widget.playlistId),
+        _playlistApi.listAccessRequests(widget.playlistId),
+      ]);
       if (!mounted) return;
       setState(() {
-        _collaborators = collaborators;
+        _collaborators = results[0] as List<PlaylistCollaborator>;
+        _pendingRequests = (results[1] as List<PlaylistAccessRequest>)
+            .where((r) => r.status == playlistAccessRequestPending)
+            .toList();
         _isLoading = false;
       });
     } on SessionExpiredException {
@@ -75,6 +83,25 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
         _isLoading = false;
         _error = error.message;
       });
+    }
+  }
+
+  Future<void> _onDecideRequest(PlaylistAccessRequest request, {required bool approve}) async {
+    setState(() => _decidingRequestIds.add(request.id));
+    try {
+      await _playlistApi.decideAccessRequest(widget.playlistId, request.id, approve: approve);
+      if (!mounted) return;
+      setState(() {
+        _pendingRequests = _pendingRequests.where((r) => r.id != request.id).toList();
+        _decidingRequestIds.remove(request.id);
+      });
+      if (approve) _load();
+    } on SessionExpiredException {
+      await _signOutAndReturnToWelcome();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _decidingRequestIds.remove(request.id));
+      _showMessage(error.message);
     }
   }
 
@@ -172,7 +199,7 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
       return _ErrorState(message: _error!, onRetry: _load);
     }
 
-    if (_collaborators.isEmpty) {
+    if (_collaborators.isEmpty && _pendingRequests.isEmpty) {
       return _EmptyState(onAdd: _onAddCollaborators);
     }
 
@@ -180,17 +207,36 @@ class _PlaylistCollaboratorsScreenState extends State<PlaylistCollaboratorsScree
       onRefresh: _load,
       color: _CollaboratorsColors.headline,
       backgroundColor: _CollaboratorsColors.card,
-      child: ListView.separated(
+      child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-        itemCount: _collaborators.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final collaborator = _collaborators[index];
-          return _CollaboratorRow(
-            collaborator: collaborator,
-            onRemove: () => _onRemove(collaborator),
-          );
-        },
+        children: [
+          if (_pendingRequests.isNotEmpty) ...[
+            const _SectionLabel('ACCESS REQUESTS'),
+            const SizedBox(height: 10),
+            for (final request in _pendingRequests) ...[
+              _AccessRequestRow(
+                request: request,
+                isDeciding: _decidingRequestIds.contains(request.id),
+                onApprove: () => _onDecideRequest(request, approve: true),
+                onDeny: () => _onDecideRequest(request, approve: false),
+              ),
+              const SizedBox(height: 12),
+            ],
+            const SizedBox(height: 12),
+            const _SectionLabel('COLLABORATORS'),
+            const SizedBox(height: 10),
+          ],
+          if (_collaborators.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('No collaborators yet.', style: TextStyle(color: _CollaboratorsColors.muted)),
+            )
+          else
+            for (final collaborator in _collaborators) ...[
+              _CollaboratorRow(collaborator: collaborator, onRemove: () => _onRemove(collaborator)),
+              const SizedBox(height: 12),
+            ],
+        ],
       ),
     );
   }
@@ -239,6 +285,93 @@ class _Header extends StatelessWidget {
             style: IconButton.styleFrom(backgroundColor: _CollaboratorsColors.card, shape: const CircleBorder()),
             icon: const Icon(Icons.person_add_alt_1_rounded, color: _CollaboratorsColors.body),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontFamily: 'Sora',
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.8,
+        color: _CollaboratorsColors.muted,
+      ),
+    );
+  }
+}
+
+class _AccessRequestRow extends StatelessWidget {
+  const _AccessRequestRow({
+    required this.request,
+    required this.isDeciding,
+    required this.onApprove,
+    required this.onDeny,
+  });
+
+  final PlaylistAccessRequest request;
+  final bool isDeciding;
+  final VoidCallback onApprove;
+  final VoidCallback onDeny;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _CollaboratorsColors.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _CollaboratorsColors.tertiary.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: _CollaboratorsColors.border,
+            child: Text(
+              request.requesterEmail.isNotEmpty ? request.requesterEmail[0].toUpperCase() : '?',
+              style: const TextStyle(color: _CollaboratorsColors.headline, fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              request.requesterEmail,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Sora',
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: _CollaboratorsColors.body,
+              ),
+            ),
+          ),
+          if (isDeciding)
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: _CollaboratorsColors.headline),
+            )
+          else ...[
+            IconButton(
+              onPressed: onDeny,
+              icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 20),
+            ),
+            IconButton(
+              onPressed: onApprove,
+              icon: const Icon(Icons.check_rounded, color: _CollaboratorsColors.tertiary, size: 20),
+            ),
+          ],
         ],
       ),
     );

@@ -12,3 +12,7 @@ class MoveSongRateThrottle(UserRateThrottle):
 
 class CreatePlaylistRateThrottle(UserRateThrottle):
     scope = "create_playlist"
+
+
+class AccessRequestRateThrottle(UserRateThrottle):
+    scope = "playlist_access_request"

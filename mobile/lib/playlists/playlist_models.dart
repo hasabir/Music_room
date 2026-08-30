@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 /// Allowed values for `Playlist.visibility`
 /// (`backend/playlists/models.py`: `Playlist.VISIBILITY_CHOICES`).
 const String playlistVisibilityPublic = 'public';
@@ -7,6 +9,70 @@ const String playlistVisibilityPrivate = 'private';
 /// (`backend/playlists/models.py`: `Playlist.EDIT_PERMISSION_CHOICES`).
 const String playlistEditPermissionEveryone = 'everyone';
 const String playlistEditPermissionInvitedOnly = 'invited_only';
+const String playlistEditPermissionOwnerOnly = 'owner_only';
+
+/// One of the 5 built-in cover looks, as an alternative to uploading a
+/// custom [Playlist.coverImageUrl]. Keys mirror
+/// `Playlist.COVER_PRESET_CHOICES` in `backend/playlists/models.py`.
+/// [assetPath] points at a real bundled piece of generative art (see
+/// `mobile/assets/images/playlist_covers/`) — [glowColor] is only used as
+/// a subtle accent (selection glow, loading placeholder), not as a
+/// stand-in for the image itself.
+class PlaylistCoverPreset {
+  const PlaylistCoverPreset._(
+    this.id,
+    this.label,
+    this.assetPath,
+    this.glowColor,
+  );
+
+  final String id;
+  final String label;
+  final String assetPath;
+  final Color glowColor;
+
+  static const sunset = PlaylistCoverPreset._(
+    'sunset',
+    'Sunset',
+    'assets/images/playlist_covers/sunset.jpg',
+    Color(0xFFFF7A59),
+  );
+  static const neon = PlaylistCoverPreset._(
+    'neon',
+    'Neon',
+    'assets/images/playlist_covers/neon.jpg',
+    Color(0xFF2FD9F4),
+  );
+  static const forest = PlaylistCoverPreset._(
+    'forest',
+    'Forest',
+    'assets/images/playlist_covers/forest.jpg',
+    Color(0xFF34D399),
+  );
+  static const ocean = PlaylistCoverPreset._(
+    'ocean',
+    'Ocean',
+    'assets/images/playlist_covers/ocean.jpg',
+    Color(0xFF38BDF8),
+  );
+  static const midnight = PlaylistCoverPreset._(
+    'midnight',
+    'Midnight',
+    'assets/images/playlist_covers/midnight.jpg',
+    Color(0xFF7C3AED),
+  );
+
+  /// All 5 presets, in the order they're offered when creating a playlist.
+  static const all = [sunset, neon, forest, ocean, midnight];
+
+  static PlaylistCoverPreset? byId(String? id) {
+    if (id == null || id.isEmpty) return null;
+    for (final preset in all) {
+      if (preset.id == id) return preset;
+    }
+    return null;
+  }
+}
 
 /// A collaborative, ordered list of songs, as returned by
 /// `GET/POST /api/v1/playlists/` and `GET/PATCH /api/v1/playlists/<id>/`
@@ -16,8 +82,11 @@ class Playlist {
     required this.id,
     required this.owner,
     required this.title,
+    required this.description,
     required this.visibility,
     required this.editPermission,
+    required this.coverImageUrl,
+    required this.coverPreset,
     required this.songCount,
     required this.createdAt,
     required this.updatedAt,
@@ -27,8 +96,12 @@ class Playlist {
     id: json['id'] as int,
     owner: json['owner'] as String? ?? '',
     title: json['title'] as String? ?? '',
+    description: json['description'] as String? ?? '',
     visibility: json['visibility'] as String? ?? playlistVisibilityPublic,
-    editPermission: json['edit_permission'] as String? ?? playlistEditPermissionEveryone,
+    editPermission:
+        json['edit_permission'] as String? ?? playlistEditPermissionEveryone,
+    coverImageUrl: json['cover_image_url'] as String?,
+    coverPreset: json['cover_preset'] as String?,
     songCount: json['song_count'] as int? ?? 0,
     createdAt: DateTime.parse(json['created_at'] as String),
     updatedAt: DateTime.parse(json['updated_at'] as String),
@@ -40,12 +113,25 @@ class Playlist {
   /// typically the owner's email.
   final String owner;
   final String title;
+  final String description;
 
   /// One of [playlistVisibilityPublic] / [playlistVisibilityPrivate].
   final String visibility;
 
-  /// One of [playlistEditPermissionEveryone] / [playlistEditPermissionInvitedOnly].
+  /// One of [playlistEditPermissionEveryone] / [playlistEditPermissionInvitedOnly]
+  /// / [playlistEditPermissionOwnerOnly].
   final String editPermission;
+
+  /// Server-relative path to an uploaded cover image (e.g.
+  /// `/media/playlists/covers/xyz.jpg`), or `null` if none was uploaded —
+  /// resolve with `ApiConfig.resolveMediaUrl` before using in `Image.network`.
+  /// Takes priority over [coverPreset] when both are somehow present.
+  final String? coverImageUrl;
+
+  /// One of [PlaylistCoverPreset.all]'s ids, or `null`/blank if the owner
+  /// picked neither a preset nor uploaded an image (falls back to a
+  /// generated look).
+  final String? coverPreset;
   final int songCount;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -64,8 +150,12 @@ class PlaylistSong {
     required this.id,
     required this.playlist,
     required this.song,
+    required this.songExternalId,
     required this.songTitle,
     required this.songArtist,
+    required this.songAlbumArtUrl,
+    required this.songDurationSeconds,
+    required this.songPreviewUrl,
     required this.position,
     required this.addedByEmail,
     required this.addedAt,
@@ -75,8 +165,12 @@ class PlaylistSong {
     id: json['id'] as int,
     playlist: json['playlist'] as int,
     song: json['song'] as int,
+    songExternalId: json['song_external_id'] as String? ?? '',
     songTitle: json['song_title'] as String? ?? '',
     songArtist: json['song_artist'] as String? ?? '',
+    songAlbumArtUrl: json['song_album_art_url'] as String? ?? '',
+    songDurationSeconds: json['song_duration_seconds'] as int?,
+    songPreviewUrl: json['song_preview_url'] as String? ?? '',
     position: json['position'] as int,
     addedByEmail: json['added_by_email'] as String?,
     addedAt: DateTime.parse(json['added_at'] as String),
@@ -87,8 +181,18 @@ class PlaylistSong {
 
   /// Catalog `Song` id (`events.Song`, shared with the events app).
   final int song;
+  final String songExternalId;
   final String songTitle;
   final String songArtist;
+
+  /// Cover art pulled from Deezer at add-time (blank for songs added
+  /// manually, or added before this field existed).
+  final String songAlbumArtUrl;
+  final int? songDurationSeconds;
+
+  /// 30-second preview clip. Blank for songs added manually or added
+  /// before this field existed.
+  final String songPreviewUrl;
 
   /// Zero-based position within the playlist.
   final int position;
@@ -111,13 +215,14 @@ class PlaylistCollaborator {
     required this.invitedAt,
   });
 
-  factory PlaylistCollaborator.fromJson(Map<String, dynamic> json) => PlaylistCollaborator(
-    id: json['id'] as int,
-    playlist: json['playlist'] as int,
-    collaborator: json['collaborator'] as int,
-    collaboratorEmail: json['collaborator_email'] as String? ?? '',
-    invitedAt: DateTime.parse(json['invited_at'] as String),
-  );
+  factory PlaylistCollaborator.fromJson(Map<String, dynamic> json) =>
+      PlaylistCollaborator(
+        id: json['id'] as int,
+        playlist: json['playlist'] as int,
+        collaborator: json['collaborator'] as int,
+        collaboratorEmail: json['collaborator_email'] as String? ?? '',
+        invitedAt: DateTime.parse(json['invited_at'] as String),
+      );
 
   final int id;
   final int playlist;
@@ -126,4 +231,88 @@ class PlaylistCollaborator {
   final int collaborator;
   final String collaboratorEmail;
   final DateTime invitedAt;
+}
+
+/// Allowed values for `PlaylistAccessRequest.status`
+/// (`backend/playlists/models.py`: `PlaylistAccessRequest.STATUS_CHOICES`).
+const String playlistAccessRequestPending = 'pending';
+const String playlistAccessRequestApproved = 'approved';
+const String playlistAccessRequestDenied = 'denied';
+
+/// A request to become a collaborator on a playlist — either to view a
+/// private one, or to edit an invited-only one. As returned by
+/// `GET/POST /api/v1/playlists/<playlist_id>/access-requests/`,
+/// `GET .../access-requests/mine/`, and
+/// `POST .../access-requests/<id>/decide/` (`PlaylistAccessRequestSerializer`).
+class PlaylistAccessRequest {
+  const PlaylistAccessRequest({
+    required this.id,
+    required this.playlist,
+    required this.requester,
+    required this.requesterEmail,
+    required this.status,
+    required this.requestedAt,
+    required this.decidedAt,
+  });
+
+  factory PlaylistAccessRequest.fromJson(Map<String, dynamic> json) =>
+      PlaylistAccessRequest(
+        id: json['id'] as int,
+        playlist: json['playlist'] as int,
+        requester: json['requester'] as int,
+        requesterEmail: json['requester_email'] as String? ?? '',
+        status: json['status'] as String? ?? playlistAccessRequestPending,
+        requestedAt: DateTime.parse(json['requested_at'] as String),
+        decidedAt: json['decided_at'] == null
+            ? null
+            : DateTime.parse(json['decided_at'] as String),
+      );
+
+  final int id;
+  final int playlist;
+  final int requester;
+  final String requesterEmail;
+
+  /// One of [playlistAccessRequestPending] / [playlistAccessRequestApproved]
+  /// / [playlistAccessRequestDenied].
+  final String status;
+  final DateTime requestedAt;
+  final DateTime? decidedAt;
+}
+
+/// One track from `GET /api/v1/tracks/search/?q=...` (`TrackSearchView`,
+/// which proxies Deezer). [previewUrl] is only a short-lived search result;
+/// playback resolves a fresh URL from [externalId]. Adding the track to a
+/// playlist only ever sends
+/// [title]/[artist]/[durationSeconds]/[externalId] to the backend, same as
+/// a manually-typed song (`PlaylistApi.addSong`).
+class TrackSearchResult {
+  const TrackSearchResult({
+    required this.externalId,
+    required this.title,
+    required this.artist,
+    required this.albumArtUrl,
+    required this.previewUrl,
+    required this.durationSeconds,
+  });
+
+  factory TrackSearchResult.fromJson(Map<String, dynamic> json) =>
+      TrackSearchResult(
+        externalId: json['external_id'] as String? ?? '',
+        title: json['title'] as String? ?? '',
+        artist: json['artist'] as String? ?? '',
+        albumArtUrl: json['album_art_url'] as String? ?? '',
+        previewUrl: json['preview_url'] as String? ?? '',
+        durationSeconds: json['duration_seconds'] as int?,
+      );
+
+  final String externalId;
+  final String title;
+  final String artist;
+  final String albumArtUrl;
+
+  /// 30-second preview clip. Can be blank if Deezer has no preview for
+  /// this track.
+  final String previewUrl;
+  final int? durationSeconds;
 }

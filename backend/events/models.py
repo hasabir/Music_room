@@ -106,6 +106,8 @@ class Song(models.Model):
     title = models.CharField(max_length=200)
     artist = models.CharField(max_length=200)
     duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    album_art_url = models.URLField(max_length=500, blank=True, default="")
+    preview_url = models.URLField(max_length=500, blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
 

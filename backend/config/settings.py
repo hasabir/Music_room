@@ -113,6 +113,11 @@ REST_FRAMEWORK = {
         "add_playlist_song": "20000/min",
         "move_song": "60000/min",     # reordering can happen fast during active editing (drag-and-drop)
         "create_playlist": "10000/hour",
+        "playlist_access_request": "3000/hour",
+
+        # NEW — track search (proxies Deezer, so keep it far below their own rate limits)
+        "track_search": "300/min",
+        "track_preview": "300/min",
     },
     
 }

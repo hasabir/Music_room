@@ -15,6 +15,16 @@ class ApiConfig {
 
   static String get googleWebClientId => dotenv.env['GOOGLE_CLIENT_ID'] ?? '';
 
+  /// Resolves a server-relative media path (e.g. `/media/playlists/covers/x.jpg`,
+  /// as returned in `cover_image_url`/`profile_image`) against [baseUrl] so
+  /// it can be passed to `Image.network`. Already-absolute URLs pass through
+  /// unchanged; `null`/empty stays `null`.
+  static String? resolveMediaUrl(String? path) {
+    if (path == null || path.isEmpty) return null;
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    return '$baseUrl$path';
+  }
+
   static const String registerEndpoint = '/api/v1/auth/register/';
   static const String loginEndpoint = '/api/v1/auth/login/';
   static const String meEndpoint = '/api/v1/user/me/';
@@ -40,6 +50,7 @@ class ApiConfig {
       '/api/v1/profile/friends/requests/sent/';
   static const String userSearchEndpoint = '/api/v1/profile/search/';
   static const String playlistsEndpoint = '/api/v1/playlists/';
+  static const String trackSearchEndpoint = '/api/v1/tracks/search/';
 
   static Uri registerUri() => Uri.parse('$baseUrl$registerEndpoint');
   static Uri loginUri() => Uri.parse('$baseUrl$loginEndpoint');
@@ -49,7 +60,8 @@ class ApiConfig {
       Uri.parse('$baseUrl$resendVerificationEndpoint');
   static Uri tokenRefreshUri() => Uri.parse('$baseUrl$tokenRefreshEndpoint');
   static Uri logoutUri() => Uri.parse('$baseUrl$logoutEndpoint');
-  static Uri changePasswordUri() => Uri.parse('$baseUrl$changePasswordEndpoint');
+  static Uri changePasswordUri() =>
+      Uri.parse('$baseUrl$changePasswordEndpoint');
   static Uri googleLoginUri() => Uri.parse('$baseUrl$googleLoginEndpoint');
   static Uri googleLinkUri() => Uri.parse('$baseUrl$googleLinkEndpoint');
   static Uri passwordResetRequestUri() =>
@@ -77,7 +89,8 @@ class ApiConfig {
   static Uri userProfileUri(int userId) =>
       Uri.parse('$baseUrl/api/v1/profile/profile/$userId/');
   static Uri userSearchUri(String query) =>
-      Uri.parse('$baseUrl$userSearchEndpoint').replace(queryParameters: {'q': query});
+      Uri.parse('$baseUrl$userSearchEndpoint')
+          .replace(queryParameters: {'q': query});
   static Uri playlistsUri() => Uri.parse('$baseUrl$playlistsEndpoint');
   static Uri playlistDetailUri(int playlistId) =>
       Uri.parse('$baseUrl$playlistsEndpoint$playlistId/');
@@ -85,12 +98,28 @@ class ApiConfig {
       Uri.parse('$baseUrl$playlistsEndpoint$playlistId/songs/');
   static Uri playlistSongDetailUri(int playlistId, int playlistSongId) =>
       Uri.parse('$baseUrl$playlistsEndpoint$playlistId/songs/$playlistSongId/');
-  static Uri playlistSongMoveUri(int playlistId, int playlistSongId) => Uri.parse(
-    '$baseUrl$playlistsEndpoint$playlistId/songs/$playlistSongId/move/',
-  );
+  static Uri playlistSongMoveUri(int playlistId, int playlistSongId) =>
+      Uri.parse(
+        '$baseUrl$playlistsEndpoint$playlistId/songs/$playlistSongId/move/',
+      );
   static Uri playlistCollaboratorsUri(int playlistId) =>
       Uri.parse('$baseUrl$playlistsEndpoint$playlistId/collaborators/');
-  static Uri playlistCollaboratorDetailUri(int playlistId, int userId) => Uri.parse(
-    '$baseUrl$playlistsEndpoint$playlistId/collaborators/$userId/',
+  static Uri playlistCollaboratorDetailUri(int playlistId, int userId) =>
+      Uri.parse('$baseUrl$playlistsEndpoint$playlistId/collaborators/$userId/');
+  static Uri trackSearchUri(String query) =>
+      Uri.parse('$baseUrl$trackSearchEndpoint')
+          .replace(queryParameters: {'q': query});
+  static Uri trackPreviewUri(String externalId) => Uri.parse(
+    '$baseUrl/api/v1/tracks/${Uri.encodeComponent(externalId)}/preview/',
+  );
+  static Uri playlistAccessRequestsUri(int playlistId) =>
+      Uri.parse('$baseUrl$playlistsEndpoint$playlistId/access-requests/');
+  static Uri playlistAccessRequestMineUri(int playlistId) =>
+      Uri.parse('$baseUrl$playlistsEndpoint$playlistId/access-requests/mine/');
+  static Uri playlistAccessRequestDecideUri(
+    int playlistId,
+    int requestId,
+  ) => Uri.parse(
+    '$baseUrl$playlistsEndpoint$playlistId/access-requests/$requestId/decide/',
   );
 }

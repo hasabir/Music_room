@@ -183,6 +183,8 @@ class EventQueueView(APIView):
                 "artist": data["artist"],
                 "duration_seconds": data.get("duration_seconds"),
                 "external_id": data.get("external_id", ""),
+                "album_art_url": data.get("album_art_url", ""),
+                "preview_url": data.get("preview_url", ""),
             },
         )
 

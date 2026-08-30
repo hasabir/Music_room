@@ -7,6 +7,7 @@ import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
 import '../core/widgets/app_bottom_nav.dart';
 import '../core/widgets/app_tab_navigation.dart';
+import 'create_playlist_screen.dart';
 import 'playlist_api.dart';
 import 'playlist_detail_screen.dart';
 import 'playlist_models.dart';
@@ -20,8 +21,6 @@ class _PlaylistColors {
   static const body = Color(0xFFE4E1EB);
   static const muted = Color(0xFF908FA0);
   static const tertiary = Color(0xFF2FD9F4);
-  static const gradientStart = Color(0xFF8083FF);
-  static const gradientEnd = Color(0xFF494BD6);
 }
 
 /// The "Playlist Editor" tab — the signed-in user's own/collaborated
@@ -81,13 +80,35 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   }
 
   Future<void> _onCreatePlaylist() async {
-    final created = await showModalBottomSheet<Playlist>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _CreatePlaylistSheet(playlistApi: _playlistApi),
-    );
-    if (created != null) _refresh();
+    final created = await Navigator.of(
+      context,
+    ).push<Playlist>(MaterialPageRoute(builder: (_) => const CreatePlaylistScreen()));
+    if (created != null) await _addPlaylistLocally(created);
+  }
+
+  /// Inserts a freshly created playlist into the already-loaded list right
+  /// away, so it appears the instant creation succeeds instead of only
+  /// after a manual pull-to-refresh. Falls back to a full [_refresh] if
+  /// nothing's loaded yet (e.g. the initial load failed).
+  Future<void> _addPlaylistLocally(Playlist playlist) async {
+    _ListData? current;
+    try {
+      current = await _dataFuture;
+    } catch (_) {
+      current = null;
+    }
+    if (!mounted) return;
+
+    if (current == null) {
+      await _refresh();
+      return;
+    }
+
+    setState(() {
+      _dataFuture = Future.value(
+        _ListData(playlists: [playlist, ...current!.playlists], authUser: current.authUser),
+      );
+    });
   }
 
   Future<void> _onOpenPlaylist(Playlist playlist) async {
@@ -95,6 +116,42 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       context,
     ).push(MaterialPageRoute(builder: (_) => PlaylistDetailScreen(playlistId: playlist.id)));
     _refresh();
+  }
+
+  Future<void> _onDeletePlaylist(Playlist playlist) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _PlaylistColors.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Delete Playlist?', style: TextStyle(fontFamily: 'Sora', color: _PlaylistColors.body)),
+        content: Text(
+          '"${playlist.title}" and all of its songs will be permanently deleted.',
+          style: const TextStyle(color: _PlaylistColors.muted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: _PlaylistColors.muted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _playlistApi.deletePlaylist(playlist.id);
+      _refresh();
+    } on SessionExpiredException {
+      await _signOutAndReturnToWelcome();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   @override
@@ -151,12 +208,14 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                         : ListView.separated(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                             itemCount: visible.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: 16),
+                            separatorBuilder: (_, _) => const SizedBox(height: 12),
                             itemBuilder: (context, index) {
                               final playlist = visible[index];
                               return _PlaylistHeroCard(
                                 playlist: playlist,
+                                isOwner: playlist.owner == email,
                                 onTap: () => _onOpenPlaylist(playlist),
+                                onDelete: () => _onDeletePlaylist(playlist),
                               );
                             },
                           ),
@@ -291,80 +350,62 @@ class _TabButton extends StatelessWidget {
 }
 
 class _PlaylistHeroCard extends StatelessWidget {
-  const _PlaylistHeroCard({required this.playlist, required this.onTap});
+  const _PlaylistHeroCard({
+    required this.playlist,
+    required this.onTap,
+    required this.isOwner,
+    required this.onDelete,
+  });
 
   final Playlist playlist;
   final VoidCallback onTap;
+
+  /// Deleting is an owner-only action — the backend rejects it from
+  /// anyone else (`PlaylistDetailView.perform_destroy`).
+  final bool isOwner;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(20),
       child: Container(
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: _PlaylistColors.card,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: _PlaylistColors.cardBorder),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Stack(
-              children: [
-                Container(
-                  height: 140,
-                  width: double.infinity,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [_PlaylistColors.gradientStart, _PlaylistColors.gradientEnd],
-                    ),
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.graphic_eq_rounded, color: Colors.white, size: 56),
-                  ),
-                ),
-                Positioned(
-                  top: 12,
-                  right: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${playlist.songCount} ${playlist.songCount == 1 ? 'track' : 'tracks'}',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
+            PlaylistCoverThumb(playlist: playlist, size: 56, radius: 14),
+            const SizedBox(width: 14),
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     playlist.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontFamily: 'Sora',
                       fontWeight: FontWeight.w800,
-                      fontSize: 19,
+                      fontSize: 15,
                       color: _PlaylistColors.body,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 3),
                   Text(
-                    'By ${playlist.owner}',
-                    style: const TextStyle(fontSize: 13, color: _PlaylistColors.muted),
+                    '${playlist.songCount} ${playlist.songCount == 1 ? 'track' : 'tracks'} · ${playlist.owner}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: _PlaylistColors.muted),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       VisibilityBadge(visibility: playlist.visibility),
                       const SizedBox(width: 8),
@@ -374,12 +415,38 @@ class _PlaylistHeroCard extends StatelessWidget {
                 ],
               ),
             ),
+            PopupMenuButton<_PlaylistAction>(
+              icon: const Icon(Icons.more_vert_rounded, color: _PlaylistColors.muted),
+              color: _PlaylistColors.card,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              onSelected: (action) {
+                switch (action) {
+                  case _PlaylistAction.open:
+                    onTap();
+                  case _PlaylistAction.delete:
+                    onDelete();
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: _PlaylistAction.open,
+                  child: Text('Open', style: TextStyle(color: _PlaylistColors.body)),
+                ),
+                if (isOwner)
+                  const PopupMenuItem(
+                    value: _PlaylistAction.delete,
+                    child: Text('Delete', style: TextStyle(color: Colors.redAccent)),
+                  ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 }
+
+enum _PlaylistAction { open, delete }
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.tab, required this.onCreate});
@@ -447,209 +514,3 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-class _CreatePlaylistSheet extends StatefulWidget {
-  const _CreatePlaylistSheet({required this.playlistApi});
-
-  final PlaylistApi playlistApi;
-
-  @override
-  State<_CreatePlaylistSheet> createState() => _CreatePlaylistSheetState();
-}
-
-class _CreatePlaylistSheetState extends State<_CreatePlaylistSheet> {
-  final _titleController = TextEditingController();
-  var _visibility = playlistVisibilityPublic;
-  var _editPermission = playlistEditPermissionEveryone;
-  var _isSubmitting = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    final title = _titleController.text.trim();
-    if (title.isEmpty) {
-      setState(() => _error = 'Give your playlist a title.');
-      return;
-    }
-
-    setState(() {
-      _isSubmitting = true;
-      _error = null;
-    });
-
-    try {
-      final playlist = await widget.playlistApi.createPlaylist(
-        title: title,
-        visibility: _visibility,
-        editPermission: _editPermission,
-      );
-      if (!mounted) return;
-      Navigator.of(context).pop(playlist);
-    } on ApiException catch (error) {
-      setState(() {
-        _isSubmitting = false;
-        _error = error.message;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-        decoration: const BoxDecoration(
-          color: _PlaylistColors.card,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Create Playlist',
-              style: TextStyle(
-                fontFamily: 'Sora',
-                fontWeight: FontWeight.w800,
-                fontSize: 20,
-                color: _PlaylistColors.body,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _titleController,
-              autofocus: true,
-              style: const TextStyle(color: _PlaylistColors.body),
-              decoration: InputDecoration(
-                hintText: 'Playlist title',
-                hintStyle: const TextStyle(color: _PlaylistColors.muted),
-                filled: true,
-                fillColor: _PlaylistColors.background,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const _SheetLabel('VISIBILITY'),
-            const SizedBox(height: 8),
-            _SegmentedChoice(
-              options: const {playlistVisibilityPublic: 'Public', playlistVisibilityPrivate: 'Private'},
-              value: _visibility,
-              onChanged: (value) => setState(() => _visibility = value),
-            ),
-            const SizedBox(height: 20),
-            const _SheetLabel('WHO CAN EDIT'),
-            const SizedBox(height: 8),
-            _SegmentedChoice(
-              options: const {
-                playlistEditPermissionEveryone: 'Everyone',
-                playlistEditPermissionInvitedOnly: 'Invite Only',
-              },
-              value: _editPermission,
-              onChanged: (value) => setState(() => _editPermission = value),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
-            ],
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _isSubmitting ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _PlaylistColors.tertiary,
-                  foregroundColor: _PlaylistColors.background,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                child: _isSubmitting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: _PlaylistColors.background),
-                      )
-                    : const Text(
-                        'Create',
-                        style: TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700),
-                      ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SheetLabel extends StatelessWidget {
-  const _SheetLabel(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontFamily: 'Sora',
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.8,
-        color: _PlaylistColors.muted,
-      ),
-    );
-  }
-}
-
-class _SegmentedChoice extends StatelessWidget {
-  const _SegmentedChoice({required this.options, required this.value, required this.onChanged});
-
-  final Map<String, String> options;
-  final String value;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (final entry in options.entries) ...[
-          if (entry.key != options.keys.first) const SizedBox(width: 8),
-          Expanded(
-            child: InkWell(
-              onTap: () => onChanged(entry.key),
-              borderRadius: BorderRadius.circular(14),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: entry.key == value ? _PlaylistColors.tertiary.withValues(alpha: 0.15) : _PlaylistColors.background,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: entry.key == value ? _PlaylistColors.tertiary : _PlaylistColors.cardBorder,
-                  ),
-                ),
-                child: Text(
-                  entry.value,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'Sora',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                    color: entry.key == value ? _PlaylistColors.tertiary : _PlaylistColors.muted,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}

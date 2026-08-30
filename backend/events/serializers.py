@@ -52,7 +52,7 @@ class EventGuestSerializer(serializers.ModelSerializer):
 class SongSerializer(serializers.ModelSerializer):
     class Meta:
         model = Song
-        fields = ["id", "external_id", "title", "artist", "duration_seconds"]
+        fields = ["id", "external_id", "title", "artist", "duration_seconds", "album_art_url", "preview_url"]
         read_only_fields = ["id"]
 
 
@@ -62,6 +62,8 @@ class AddSongToQueueSerializer(serializers.Serializer):
     artist = serializers.CharField(max_length=200)
     duration_seconds = serializers.IntegerField(required=False, allow_null=True)
     external_id = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    album_art_url = serializers.URLField(max_length=500, required=False, allow_blank=True)
+    preview_url = serializers.URLField(max_length=500, required=False, allow_blank=True)
 
 
 class EventSongSerializer(serializers.ModelSerializer):
