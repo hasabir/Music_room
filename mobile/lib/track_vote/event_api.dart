@@ -147,12 +147,16 @@ class EventApi {
     required String artist,
     int? durationSeconds,
     String? externalId,
+    String? albumArtUrl,
+    String? previewUrl,
   }) async {
     final body = <String, dynamic>{
       'title': title,
       'artist': artist,
       'duration_seconds': ?durationSeconds,
       'external_id': ?externalId,
+      'album_art_url': ?albumArtUrl,
+      'preview_url': ?previewUrl,
     };
     final response = await _authorizedPost(
       ApiConfig.eventQueueUri(eventId),

@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../auth/auth_api.dart';
+import '../auth/auth_models.dart';
 import '../auth/welcome_screen.dart';
 import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
 import 'event_api.dart';
 import 'event_models.dart';
 import 'event_widgets.dart';
+import 'event_guests_screen.dart';
 import 'suggest_track_screen.dart';
 
 class _EventColors {
@@ -36,12 +38,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   static const _pollInterval = Duration(seconds: 5);
 
   final _eventApi = EventApi();
+  final _authApi = AuthApi();
   final _tokenStorage = TokenStorage();
   final Set<int> _changingVotes = <int>{};
   Timer? _pollTimer;
   var _isLoading = true;
   String? _loadError;
+  String? _voteRestrictionReason;
+  var _isPrivateAccessDenied = false;
   Event? _event;
+  AuthUser? _authUser;
   List<EventSong> _queue = const [];
 
   @override
@@ -66,17 +72,27 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       final results = await Future.wait([
         _eventApi.getEvent(widget.eventId),
         _eventApi.listQueue(widget.eventId),
+        _authApi.getCurrentUser(),
       ]);
       if (!mounted) return;
       setState(() {
         _event = results[0] as Event;
         _queue = results[1] as List<EventSong>;
+        _authUser = results[2] as AuthUser;
         _isLoading = false;
       });
     } on SessionExpiredException {
       await _signOutAndReturnToWelcome();
     } on ApiException catch (error) {
       if (!mounted) return;
+      if (error.statusCode == 403) {
+        _pollTimer?.cancel();
+        setState(() {
+          _isLoading = false;
+          _isPrivateAccessDenied = true;
+        });
+        return;
+      }
       setState(() {
         _isLoading = false;
         _loadError = error.message;
@@ -139,7 +155,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     } on SessionExpiredException {
       await _signOutAndReturnToWelcome();
     } on VoteNotPermittedException catch (error) {
-      _showMessage(error.message);
+      if (mounted) setState(() => _voteRestrictionReason = error.message);
     } on ApiException catch (error) {
       _showMessage(error.message);
     } on String catch (message) {
@@ -175,11 +191,39 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     await _refetchQueue();
   }
 
+  Future<void> _openGuestManagement() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => EventGuestsScreen(eventId: widget.eventId),
+      ),
+    );
+  }
+
+  void _showRequirements(Event event) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _EventColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetContext) => _VotingRequirementsSheet(
+        event: event,
+        onTryAgain: () {
+          Navigator.pop(sheetContext);
+          setState(() => _voteRestrictionReason = null);
+        },
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: _EventColors.background,
-    body: SafeArea(child: _buildBody()),
-  );
+  Widget build(BuildContext context) {
+    if (_isPrivateAccessDenied) return const PrivateEventAccessDeniedScreen();
+    return Scaffold(
+      backgroundColor: _EventColors.background,
+      body: SafeArea(child: _buildBody()),
+    );
+  }
 
   Widget _buildBody() {
     if (_isLoading) {
@@ -207,10 +251,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       event.host,
       ..._queue.map((entry) => entry.addedByEmail).whereType<String>(),
     }.toList();
+    final isHost = _authUser?.email == event.host;
+    final isVotingRestricted = _voteRestrictionReason != null;
 
     return Column(
       children: [
-        _TopBar(title: event.title),
+        _TopBar(
+          title: event.title,
+          onManageGuests: isHost ? _openGuestManagement : null,
+        ),
         Expanded(
           child: RefreshIndicator(
             onRefresh: _loadAll,
@@ -254,6 +303,17 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 const SizedBox(height: 10),
                 _NowPlayingCard(song: playing),
                 const SizedBox(height: 28),
+                if (isVotingRestricted) ...[
+                  _VotingRestrictedCard(
+                    message:
+                        event.votePermission ==
+                            eventVotePermissionLocationTimeRestricted
+                        ? "You are currently outside the event geofence or the voting window hasn't started yet."
+                        : _voteRestrictionReason!,
+                    onCheckRequirements: () => _showRequirements(event),
+                  ),
+                  const SizedBox(height: 22),
+                ],
                 Row(
                   children: [
                     const Expanded(child: _SectionLabel('UP NEXT')),
@@ -290,6 +350,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     _QueueRow(
                       entry: entry,
                       isChanging: _changingVotes.contains(entry.id),
+                      isReadOnly: isVotingRestricted,
                       onVote: () => _toggleVote(entry),
                     ),
                     const SizedBox(height: 8),
@@ -304,8 +365,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.title});
+  const _TopBar({required this.title, required this.onManageGuests});
   final String title;
+  final VoidCallback? onManageGuests;
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(4, 8, 16, 4),
@@ -328,6 +390,12 @@ class _TopBar extends StatelessWidget {
             ),
           ),
         ),
+        if (onManageGuests != null)
+          IconButton(
+            onPressed: onManageGuests,
+            icon: const Icon(Icons.group_rounded, color: _EventColors.tertiary),
+            tooltip: 'Manage guests',
+          ),
       ],
     ),
   );
@@ -522,10 +590,12 @@ class _QueueRow extends StatelessWidget {
   const _QueueRow({
     required this.entry,
     required this.isChanging,
+    required this.isReadOnly,
     required this.onVote,
   });
   final EventSong entry;
   final bool isChanging;
+  final bool isReadOnly;
   final VoidCallback onVote;
   @override
   Widget build(BuildContext context) => Container(
@@ -569,6 +639,7 @@ class _QueueRow extends StatelessWidget {
           count: entry.voteCount,
           hasVoted: entry.hasVoted,
           isChanging: isChanging,
+          isReadOnly: isReadOnly,
           onTap: onVote,
         ),
       ],
@@ -581,20 +652,24 @@ class _VoteButton extends StatelessWidget {
     required this.count,
     required this.hasVoted,
     required this.isChanging,
+    required this.isReadOnly,
     required this.onTap,
   });
   final int count;
   final bool hasVoted;
   final bool isChanging;
+  final bool isReadOnly;
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => Material(
-    color: hasVoted
+    color: isReadOnly
+        ? _EventColors.card
+        : hasVoted
         ? _EventColors.tertiary.withValues(alpha: .2)
         : _EventColors.background,
     borderRadius: BorderRadius.circular(18),
     child: InkWell(
-      onTap: isChanging ? null : onTap,
+      onTap: isChanging || isReadOnly ? null : onTap,
       borderRadius: BorderRadius.circular(18),
       child: Container(
         width: 72,
@@ -602,7 +677,11 @@ class _VoteButton extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: hasVoted ? _EventColors.tertiary : _EventColors.cardBorder,
+            color: isReadOnly
+                ? _EventColors.cardBorder
+                : hasVoted
+                ? _EventColors.tertiary
+                : _EventColors.cardBorder,
           ),
         ),
         child: isChanging
@@ -623,16 +702,24 @@ class _VoteButton extends StatelessWidget {
                     style: TextStyle(
                       fontFamily: 'Sora',
                       fontWeight: FontWeight.w800,
-                      color: hasVoted
+                      color: isReadOnly
+                          ? _EventColors.muted
+                          : hasVoted
                           ? _EventColors.tertiary
                           : _EventColors.body,
                     ),
                   ),
                   const SizedBox(width: 4),
                   Icon(
-                    hasVoted ? Icons.check_rounded : Icons.arrow_upward_rounded,
+                    isReadOnly
+                        ? Icons.lock_rounded
+                        : hasVoted
+                        ? Icons.check_rounded
+                        : Icons.arrow_upward_rounded,
                     size: 15,
-                    color: hasVoted
+                    color: isReadOnly
+                        ? _EventColors.muted
+                        : hasVoted
                         ? _EventColors.tertiary
                         : _EventColors.muted,
                   ),
@@ -677,6 +764,247 @@ class _EmptyQueue extends StatelessWidget {
       child: Text(
         'Be the first to suggest a track.',
         style: TextStyle(color: _EventColors.muted),
+      ),
+    ),
+  );
+}
+
+class _VotingRestrictedCard extends StatelessWidget {
+  const _VotingRestrictedCard({
+    required this.message,
+    required this.onCheckRequirements,
+  });
+
+  final String message;
+  final VoidCallback onCheckRequirements;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: _EventColors.card,
+      borderRadius: BorderRadius.circular(28),
+      border: Border.all(color: const Color(0xFF70555B)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            CircleAvatar(
+              radius: 21,
+              backgroundColor: Color(0xFF39282D),
+              child: Icon(Icons.lock_rounded, color: Color(0xFFFFB4AB)),
+            ),
+            SizedBox(width: 12),
+            Text(
+              'Voting Restricted',
+              style: TextStyle(
+                fontFamily: 'Sora',
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: _EventColors.body,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          message,
+          style: TextStyle(
+            fontSize: 14,
+            height: 1.5,
+            color: _EventColors.headline,
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextButton.icon(
+          onPressed: onCheckRequirements,
+          iconAlignment: IconAlignment.end,
+          icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+          label: const Text('Check Requirements'),
+          style: TextButton.styleFrom(foregroundColor: _EventColors.headline),
+        ),
+      ],
+    ),
+  );
+}
+
+class _VotingRequirementsSheet extends StatelessWidget {
+  const _VotingRequirementsSheet({
+    required this.event,
+    required this.onTryAgain,
+  });
+
+  final Event event;
+  final VoidCallback onTryAgain;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Voting requirements',
+          style: TextStyle(
+            fontFamily: 'Sora',
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: _EventColors.body,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _RequirementRow(
+          label: 'License',
+          value: _licenseText(event.votePermission),
+        ),
+        if (event.votePermission ==
+            eventVotePermissionLocationTimeRestricted) ...[
+          _RequirementRow(
+            label: 'voting_opens_at',
+            value: _dateTime(event.votingOpensAt),
+          ),
+          _RequirementRow(
+            label: 'voting_closes_at',
+            value: _dateTime(event.votingClosesAt),
+          ),
+          _RequirementRow(
+            label: 'allowed_distance_meters',
+            value: event.allowedDistanceMeters?.toString() ?? 'Not set',
+          ),
+          _RequirementRow(
+            label: 'venue_center_latitude',
+            value: event.venueCenterLatitude?.toStringAsFixed(5) ?? 'Not set',
+          ),
+          _RequirementRow(
+            label: 'venue_center_longitude',
+            value: event.venueCenterLongitude?.toStringAsFixed(5) ?? 'Not set',
+          ),
+        ],
+        const SizedBox(height: 12),
+        TextButton.icon(
+          onPressed: onTryAgain,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Try voting again'),
+        ),
+      ],
+    ),
+  );
+
+  static String _licenseText(String permission) => switch (permission) {
+    eventVotePermissionInvitedOnly => 'Invited guests only',
+    eventVotePermissionLocationTimeRestricted => 'Location and time restricted',
+    _ => 'Everyone can vote',
+  };
+
+  static String _dateTime(DateTime? value) {
+    if (value == null) return 'Not set';
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${value.year}-${two(value.month)}-${two(value.day)} ${two(value.hour)}:${two(value.minute)} local time';
+  }
+}
+
+class _RequirementRow extends StatelessWidget {
+  const _RequirementRow({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'Sora',
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: _EventColors.muted,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(value, style: const TextStyle(color: _EventColors.body)),
+      ],
+    ),
+  );
+}
+
+/// Shown only for a 403 on the event-detail or event-join endpoint. Public
+/// events never return this access denial, so the backend signal is specific
+/// to a private event the caller has not been invited to.
+class PrivateEventAccessDeniedScreen extends StatelessWidget {
+  const PrivateEventAccessDeniedScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: _EventColors.background,
+    body: SafeArea(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(24, 30, 24, 26),
+            decoration: BoxDecoration(
+              color: _EventColors.card,
+              borderRadius: BorderRadius.circular(40),
+              border: Border.all(color: _EventColors.cardBorder),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircleAvatar(
+                  radius: 43,
+                  backgroundColor: Color(0xFF39282D),
+                  child: Icon(
+                    Icons.lock_rounded,
+                    size: 42,
+                    color: Color(0xFFFFB4AB),
+                  ),
+                ),
+                const SizedBox(height: 28),
+                const Text(
+                  'Private Event',
+                  style: TextStyle(
+                    fontFamily: 'Sora',
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    color: _EventColors.body,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'This event is private — ask the host to invite you to join the session.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.45,
+                    color: _EventColors.muted,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    label: const Text('Return to Landing'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _EventColors.tertiary,
+                      foregroundColor: const Color(0xFF15151C),
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: const StadiumBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     ),
   );

@@ -65,8 +65,14 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
 
   Future<_ListData> _load() async {
     try {
-      final results = await Future.wait([_eventApi.listEvents(), _authApi.getCurrentUser()]);
-      return _ListData(events: results[0] as List<Event>, authUser: results[1] as AuthUser);
+      final results = await Future.wait([
+        _eventApi.listEvents(),
+        _authApi.getCurrentUser(),
+      ]);
+      return _ListData(
+        events: results[0] as List<Event>,
+        authUser: results[1] as AuthUser,
+      );
     } on SessionExpiredException {
       await _signOutAndReturnToWelcome();
       rethrow;
@@ -82,9 +88,10 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
   Future<void> _signOutAndReturnToWelcome() async {
     await _tokenStorage.clear();
     if (!mounted) return;
-    Navigator.of(
-      context,
-    ).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const WelcomeScreen()), (route) => false);
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+      (route) => false,
+    );
   }
 
   Future<void> _onCreateEvent() async {
@@ -92,14 +99,15 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
     // screen on success (pushReplacement) rather than popping back here,
     // so this await only resolves once the user backs all the way out to
     // this screen again — a good moment for a full refresh.
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CreateEventScreen()));
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const CreateEventScreen()));
     await _refresh();
   }
 
   Future<void> _onOpenEvent(Event event) async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => EventDetailScreen(eventId: event.id)));
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => EventDetailScreen(eventId: event.id)),
+    );
     _refresh();
   }
 
@@ -107,13 +115,25 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
     try {
       await _eventApi.joinEvent(event.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Joined "${event.title}".')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Joined "${event.title}".')));
       await _onOpenEvent(event);
     } on SessionExpiredException {
       await _signOutAndReturnToWelcome();
     } on ApiException catch (error) {
+      if (error.statusCode == 403 &&
+          event.visibility == eventVisibilityPrivate) {
+        if (!mounted) return;
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const PrivateEventAccessDeniedScreen(),
+          ),
+        );
+        return;
+      }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -128,7 +148,10 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _TabSwitcher(tab: _tab, onChanged: (tab) => setState(() => _tab = tab)),
+              child: _TabSwitcher(
+                tab: _tab,
+                onChanged: (tab) => setState(() => _tab = tab),
+              ),
             ),
             const SizedBox(height: 8),
             Expanded(
@@ -137,7 +160,9 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
-                      child: CircularProgressIndicator(color: _EventColors.headline),
+                      child: CircularProgressIndicator(
+                        color: _EventColors.headline,
+                      ),
                     );
                   }
 
@@ -151,7 +176,11 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
                   final data = snapshot.data!;
                   final email = data.authUser?.email ?? '';
                   final visible = data.events
-                      .where((e) => _tab == _EventTab.mine ? _isMine(e, email) : !_isMine(e, email))
+                      .where(
+                        (e) => _tab == _EventTab.mine
+                            ? _isMine(e, email)
+                            : !_isMine(e, email),
+                      )
                       .toList();
 
                   return RefreshIndicator(
@@ -164,14 +193,17 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
                             children: [
                               _EmptyState(
                                 tab: _tab,
-                                onCreate: _tab == _EventTab.mine ? _onCreateEvent : null,
+                                onCreate: _tab == _EventTab.mine
+                                    ? _onCreateEvent
+                                    : null,
                               ),
                             ],
                           )
                         : ListView.separated(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                             itemCount: visible.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: 16),
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 16),
                             itemBuilder: (context, index) {
                               final event = visible[index];
                               return _EventHeroCard(
@@ -205,7 +237,8 @@ enum _EventTab { mine, discover }
 /// "discover"). See the TODO on [EventsLandingScreen] for the one case
 /// this can't detect: a public event the user has already joined.
 bool _isMine(Event event, String currentUserEmail) =>
-    event.host == currentUserEmail || event.visibility == eventVisibilityPrivate;
+    event.host == currentUserEmail ||
+    event.visibility == eventVisibilityPrivate;
 
 class _ListData {
   const _ListData({required this.events, required this.authUser});
@@ -238,7 +271,10 @@ class _ListHeader extends StatelessWidget {
           ),
           IconButton(
             onPressed: onCreate,
-            style: IconButton.styleFrom(backgroundColor: _EventColors.card, shape: const CircleBorder()),
+            style: IconButton.styleFrom(
+              backgroundColor: _EventColors.card,
+              shape: const CircleBorder(),
+            ),
             icon: const Icon(Icons.add_rounded, color: _EventColors.body),
           ),
         ],
@@ -257,7 +293,10 @@ class _TabSwitcher extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: _EventColors.card, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: _EventColors.card,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Row(
         children: [
           Expanded(
@@ -281,7 +320,11 @@ class _TabSwitcher extends StatelessWidget {
 }
 
 class _TabButton extends StatelessWidget {
-  const _TabButton({required this.label, required this.isSelected, required this.onTap});
+  const _TabButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   final String label;
   final bool isSelected;
@@ -350,30 +393,46 @@ class _EventHeroCard extends StatelessWidget {
                 Container(
                   height: 140,
                   width: double.infinity,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [_EventColors.gradientStart, _EventColors.gradientEnd],
-                    ),
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.graphic_eq_rounded, color: Colors.white, size: 56),
+                  child: Image.asset(
+                    _eventCoverAsset(event.coverPreset),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const _EventCoverFallback(),
                   ),
                 ),
-                if (event.votingIsOpen) const Positioned(top: 12, left: 12, child: LiveBadge()),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.black.withValues(alpha: 0.06), Colors.black.withValues(alpha: 0.28)],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (event.votingIsOpen)
+                  const Positioned(top: 12, left: 12, child: LiveBadge()),
                 Positioned(
                   top: 12,
                   right: 12,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.35),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       '${event.songCount} ${event.songCount == 1 ? 'song' : 'songs'}',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -396,7 +455,10 @@ class _EventHeroCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     'Hosted by ${event.host}',
-                    style: const TextStyle(fontSize: 13, color: _EventColors.muted),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: _EventColors.muted,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Wrap(
@@ -412,14 +474,21 @@ class _EventHeroCard extends StatelessWidget {
                     event.votingIsOpen
                         ? '${event.songCount} songs queued — voting is live'
                         : 'Waiting for songs — need at least 2 to start voting',
-                    style: const TextStyle(fontSize: 12.5, color: _EventColors.muted, fontStyle: FontStyle.italic),
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: _EventColors.muted,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                   const SizedBox(height: 14),
                   Align(
                     alignment: Alignment.centerRight,
                     child: showJoinButton
                         ? _GradientButton(label: 'Join Event', onTap: onJoin)
-                        : _OutlinedPillButton(label: 'View Details', onTap: onTap),
+                        : _OutlinedPillButton(
+                            label: 'View Details',
+                            onTap: onTap,
+                          ),
                   ),
                 ],
               ),
@@ -429,6 +498,33 @@ class _EventHeroCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String _eventCoverAsset(String preset) => switch (preset) {
+  'night_vibe' => 'assets/images/event_covers/night_vibe.jpg',
+  'dj' => 'assets/images/event_covers/dj.jpg',
+  'summer_vibe' => 'assets/images/event_covers/summer_vibe.jpg',
+  'rain' => 'assets/images/event_covers/rain.jpg',
+  'coding_vibe' => 'assets/images/event_covers/coding_vibe.jpg',
+  'after_dark' => 'assets/images/event_covers/pexels-baskincreativeco.jpg',
+  'vibes' => 'assets/images/event_covers/image.jpg',
+  _ => 'assets/images/event_covers/party.jpg',
+};
+
+class _EventCoverFallback extends StatelessWidget {
+  const _EventCoverFallback();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [_EventColors.gradientStart, _EventColors.gradientEnd],
+      ),
+    ),
+    child: const Center(child: Icon(Icons.graphic_eq_rounded, color: Colors.white, size: 56)),
+  );
 }
 
 class _GradientButton extends StatelessWidget {
@@ -442,7 +538,9 @@ class _GradientButton extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(colors: [_EventColors.gradientStart, _EventColors.gradientEnd]),
+        gradient: const LinearGradient(
+          colors: [_EventColors.gradientStart, _EventColors.gradientEnd],
+        ),
       ),
       child: ElevatedButton(
         onPressed: onTap,
@@ -451,9 +549,18 @@ class _GradientButton extends StatelessWidget {
           shadowColor: Colors.transparent,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
         ),
-        child: Text(label, style: const TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700, fontSize: 13)),
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'Sora',
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+          ),
+        ),
       ),
     );
   }
@@ -475,7 +582,14 @@ class _OutlinedPillButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
-      child: Text(label, style: const TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700, fontSize: 13)),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontFamily: 'Sora',
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+        ),
+      ),
     );
   }
 }
@@ -494,9 +608,17 @@ class _EmptyState extends StatelessWidget {
 
     return Column(
       children: [
-        const Icon(Icons.how_to_vote_rounded, size: 40, color: _EventColors.muted),
+        const Icon(
+          Icons.how_to_vote_rounded,
+          size: 40,
+          color: _EventColors.muted,
+        ),
         const SizedBox(height: 12),
-        Text(message, textAlign: TextAlign.center, style: const TextStyle(color: _EventColors.body)),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: _EventColors.body),
+        ),
         if (onCreate != null) ...[
           const SizedBox(height: 16),
           OutlinedButton(
@@ -527,9 +649,17 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.wifi_off_rounded, color: _EventColors.muted, size: 40),
+            const Icon(
+              Icons.wifi_off_rounded,
+              color: _EventColors.muted,
+              size: 40,
+            ),
             const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: _EventColors.body)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: _EventColors.body),
+            ),
             const SizedBox(height: 16),
             OutlinedButton(
               onPressed: () => onRetry(),
