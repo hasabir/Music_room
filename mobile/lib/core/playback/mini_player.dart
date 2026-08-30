@@ -14,7 +14,11 @@ class MiniPlayer extends StatelessWidget {
     return ValueListenableBuilder<PlaybackState>(
       valueListenable: playback.state,
       builder: (context, state, _) {
-        if (!state.hasTrack) return const SizedBox.shrink();
+        // Event playback has no controls of its own (voting is the only
+        // control, see `PlaybackState.isEventTrack`) and is already shown
+        // front-and-center by the event's own "Now Playing" card, so the
+        // floating mini player would just be a redundant duplicate.
+        if (!state.hasTrack || state.isEventTrack) return const SizedBox.shrink();
         return SafeArea(
           top: false,
           child: Padding(
@@ -108,20 +112,28 @@ class MiniPlayer extends StatelessWidget {
     );
   }
 
+  // Never called for an event track — the mini player doesn't render for
+  // one in the first place (see the isEventTrack check in build()), so
+  // this only ever needs to handle a playlist preview.
   void _openSource(BuildContext context, PlaybackState state) {
-    final match = RegExp(r'^playlist:(\d+):').firstMatch(state.trackKey ?? '');
-    final playlistId = match == null ? null : int.tryParse(match.group(1)!);
-    if (playlistId == null) {
+    final trackKey = state.trackKey ?? '';
+
+    final playlistMatch = RegExp(r'^playlist:(\d+):').firstMatch(trackKey);
+    final playlistId = playlistMatch == null
+        ? null
+        : int.tryParse(playlistMatch.group(1)!);
+    if (playlistId != null) {
+      if (PlaybackController.instance.visiblePlaylistId == playlistId) return;
       _navigator.push(
-        MaterialPageRoute(builder: (_) => const NowPlayingScreen()),
+        MaterialPageRoute(
+          builder: (_) => PlaylistDetailScreen(playlistId: playlistId),
+        ),
       );
       return;
     }
-    if (PlaybackController.instance.visiblePlaylistId == playlistId) return;
+
     _navigator.push(
-      MaterialPageRoute(
-        builder: (_) => PlaylistDetailScreen(playlistId: playlistId),
-      ),
+      MaterialPageRoute(builder: (_) => const NowPlayingScreen()),
     );
   }
 
@@ -177,7 +189,9 @@ class NowPlayingScreen extends StatelessWidget {
                 const SizedBox(height: 20),
                 Slider(
                   value: _progress(state),
-                  onChanged: state.duration == Duration.zero
+                  // Events auto-play the vote leader with no seeking —
+                  // voting is the only control (see `PlaybackState.isEventTrack`).
+                  onChanged: state.isEventTrack || state.duration == Duration.zero
                       ? null
                       : (value) => playback.seek(
                           Duration(
@@ -200,36 +214,46 @@ class NowPlayingScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 18),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    IconButton(
-                      iconSize: 34,
-                      onPressed: () =>
-                          playback.skipBy(const Duration(seconds: -10)),
-                      icon: const Icon(Icons.replay_10_rounded),
+                if (state.isEventTrack)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 18),
+                    child: Text(
+                      'Playing live for everyone at this event — vote to change what plays next.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Color(0xFFAAA7B8)),
                     ),
-                    FilledButton(
-                      onPressed: playback.toggle,
-                      style: FilledButton.styleFrom(
-                        shape: const CircleBorder(),
-                        padding: const EdgeInsets.all(18),
+                  )
+                else
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      IconButton(
+                        iconSize: 34,
+                        onPressed: () =>
+                            playback.skipBy(const Duration(seconds: -10)),
+                        icon: const Icon(Icons.replay_10_rounded),
                       ),
-                      child: Icon(
-                        state.isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
-                        size: 34,
+                      FilledButton(
+                        onPressed: playback.toggle,
+                        style: FilledButton.styleFrom(
+                          shape: const CircleBorder(),
+                          padding: const EdgeInsets.all(18),
+                        ),
+                        child: Icon(
+                          state.isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          size: 34,
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      iconSize: 34,
-                      onPressed: () =>
-                          playback.skipBy(const Duration(seconds: 10)),
-                      icon: const Icon(Icons.forward_10_rounded),
-                    ),
-                  ],
-                ),
+                      IconButton(
+                        iconSize: 34,
+                        onPressed: () =>
+                            playback.skipBy(const Duration(seconds: 10)),
+                        icon: const Icon(Icons.forward_10_rounded),
+                      ),
+                    ],
+                  ),
                 const Spacer(),
               ],
             ),

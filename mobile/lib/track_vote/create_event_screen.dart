@@ -44,7 +44,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   var _visibility = eventVisibilityPublic;
   var _votePermission = eventVotePermissionEveryone;
-  var _coverPreset = _EventCover.all.first.id;
+  var _coverPreset = EventCoverPreset.all.first.id;
 
   DateTime? _votingOpensAt;
   DateTime? _votingClosesAt;
@@ -478,69 +478,6 @@ class _FieldLabel extends StatelessWidget {
   }
 }
 
-/// Event cover choices are bundled with the app so this picker is fast and
-/// works without a network connection. Its preset id is saved as
-/// `Event.cover_preset`, while the asset itself stays client-side.
-class _EventCover {
-  const _EventCover(this.id, this.assetPath, this.label, this.glowColor);
-
-  final String id;
-  final String assetPath;
-  final String label;
-  final Color glowColor;
-
-  static const all = [
-    _EventCover(
-      'party',
-      'assets/images/event_covers/party.jpg',
-      'Party',
-      Color(0xFFFF7A59),
-    ),
-    _EventCover(
-      'night_vibe',
-      'assets/images/event_covers/night_vibe.jpg',
-      'Night vibe',
-      Color(0xFF818CF8),
-    ),
-    _EventCover(
-      'dj',
-      'assets/images/event_covers/dj.jpg',
-      'DJ',
-      Color(0xFF2FD9F4),
-    ),
-    _EventCover(
-      'summer_vibe',
-      'assets/images/event_covers/summer_vibe.jpg',
-      'Summer',
-      Color(0xFFFBBF24),
-    ),
-    _EventCover(
-      'rain',
-      'assets/images/event_covers/rain.jpg',
-      'Rain',
-      Color(0xFF38BDF8),
-    ),
-    _EventCover(
-      'coding_vibe',
-      'assets/images/event_covers/coding_vibe.jpg',
-      'Coding',
-      Color(0xFF34D399),
-    ),
-    _EventCover(
-      'after_dark',
-      'assets/images/event_covers/pexels-baskincreativeco.jpg',
-      'After dark',
-      Color(0xFFA78BFA),
-    ),
-    _EventCover(
-      'vibes',
-      'assets/images/event_covers/image.jpg',
-      'Vibes',
-      Color(0xFFF472B6),
-    ),
-  ];
-}
-
 class _EventCoverPicker extends StatelessWidget {
   const _EventCoverPicker({
     required this.selectedPreset,
@@ -552,7 +489,7 @@ class _EventCoverPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selected = _EventCover.all.firstWhere(
+    final selected = EventCoverPreset.all.firstWhere(
       (cover) => cover.id == selectedPreset,
     );
 
@@ -576,10 +513,10 @@ class _EventCoverPicker extends StatelessWidget {
           height: 64,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: _EventCover.all.length,
+            itemCount: EventCoverPreset.all.length,
             separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (context, index) {
-              final cover = _EventCover.all[index];
+              final cover = EventCoverPreset.all[index];
               final isSelected = cover.id == selectedPreset;
               return Semantics(
                 button: true,

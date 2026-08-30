@@ -500,16 +500,8 @@ class _EventHeroCard extends StatelessWidget {
   }
 }
 
-String _eventCoverAsset(String preset) => switch (preset) {
-  'night_vibe' => 'assets/images/event_covers/night_vibe.jpg',
-  'dj' => 'assets/images/event_covers/dj.jpg',
-  'summer_vibe' => 'assets/images/event_covers/summer_vibe.jpg',
-  'rain' => 'assets/images/event_covers/rain.jpg',
-  'coding_vibe' => 'assets/images/event_covers/coding_vibe.jpg',
-  'after_dark' => 'assets/images/event_covers/pexels-baskincreativeco.jpg',
-  'vibes' => 'assets/images/event_covers/image.jpg',
-  _ => 'assets/images/event_covers/party.jpg',
-};
+String _eventCoverAsset(String preset) =>
+    EventCoverPreset.byId(preset)?.assetPath ?? EventCoverPreset.party.assetPath;
 
 class _EventCoverFallback extends StatelessWidget {
   const _EventCoverFallback();

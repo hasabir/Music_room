@@ -92,6 +92,63 @@ class _Badge extends StatelessWidget {
   }
 }
 
+/// Renders an event's cover — its [EventCoverPreset], or a gradient
+/// fallback if `event.coverPreset` doesn't match a known preset (or the
+/// asset fails to load). Mirrors `PlaylistCoverThumb` in
+/// `lib/playlists/playlist_widgets.dart`, minus the uploaded-image case —
+/// events only support bundled presets.
+class EventCoverThumb extends StatelessWidget {
+  const EventCoverThumb({super.key, required this.coverPreset, required this.size, required this.radius});
+
+  final String coverPreset;
+  final double size;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final preset = EventCoverPreset.byId(coverPreset);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: preset == null
+            ? _EventCoverFallback(size: size)
+            : Image.asset(
+                preset.assetPath,
+                fit: BoxFit.cover,
+                width: size,
+                height: size,
+                errorBuilder: (_, _, _) => _EventCoverFallback(size: size),
+              ),
+      ),
+    );
+  }
+}
+
+class _EventCoverFallback extends StatelessWidget {
+  const _EventCoverFallback({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF8083FF), Color(0xFF494BD6)],
+        ),
+      ),
+      child: Center(child: Icon(Icons.graphic_eq_rounded, color: Colors.white, size: size * 0.4)),
+    );
+  }
+}
+
 /// A small pulsing red "LIVE" pill, shown on an event card when
 /// `event.votingIsOpen` is true (see [Event.votingIsOpen]).
 class LiveBadge extends StatefulWidget {

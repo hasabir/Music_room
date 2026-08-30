@@ -8,6 +8,8 @@ import '../auth/auth_models.dart';
 import '../auth/welcome_screen.dart';
 import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
+import '../core/playback/playback_controller.dart';
+import '../playlists/playlist_api.dart';
 import 'event_api.dart';
 import 'event_models.dart';
 import 'event_widgets.dart';
@@ -40,8 +42,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   final _eventApi = EventApi();
   final _authApi = AuthApi();
   final _tokenStorage = TokenStorage();
+  final _playback = PlaybackController.instance;
+  final _trackApi = PlaylistApi();
   final Set<int> _changingVotes = <int>{};
   Timer? _pollTimer;
+  StreamSubscription<String>? _previewCompleteSub;
   var _isLoading = true;
   String? _loadError;
   String? _voteRestrictionReason;
@@ -50,16 +55,46 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   AuthUser? _authUser;
   List<EventSong> _queue = const [];
 
+  /// A song this screen already tried to auto-play and found unplayable
+  /// (no preview URL) — guards against retrying it on every poll tick
+  /// until the leader actually changes.
+  int? _autoPlayFailedSongId;
+
+  /// The event's "now playing" song — straight from the backend's
+  /// authoritative `Event.currentSong` (see DECISIONS.md). This screen
+  /// never computes "what's current" itself from the local queue; it only
+  /// ever displays and plays whatever the server last reported, which the
+  /// server keeps advancing by wall-clock time on its own regardless of
+  /// whether any client is connected.
+  EventSong? get _currentlyPlaying => _event?.currentSong;
+
   @override
   void initState() {
     super.initState();
+    _playback.visibleEventId = widget.eventId;
+    _previewCompleteSub = _playback.onCompleted.listen((trackKey) {
+      if (mounted && trackKey.startsWith('event:${widget.eventId}:')) {
+        unawaited(_onLocalPlaybackFinished(trackKey));
+      }
+    });
     _loadAll();
-    _pollTimer = Timer.periodic(_pollInterval, (_) => _pollQueue());
+    _pollTimer = Timer.periodic(_pollInterval, (_) => _pollState());
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _previewCompleteSub?.cancel();
+    if (_playback.visibleEventId == widget.eventId) {
+      _playback.visibleEventId = null;
+    }
+    // Leaving only ever stops what *this device* renders — it never
+    // mutates the event's shared state, which keeps moving forward for
+    // everyone else regardless (see DECISIONS.md).
+    if (_playback.state.value.trackKey?.startsWith('event:${widget.eventId}:') ??
+        false) {
+      unawaited(_playback.stop());
+    }
     super.dispose();
   }
 
@@ -81,6 +116,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         _authUser = results[2] as AuthUser;
         _isLoading = false;
       });
+      _syncAutoPlay();
     } on SessionExpiredException {
       await _signOutAndReturnToWelcome();
     } on ApiException catch (error) {
@@ -100,21 +136,74 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
-  Future<void> _pollQueue() async {
+  Future<void> _pollState() async {
     if (_isLoading || _changingVotes.isNotEmpty) return;
     try {
-      final queue = await _eventApi.listQueue(widget.eventId);
-      if (mounted) setState(() => _queue = queue);
+      await _refetchState();
     } on SessionExpiredException {
       await _signOutAndReturnToWelcome();
     } on ApiException {
-      // Keep the last known live queue on a transient background failure.
+      // Keep the last known live state on a transient background failure.
     }
   }
 
-  Future<void> _refetchQueue() async {
-    final queue = await _eventApi.listQueue(widget.eventId);
-    if (mounted) setState(() => _queue = queue);
+  /// Re-fetches both the event (for `currentSong`/`currentPositionSeconds`)
+  /// and the queue, and replaces local state with the response wholesale —
+  /// this is the only source of truth for what's current; nothing here is
+  /// ever computed or assumed locally (see DECISIONS.md).
+  Future<void> _refetchState() async {
+    final results = await Future.wait([
+      _eventApi.getEvent(widget.eventId),
+      _eventApi.listQueue(widget.eventId),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _event = results[0] as Event;
+      _queue = results[1] as List<EventSong>;
+    });
+    _syncAutoPlay();
+  }
+
+  /// Fires when this device's local audio naturally reaches the end of
+  /// whatever it was playing for this event. Always refetches so the
+  /// backend's authoritative state — which may already have moved on — is
+  /// picked up promptly, without waiting out the rest of the poll interval
+  /// for a track change this device has already heard end.
+  ///
+  /// A [songPlaybackTypePreview] clip is physically only
+  /// [songPreviewClipSeconds] of actual audio, however much longer the
+  /// backend is treating the song as "current" for (see DECISIONS.md).
+  /// [_refetchState]'s own [_syncAutoPlay] call already starts whatever
+  /// *new* song the backend reports — but if it reports the *same* song
+  /// still current, that guard deliberately won't restart a track it
+  /// thinks is already playing. Here, we know better: this specific track
+  /// just genuinely ran out locally, so the only alternative to sitting in
+  /// silence for however much of the song's real duration remains is
+  /// looping that same clip again from the top.
+  Future<void> _onLocalPlaybackFinished(String finishedTrackKey) async {
+    await _refetchState();
+    if (!mounted) return;
+    final playing = _currentlyPlaying;
+    if (playing != null && _playbackKey(playing.id) == finishedTrackKey) {
+      await _startAutoPlay(playing, _localStartPosition(playing));
+    }
+  }
+
+  /// Where this device should start local playback of [entry], derived
+  /// from the backend's authoritative `currentPositionSeconds`. A
+  /// [songPlaybackTypePreview] clip only ever contains
+  /// [songPreviewClipSeconds] of real audio no matter how long the backend
+  /// considers the song "current" for, so its position is wrapped into
+  /// that window — otherwise a song already minutes into its backend
+  /// timer would seek past the end of the ~30-second file that's all
+  /// there actually is. A [songPlaybackTypeFull] stream has no such gap,
+  /// so its real elapsed position is used as-is.
+  Duration _localStartPosition(EventSong entry) {
+    final seconds = _event?.currentPositionSeconds ?? 0;
+    final wrapped = entry.song.playbackType == songPlaybackTypePreview
+        ? seconds % songPreviewClipSeconds
+        : seconds;
+    return Duration(milliseconds: (wrapped * 1000).round());
   }
 
   Future<Position?> _positionFor(Event event) async {
@@ -135,6 +224,53 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     return Geolocator.getCurrentPosition();
   }
 
+  String _playbackKey(int? songId) => 'event:${widget.eventId}:$songId';
+
+  /// There is no manual playback control in an event — this is the only
+  /// thing that starts (or restarts) audio, and it always targets whatever
+  /// [_currentlyPlaying] currently resolves to. If that song is already
+  /// the active track, this is a no-op, so calling it on every poll tick
+  /// doesn't restart playback mid-clip for no reason — the client never
+  /// re-seeks a track it's already playing to "correct" small drift, it
+  /// only ever seeks once, at the moment it starts a track it wasn't
+  /// already playing (a fresh join, a rejoin, or a genuine track change).
+  /// That's what puts a newly (re)joining listener wherever everyone else
+  /// already is, per [_event]'s `currentPositionSeconds`.
+  void _syncAutoPlay() {
+    final playing = _currentlyPlaying;
+    if (playing == null) return;
+    if (playing.id == _autoPlayFailedSongId) return;
+    if (_playback.state.value.trackKey == _playbackKey(playing.id)) return;
+    unawaited(_startAutoPlay(playing, _localStartPosition(playing)));
+  }
+
+  /// Re-resolves a fresh preview URL from [entry.song.externalId] when one
+  /// is present — Deezer preview URLs can go stale — falling back to the
+  /// stored [Song.previewUrl] for manually-added songs. Starts at
+  /// [position] rather than 0 so this device lands in sync with everyone
+  /// else already listening, per the backend's authoritative elapsed time.
+  Future<void> _startAutoPlay(EventSong entry, Duration position) async {
+    try {
+      final previewUrl = entry.song.externalId.isEmpty
+          ? entry.song.previewUrl
+          : await _trackApi.resolvePreviewUrl(entry.song.externalId);
+      if (previewUrl.isEmpty) throw StateError('No preview URL available.');
+      await _playback.play(
+        url: previewUrl,
+        trackKey: _playbackKey(entry.id),
+        title: entry.song.title,
+        artist: entry.song.artist,
+        artworkUrl: entry.song.albumArtUrl,
+        position: position,
+      );
+      if (mounted) setState(() => _autoPlayFailedSongId = null);
+    } catch (_) {
+      // Silent — this is background/automatic, not a user action; a
+      // snackbar every poll tick for a song with no preview would spam.
+      if (mounted) setState(() => _autoPlayFailedSongId = entry.id);
+    }
+  }
+
   Future<void> _toggleVote(EventSong entry) async {
     final event = _event;
     if (event == null || _changingVotes.contains(entry.id)) return;
@@ -151,7 +287,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           longitude: position?.longitude,
         );
       }
-      await _refetchQueue();
+      await _refetchState();
     } on SessionExpiredException {
       await _signOutAndReturnToWelcome();
     } on VoteNotPermittedException catch (error) {
@@ -188,7 +324,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         builder: (_) => SuggestTrackScreen(eventId: widget.eventId),
       ),
     );
-    await _refetchQueue();
+    await _refetchState();
   }
 
   Future<void> _openGuestManagement() async {
@@ -239,11 +375,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       );
     }
 
-    final playing =
-        _queue
-            .where((entry) => entry.status == eventSongStatusPlaying)
-            .firstOrNull ??
-        (_queue.isEmpty ? null : _queue.first);
+    final playing = _currentlyPlaying;
     final upNext = playing == null
         ? _queue
         : _queue.where((entry) => entry.id != playing.id).toList();
@@ -265,97 +397,115 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             onRefresh: _loadAll,
             color: _EventColors.tertiary,
             backgroundColor: _EventColors.card,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
-              children: [
-                Text(
-                  event.title,
-                  style: const TextStyle(
-                    fontFamily: 'Sora',
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: _EventColors.headline,
-                  ),
-                ),
-                if (event.description.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    event.description,
-                    style: const TextStyle(
-                      color: _EventColors.muted,
-                      fontSize: 13,
+            child: ValueListenableBuilder<PlaybackState>(
+              valueListenable: _playback.state,
+              builder: (context, playbackState, _) {
+                final isPlayingHere = playing != null &&
+                    playbackState.trackKey == _playbackKey(playing.id);
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+                  children: [
+                    Center(
+                      child: EventCoverThumb(coverPreset: event.coverPreset, size: 160, radius: 28),
                     ),
-                  ),
-                ],
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    EventVisibilityBadge(visibility: event.visibility),
-                    EventLicenseBadge(votePermission: event.votePermission),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _ParticipantAvatars(emails: participants),
-                const SizedBox(height: 28),
-                const _SectionLabel('NOW PLAYING'),
-                const SizedBox(height: 10),
-                _NowPlayingCard(song: playing),
-                const SizedBox(height: 28),
-                if (isVotingRestricted) ...[
-                  _VotingRestrictedCard(
-                    message:
-                        event.votePermission ==
-                            eventVotePermissionLocationTimeRestricted
-                        ? "You are currently outside the event geofence or the voting window hasn't started yet."
-                        : _voteRestrictionReason!,
-                    onCheckRequirements: () => _showRequirements(event),
-                  ),
-                  const SizedBox(height: 22),
-                ],
-                Row(
-                  children: [
-                    const Expanded(child: _SectionLabel('UP NEXT')),
+                    const SizedBox(height: 18),
                     Text(
-                      '${upNext.length} TRACK${upNext.length == 1 ? '' : 'S'}',
+                      event.title,
                       style: const TextStyle(
                         fontFamily: 'Sora',
-                        fontSize: 11,
-                        letterSpacing: 1,
+                        fontSize: 28,
                         fontWeight: FontWeight.w800,
-                        color: _EventColors.tertiary,
+                        color: _EventColors.headline,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _openSuggestTrack,
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('Suggest a track'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _EventColors.tertiary,
-                    side: const BorderSide(color: _EventColors.cardBorder),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                    if (event.description.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        event.description,
+                        style: const TextStyle(
+                          color: _EventColors.muted,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        EventVisibilityBadge(visibility: event.visibility),
+                        EventLicenseBadge(votePermission: event.votePermission),
+                      ],
                     ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (upNext.isEmpty)
-                  const _EmptyQueue()
-                else
-                  for (final entry in upNext) ...[
-                    _QueueRow(
-                      entry: entry,
-                      isChanging: _changingVotes.contains(entry.id),
-                      isReadOnly: isVotingRestricted,
-                      onVote: () => _toggleVote(entry),
+                    const SizedBox(height: 16),
+                    _ParticipantAvatars(emails: participants),
+                    const SizedBox(height: 28),
+                    const _SectionLabel('NOW PLAYING'),
+                    const SizedBox(height: 10),
+                    _NowPlayingCard(
+                      song: playing,
+                      isPlaying: isPlayingHere && playbackState.isPlaying,
+                      position: isPlayingHere ? playbackState.position : Duration.zero,
+                      duration: isPlayingHere ? playbackState.duration : Duration.zero,
+                    ),
+                    const SizedBox(height: 28),
+                    if (isVotingRestricted) ...[
+                      _VotingRestrictedCard(
+                        message:
+                            event.votePermission ==
+                                eventVotePermissionLocationTimeRestricted
+                            ? "You are currently outside the event geofence or the voting window hasn't started yet."
+                            : _voteRestrictionReason!,
+                        onCheckRequirements: () => _showRequirements(event),
+                      ),
+                      const SizedBox(height: 22),
+                    ],
+                    Row(
+                      children: [
+                        const Expanded(child: _SectionLabel('UP NEXT')),
+                        Text(
+                          '${upNext.length} TRACK${upNext.length == 1 ? '' : 'S'}',
+                          style: const TextStyle(
+                            fontFamily: 'Sora',
+                            fontSize: 11,
+                            letterSpacing: 1,
+                            fontWeight: FontWeight.w800,
+                            color: _EventColors.tertiary,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _openSuggestTrack,
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('Suggest a track'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _EventColors.tertiary,
+                        side: const BorderSide(color: _EventColors.cardBorder),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (upNext.isEmpty)
+                      const _EmptyQueue()
+                    else
+                      for (final entry in upNext) ...[
+                        _QueueRow(
+                          entry: entry,
+                          isChanging: _changingVotes.contains(entry.id),
+                          isReadOnly: isVotingRestricted,
+                          isPlaying: playbackState.trackKey == _playbackKey(entry.id) &&
+                              playbackState.isPlaying,
+                          onVote: () => _toggleVote(entry),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
                   ],
-              ],
+                );
+              },
             ),
           ),
         ),
@@ -482,11 +632,28 @@ class _CountAvatar extends StatelessWidget {
 }
 
 class _NowPlayingCard extends StatelessWidget {
-  const _NowPlayingCard({required this.song});
+  const _NowPlayingCard({
+    required this.song,
+    required this.isPlaying,
+    required this.position,
+    required this.duration,
+  });
   final EventSong? song;
+
+  /// Whether *this* song is the one actually coming out of the speaker
+  /// right now. There's no play/pause control here — playback always
+  /// tracks the vote leader on its own (see `_syncAutoPlay`), so this is
+  /// purely informational.
+  final bool isPlaying;
+  final Duration position;
+  final Duration duration;
   @override
   Widget build(BuildContext context) {
+    final song = this.song;
     if (song == null) return const _EmptyNowPlaying();
+    final progress = duration == Duration.zero
+        ? 0.0
+        : (position.inMilliseconds / duration.inMilliseconds).clamp(0, 1).toDouble();
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -503,10 +670,12 @@ class _NowPlayingCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Center(child: _AlbumArt(size: 112)),
+          Center(
+            child: _AlbumArt(size: 112, url: song.song.albumArtUrl, isPlaying: isPlaying),
+          ),
           const SizedBox(height: 22),
           Text(
-            song!.song.title,
+            song.song.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
@@ -518,7 +687,7 @@ class _NowPlayingCard extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            song!.song.artist,
+            song.song.artist,
             style: const TextStyle(
               fontFamily: 'Sora',
               fontWeight: FontWeight.w700,
@@ -526,10 +695,10 @@ class _NowPlayingCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          const LinearProgressIndicator(
-            value: 0,
+          LinearProgressIndicator(
+            value: progress,
             minHeight: 6,
-            borderRadius: BorderRadius.all(Radius.circular(9)),
+            borderRadius: const BorderRadius.all(Radius.circular(9)),
             color: _EventColors.tertiary,
             backgroundColor: _EventColors.cardBorder,
           ),
@@ -537,12 +706,12 @@ class _NowPlayingCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Not started',
-                style: TextStyle(fontSize: 11, color: _EventColors.muted),
+              Text(
+                isPlaying ? _formatTime(position) : 'Not started',
+                style: const TextStyle(fontSize: 11, color: _EventColors.muted),
               ),
               Text(
-                _duration(song!.song.durationSeconds),
+                duration != Duration.zero ? _formatTime(duration) : _duration(song.song.durationSeconds),
                 style: const TextStyle(fontSize: 11, color: _EventColors.muted),
               ),
             ],
@@ -552,16 +721,69 @@ class _NowPlayingCard extends StatelessWidget {
     );
   }
 
+  static String _formatTime(Duration value) {
+    final minutes = value.inMinutes;
+    final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
   static String _duration(int? seconds) => seconds == null
       ? '--:--'
       : '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
 }
 
+/// A song's album art. Purely informational — there's no tap-to-play or
+/// tap-to-stop in an event; [isPlaying] just shows a small "now playing"
+/// indicator over whichever song the shared queue is actually playing.
 class _AlbumArt extends StatelessWidget {
-  const _AlbumArt({required this.size});
+  const _AlbumArt({required this.size, this.url = '', this.isPlaying = false});
+
   final double size;
+  final String url;
+  final bool isPlaying;
+
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) {
+    final art = ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: url.isEmpty
+          ? _fallback()
+          : Image.network(
+              url,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => _fallback(),
+            ),
+    );
+
+    if (!isPlaying) return SizedBox(width: size, height: size, child: art);
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          art,
+          Positioned(
+            right: size * .08,
+            bottom: size * .08,
+            child: Container(
+              padding: EdgeInsets.all(size * .07),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.graphic_eq_rounded, color: _EventColors.tertiary, size: size * .22),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _fallback() => Container(
     width: size,
     height: size,
     decoration: BoxDecoration(
@@ -591,11 +813,13 @@ class _QueueRow extends StatelessWidget {
     required this.entry,
     required this.isChanging,
     required this.isReadOnly,
+    required this.isPlaying,
     required this.onVote,
   });
   final EventSong entry;
   final bool isChanging;
   final bool isReadOnly;
+  final bool isPlaying;
   final VoidCallback onVote;
   @override
   Widget build(BuildContext context) => Container(
@@ -607,7 +831,7 @@ class _QueueRow extends StatelessWidget {
     ),
     child: Row(
       children: [
-        const _AlbumArt(size: 46),
+        _AlbumArt(size: 46, url: entry.song.albumArtUrl, isPlaying: isPlaying),
         const SizedBox(width: 12),
         Expanded(
           child: Column(

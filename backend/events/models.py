@@ -1,6 +1,9 @@
 # events/models.py
+from datetime import timedelta
+
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 class Event(models.Model):
@@ -49,6 +52,25 @@ class Event(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # The event's authoritative "on air" state. Persisted (not recomputed
+    # per-request from scratch) so a position can be derived from
+    # `current_song_started_at` — see `sync_current_song`. `SET_NULL` (not
+    # CASCADE) because losing this pointer should never take the event down
+    # with it; `sync_current_song` just re-picks a leader on the next call.
+    current_song = models.ForeignKey(
+        "EventSong", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+",
+        help_text="The queue entry currently 'on air', authoritative on "
+                   "the backend regardless of who's connected. Set only "
+                   "by `sync_current_song`.",
+    )
+    current_song_started_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When `current_song` started playing from position 0. "
+                   "Playback position is always derived as "
+                   "now() - this timestamp, never stored directly.",
+    )
+
     class Meta:
         ordering = ["-created_at"]
 
@@ -68,6 +90,79 @@ class Event(models.Model):
         to vote) are handled separately in the view/permission layer.
         """
         return self.song_count >= 2
+
+    def _highest_voted_unplayed(self):
+        """The best not-yet-played candidate to be current, ties broken by
+        queue order (i.e. whichever was added first)."""
+        unplayed = list(self.queue.exclude(status="played"))
+        if not unplayed:
+            return None
+        return sorted(unplayed, key=lambda es: es.vote_count, reverse=True)[0]
+
+    def sync_current_song(self):
+        """
+        The single place that decides what's authoritatively "on air" and
+        advances it as far as real time allows — even if nobody has had
+        this event open since it started. Call before reading queue/
+        playback state, and after any queue-affecting mutation (vote,
+        retract, add song).
+
+        There's no background worker in this project, so forward progress
+        isn't ticked on a timer — it's caught up lazily, right here, on
+        whatever request happens to ask: if `current_song`'s playable
+        duration has already fully elapsed by wall-clock time, it's
+        retired and the next leader picked, repeating (in case many
+        songs' worth of time passed while no one was watching) until a
+        song is genuinely still mid-playback or the queue runs dry.
+
+        A song already playing is never interrupted by a vote, no matter
+        how many votes a different song picks up while it plays — voting
+        only ever reorders the queue (who leads once the current song's
+        time is up), it never cuts off what's already on air. That's what
+        lets everyone keep voting freely without worrying a vote will
+        yank the track out from under the room mid-play.
+        """
+        now = timezone.now()
+        changed = False
+        # When a song's time has genuinely run out, the *next* song is
+        # treated as having started right when that window ran out — not
+        # "now" — so a long-unwatched gap correctly keeps advancing
+        # through however many songs' worth of time actually passed,
+        # rather than only ever hopping one song per call.
+        next_start = now
+
+        while True:
+            if self.current_song is None:
+                leader = self._highest_voted_unplayed()
+                if leader is None:
+                    break
+                leader.status = "playing"
+                leader.save(update_fields=["status"])
+                self.current_song = leader
+                self.current_song_started_at = next_start
+                next_start = now
+                changed = True
+                continue
+
+            duration = self.current_song.song.effective_duration_seconds
+            if duration is None:
+                break  # unknown length — can't tell it's over, leave it playing
+
+            elapsed = (now - self.current_song_started_at).total_seconds()
+            if elapsed < duration:
+                break  # still mid-playback — never interrupted by votes
+
+            # Time's up — retire it and loop again to pick whoever leads next.
+            next_start = self.current_song_started_at + timedelta(seconds=duration)
+            self.current_song.status = "played"
+            self.current_song.save(update_fields=["status"])
+            self.current_song = None
+            self.current_song_started_at = None
+            changed = True
+
+        if changed:
+            self.save(update_fields=["current_song", "current_song_started_at"])
+        return self.current_song
 
 
 class EventGuest(models.Model):
@@ -111,6 +206,15 @@ class EventMembership(models.Model):
 class Song(models.Model):
     """A song known to the system (general catalog, not tied to any one event)."""
 
+    # How long the Deezer preview clip actually plays for, regardless of
+    # the source track's real length — see `effective_duration_seconds`.
+    PREVIEW_CLIP_SECONDS = 30
+
+    PLAYBACK_TYPE_CHOICES = [
+        ("preview", "~30-second preview clip (Deezer)"),
+        ("full", "Full-length stream (Audius)"),
+    ]
+
     external_id = models.CharField(
         max_length=100, blank=True,
         help_text="ID from the music SDK/API, once integrated. Optional for now."
@@ -120,6 +224,11 @@ class Song(models.Model):
     duration_seconds = models.PositiveIntegerField(null=True, blank=True)
     album_art_url = models.URLField(max_length=500, blank=True, default="")
     preview_url = models.URLField(max_length=500, blank=True, default="")
+    playback_type = models.CharField(
+        max_length=10, choices=PLAYBACK_TYPE_CHOICES, default="preview",
+        help_text="Whether `preview_url` plays a short clip or the full "
+                   "track — see `effective_duration_seconds`.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -128,6 +237,26 @@ class Song(models.Model):
 
     def __str__(self):
         return f"{self.title} — {self.artist}"
+
+    @property
+    def effective_duration_seconds(self):
+        """
+        How long this song is treated as "current" for by backend playback
+        timing (`Event.sync_current_song`). A `preview` is always exactly
+        `PREVIEW_CLIP_SECONDS`, regardless of what `duration_seconds` says
+        the real commercial track's length is — that metadata describes
+        the *song*, not the clip actually sitting at `preview_url`, which
+        never plays for longer than this no matter what. Treating a
+        `preview` as current for any longer than that would leave every
+        listener's local player sitting on a naturally-finished (silent or
+        looping) clip while the backend kept the room waiting on a
+        duration nothing can actually play. A `full` (Audius) stream has
+        no such gap, so its real metadata duration is used as-is (`None`
+        if unknown, meaning it plays indefinitely).
+        """
+        if self.playback_type == "preview":
+            return self.PREVIEW_CLIP_SECONDS
+        return self.duration_seconds
 
 
 class EventSong(models.Model):

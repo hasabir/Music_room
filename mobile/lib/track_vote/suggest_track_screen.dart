@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/auth_api.dart';
@@ -22,9 +21,14 @@ class _SuggestColors {
   static const gradientEnd = Color(0xFF494BD6);
 }
 
-/// Deezer-backed song search for an event's queue. It uses the same search
-/// and preview flow as playlist add-song, but sends the selected song through
-/// `POST /events/<id>/queue/` instead.
+/// Deezer/Audius-backed song search for an event's queue, using the same
+/// search endpoint and the same "FULL SONG" / "30 SEC PREVIEW" badge as
+/// playlist add-song — see [_PlaybackBadge]. Unlike the playlist screen,
+/// there's no tap-to-preview audio here: the user opening this is still
+/// inside the event, whose own track is already playing in the background
+/// (see `EventDetailScreen`), so there's no way for them to actually hear
+/// a separate preview clip over it. Adding a song sends it through
+/// `POST /events/<id>/queue/` instead of a playlist's add-song endpoint.
 class SuggestTrackScreen extends StatefulWidget {
   const SuggestTrackScreen({super.key, required this.eventId});
   final int eventId;
@@ -38,29 +42,16 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
   final _trackApi = PlaylistApi();
   final _tokenStorage = TokenStorage();
   final _controller = TextEditingController();
-  final _previewPlayer = AudioPlayer();
   Timer? _debounce;
-  StreamSubscription<void>? _previewComplete;
   List<TrackSearchResult>? _results;
   final Set<String> _adding = <String>{};
   final Set<String> _added = <String>{};
-  String? _playingExternalId;
   var _isLoading = false;
   String? _error;
 
   @override
-  void initState() {
-    super.initState();
-    _previewComplete = _previewPlayer.onPlayerComplete.listen((_) {
-      if (mounted) setState(() => _playingExternalId = null);
-    });
-  }
-
-  @override
   void dispose() {
     _debounce?.cancel();
-    _previewComplete?.cancel();
-    _previewPlayer.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -100,28 +91,6 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
     }
   }
 
-  Future<void> _togglePreview(TrackSearchResult track) async {
-    if (track.previewUrl.isEmpty) {
-      return _showSnack('No preview is available for this song.');
-    }
-    if (_playingExternalId == track.externalId) {
-      await _previewPlayer.stop();
-      if (mounted) setState(() => _playingExternalId = null);
-      return;
-    }
-    try {
-      final url = track.externalId.isEmpty
-          ? track.previewUrl
-          : await _trackApi.resolvePreviewUrl(track.externalId);
-      if (url.isEmpty) throw StateError('No preview URL available.');
-      await _previewPlayer.stop();
-      await _previewPlayer.play(UrlSource(url));
-      if (mounted) setState(() => _playingExternalId = track.externalId);
-    } catch (_) {
-      _showSnack('Could not play this preview.');
-    }
-  }
-
   Future<void> _addSong(TrackSearchResult track) async {
     final key = track.externalId.isEmpty
         ? '${track.title}\u0000${track.artist}'
@@ -137,6 +106,7 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
         externalId: track.externalId,
         albumArtUrl: track.albumArtUrl,
         previewUrl: track.previewUrl,
+        playbackType: track.playbackType,
       );
       if (!mounted) return;
       setState(() => _added.add(key));
@@ -257,10 +227,8 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
             : track.externalId;
         return _SongResultRow(
           track: track,
-          isPlaying: _playingExternalId == track.externalId,
           isAdding: _adding.contains(key),
           isAdded: _added.contains(key),
-          onPreview: () => _togglePreview(track),
           onAdd: () => _addSong(track),
         );
       },
@@ -271,17 +239,13 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
 class _SongResultRow extends StatelessWidget {
   const _SongResultRow({
     required this.track,
-    required this.isPlaying,
     required this.isAdding,
     required this.isAdded,
-    required this.onPreview,
     required this.onAdd,
   });
   final TrackSearchResult track;
-  final bool isPlaying;
   final bool isAdding;
   final bool isAdded;
-  final VoidCallback onPreview;
   final VoidCallback onAdd;
 
   @override
@@ -290,17 +254,11 @@ class _SongResultRow extends StatelessWidget {
     decoration: BoxDecoration(
       color: _SuggestColors.card,
       borderRadius: BorderRadius.circular(18),
-      border: Border.all(
-        color: isPlaying ? _SuggestColors.tertiary : _SuggestColors.border,
-      ),
+      border: Border.all(color: _SuggestColors.border),
     ),
     child: Row(
       children: [
-        InkWell(
-          onTap: onPreview,
-          borderRadius: BorderRadius.circular(12),
-          child: _Art(track: track, isPlaying: isPlaying),
-        ),
+        _Art(track: track),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -326,6 +284,8 @@ class _SongResultRow extends StatelessWidget {
                   color: _SuggestColors.muted,
                 ),
               ),
+              const SizedBox(height: 4),
+              _PlaybackBadge(isFullTrack: track.hasFullPlayback),
             ],
           ),
         ),
@@ -348,50 +308,66 @@ class _SongResultRow extends StatelessWidget {
   );
 }
 
+/// Mirrors the same badge on the playlist add-song search screen
+/// (`add_song_search_screen.dart`'s `_PlaybackBadge`) so a suggester sees
+/// the same "FULL SONG" vs "30 SEC PREVIEW" signal there — it just can't
+/// act on it here with an audio preview (see [SuggestTrackScreen] docs).
+class _PlaybackBadge extends StatelessWidget {
+  const _PlaybackBadge({required this.isFullTrack});
+
+  final bool isFullTrack;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isFullTrack ? _SuggestColors.tertiary : _SuggestColors.muted;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        isFullTrack ? 'FULL SONG' : '30 SEC PREVIEW',
+        style: TextStyle(
+          color: color,
+          fontFamily: 'Sora',
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+}
+
 class _Art extends StatelessWidget {
-  const _Art({required this.track, required this.isPlaying});
+  const _Art({required this.track});
   final TrackSearchResult track;
-  final bool isPlaying;
   @override
   Widget build(BuildContext context) => SizedBox(
     width: 48,
     height: 48,
-    child: Stack(
-      fit: StackFit.expand,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: track.albumArtUrl.isEmpty
-              ? Container(
-                  color: _SuggestColors.border,
-                  child: const Icon(
-                    Icons.music_note_rounded,
-                    color: _SuggestColors.tertiary,
-                  ),
-                )
-              : Image.network(
-                  track.albumArtUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => Container(
-                    color: _SuggestColors.border,
-                    child: const Icon(
-                      Icons.music_note_rounded,
-                      color: _SuggestColors.tertiary,
-                    ),
-                  ),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: track.albumArtUrl.isEmpty
+          ? Container(
+              color: _SuggestColors.border,
+              child: const Icon(
+                Icons.music_note_rounded,
+                color: _SuggestColors.tertiary,
+              ),
+            )
+          : Image.network(
+              track.albumArtUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => Container(
+                color: _SuggestColors.border,
+                child: const Icon(
+                  Icons.music_note_rounded,
+                  color: _SuggestColors.tertiary,
                 ),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: .25),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            color: Colors.white,
-          ),
-        ),
-      ],
+              ),
+            ),
     ),
   );
 }

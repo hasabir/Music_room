@@ -14,7 +14,7 @@ def broadcast_queue_update(event):
     channel_layer = get_channel_layer()
     room_group_name = f"event_queue_{event.id}"
 
-    queue = sorted(event.queue.all(), key=lambda es: es.vote_count, reverse=True)
+    queue = sorted(event.queue.exclude(status="played"), key=lambda es: es.vote_count, reverse=True)
     # NOTE: has_voted is per-user and can't be computed here (no request/user
     # in this context) — it's set to False for all entries in the broadcast.
     # The client should rely on its own local vote state for that flag, or

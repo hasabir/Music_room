@@ -4,6 +4,8 @@
 # throttled after ~5 calls since LoginRateThrottle's cache persists
 # across all tests in the same test run)
 
+from datetime import timedelta
+
 from django.test import override_settings
 from rest_framework.test import APITestCase
 from rest_framework import status
@@ -118,7 +120,10 @@ class QueueAndVotingTests(APITestCase):
         response = self._add_song("Blinding Lights", "The Weeknd")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["vote_count"], 0)
-        self.assertEqual(response.data["status"], "queued")
+        # It's the only (so highest-ranked) song in the queue, so it's
+        # immediately the authoritative "on air" song — see
+        # `Event.sync_current_song` / `PlaybackSyncTests`.
+        self.assertEqual(response.data["status"], "playing")
 
     def test_adding_same_song_twice_fails(self):
         self._add_song("Blinding Lights", "The Weeknd")
@@ -234,6 +239,168 @@ class QueueAndVotingTests(APITestCase):
         response = self.client.get(self.queue_url)
         voted_song = next(s for s in response.data if s["id"] == event_song_id)
         self.assertFalse(voted_song["has_voted"])
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class PlaybackSyncTests(APITestCase):
+    """
+    `Event.sync_current_song` is what makes the backend (not any client)
+    authoritative for what's currently playing — see DECISIONS.md. These
+    go through the same REST endpoints a client actually calls (rather
+    than calling the model method directly) since that's what proves it's
+    correctly wired into every place that can change the leader.
+    """
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.voter1 = create_verified_user("voter1@test.com")
+
+        self.client.force_authenticate(self.host)
+        event_resp = self.client.post("/api/v1/events/", {"title": "Test Party"})
+        self.event_id = event_resp.data["id"]
+        self.event_url = f"/api/v1/events/{self.event_id}/"
+        self.queue_url = f"/api/v1/events/{self.event_id}/queue/"
+
+    def _login(self, user):
+        self.client.force_authenticate(user)
+
+    def _add_song(self, title, artist, **extra):
+        return self.client.post(self.queue_url, {"title": title, "artist": artist, **extra})
+
+    def _backdate_current_song(self, seconds):
+        """Simulate `seconds` of real time having passed since the current
+        song started, as if nobody had the event open to notice."""
+        event = Event.objects.get(id=self.event_id)
+        event.current_song_started_at -= timedelta(seconds=seconds)
+        event.save(update_fields=["current_song_started_at"])
+
+    def test_first_song_added_becomes_current(self):
+        self._add_song("Song A", "Artist A")
+
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["current_song"]["song"]["title"], "Song A")
+        self.assertEqual(response.data["current_song"]["status"], "playing")
+        self.assertGreaterEqual(response.data["current_position_seconds"], 0)
+
+    def test_empty_queue_has_no_current_song(self):
+        response = self.client.get(self.event_url)
+        self.assertIsNone(response.data["current_song"])
+        self.assertIsNone(response.data["current_position_seconds"])
+
+    def test_position_advances_with_wall_clock_time(self):
+        self._add_song("Song A", "Artist A")
+        self._backdate_current_song(10)
+
+        response = self.client.get(self.event_url)
+        self.assertGreaterEqual(response.data["current_position_seconds"], 10)
+
+    def test_song_auto_advances_once_its_time_elapses_with_nobody_watching(self):
+        add_a = self._add_song("Song A", "Artist A")
+        self._add_song("Song B", "Artist B")
+
+        # Nobody calls any "mark played" endpoint — there isn't one. This
+        # simulates enough wall-clock time passing (more than the default
+        # 30s preview clip) while no one had the event open.
+        self._backdate_current_song(31)
+
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["current_song"]["song"]["title"], "Song B")
+
+        played_song = EventSong.objects.get(id=add_a.data["id"])
+        self.assertEqual(played_song.status, "played")
+        self.assertNotIn(
+            "Song A", [s["song"]["title"] for s in self.client.get(self.queue_url).data]
+        )
+
+    def test_catches_up_across_multiple_elapsed_songs(self):
+        self._add_song("Song A", "Artist A")
+        self._add_song("Song B", "Artist B")
+        self._add_song("Song C", "Artist C")
+
+        # A ([0,30)) and B ([30,60)) fully elapse; 65s lands 5s into C's
+        # ([60,90)) window, so it should be the one left current.
+        self._backdate_current_song(65)
+
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["current_song"]["song"]["title"], "Song C")
+        self.assertEqual(EventSong.objects.filter(status="played").count(), 2)
+
+    def test_voting_never_interrupts_the_currently_playing_song(self):
+        add_a = self._add_song("Song A", "Artist A")
+        add_b = self._add_song("Song B", "Artist B")
+
+        # Song A is current (added first, no votes yet). Vote Song B well
+        # above it, still well before Song A's clip would naturally finish.
+        vote_url_b = f"{self.queue_url}{add_b.data['id']}/vote/"
+        self.client.post(vote_url_b, {})
+        self._login(self.voter1)
+        self.client.post(vote_url_b, {})
+
+        # Song A is still on air — a vote only ever reorders who's next,
+        # it never cuts off what's already playing.
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["current_song"]["song"]["title"], "Song A")
+        song_a = EventSong.objects.get(id=add_a.data["id"])
+        self.assertEqual(song_a.status, "playing")
+
+        # But the queue itself already reflects the new vote order — Song
+        # B is positioned to lead once Song A's time is actually up.
+        queue = self.client.get(self.queue_url).data
+        self.assertEqual(queue[0]["song"]["title"], "Song B")
+
+    def test_song_that_finishes_hands_off_to_whoever_led_the_vote_meanwhile(self):
+        add_a = self._add_song("Song A", "Artist A")
+        add_b = self._add_song("Song B", "Artist B")
+
+        # Vote Song B up while Song A is still playing (no effect on
+        # what's current, per the test above) ...
+        self.client.post(f"{self.queue_url}{add_b.data['id']}/vote/", {})
+
+        # ... then let Song A's time genuinely run out.
+        self._backdate_current_song(31)
+
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["current_song"]["song"]["title"], "Song B")
+
+    def test_preview_type_always_caps_at_30s_even_with_a_longer_known_duration(self):
+        # A Deezer `preview` clip is physically only ~30s of audio no
+        # matter what `duration_seconds` says the real commercial track's
+        # length is — that metadata describes the song, not the clip, so
+        # it must never stretch how long this stays "current".
+        self._add_song("Long Song", "Artist A", duration_seconds=200)
+        self._add_song("Song B", "Artist B")
+
+        self._backdate_current_song(31)
+
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["current_song"]["song"]["title"], "Song B")
+        long_song = EventSong.objects.get(song__title="Long Song")
+        self.assertEqual(long_song.status, "played")
+
+    def test_full_type_uses_its_own_known_duration_not_the_preview_cap(self):
+        self._add_song("Long Song", "Artist A", duration_seconds=45, playback_type="full")
+        self._add_song("Song B", "Artist B")
+
+        # 31s would have retired a `preview`-type song (fixed 30s clip),
+        # but this one is `full` with a real 45s duration.
+        self._backdate_current_song(31)
+
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["current_song"]["song"]["title"], "Long Song")
+
+    def test_full_type_with_no_known_duration_never_auto_advances(self):
+        self._add_song("Mystery Song", "Artist A", playback_type="full")
+        self._add_song("Song B", "Artist B")
+
+        self._backdate_current_song(10_000)
+
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["current_song"]["song"]["title"], "Mystery Song")
+
+    def test_playback_type_defaults_to_preview_when_omitted(self):
+        add_a = self._add_song("Song A", "Artist A")
+        event_song = EventSong.objects.get(id=add_a.data["id"])
+        self.assertEqual(event_song.song.playback_type, "preview")
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")

@@ -33,15 +33,23 @@ class PlaybackController {
   /// This prevents the mini player from pushing a duplicate copy of it.
   int? visiblePlaylistId;
 
+  /// Same idea as [visiblePlaylistId], but for the event detail route.
+  int? visibleEventId;
+
   PlaybackState get _state => state.value;
   Stream<String> get onCompleted => _completedController.stream;
 
+  /// [position] starts playback partway in — used to join an event's
+  /// track already in progress, synced to the backend's authoritative
+  /// elapsed time (see `EventDetailScreen` / DECISIONS.md) rather than
+  /// always restarting from 0.
   Future<void> play({
     required String url,
     required String trackKey,
     required String title,
     required String artist,
     required String artworkUrl,
+    Duration position = Duration.zero,
   }) async {
     await _player.stop();
     _setState(
@@ -50,9 +58,10 @@ class PlaybackController {
         title: title,
         artist: artist,
         artworkUrl: artworkUrl,
+        position: position,
       ),
     );
-    await _player.play(UrlSource(url));
+    await _player.play(UrlSource(url), position: position);
   }
 
   Future<void> pause() => _player.pause();
@@ -106,6 +115,14 @@ class PlaybackState {
   final bool isPlaying;
 
   bool get hasTrack => trackKey != null;
+
+  /// True while the active track came from an event's synced queue
+  /// (`trackKey` of the form `event:<id>:<songId>`, set by
+  /// `EventDetailScreen`). Events auto-play the current vote leader with
+  /// no manual song choice or stop/pause — voting is the only control —
+  /// so callers use this to hide those controls rather than exposing
+  /// them for a track no one is meant to be able to pause.
+  bool get isEventTrack => trackKey?.startsWith('event:') ?? false;
 
   PlaybackState copyWith({
     String? trackKey,

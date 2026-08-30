@@ -104,6 +104,10 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
         event = super().get_object()
         if not can_user_see_event(self.request.user, event):
             raise PermissionDenied("You do not have access to this event.")
+        # Catches the event's authoritative playback state up to now before
+        # it's serialized — this is what a new joiner or a rejoining user
+        # syncs to (see `Event.sync_current_song`).
+        event.sync_current_song()
         return event
 
     def perform_update(self, serializer):
@@ -121,9 +125,11 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
     get=extend_schema(
         summary="List the song queue",
         description=(
-            "Returns all songs in this event's queue, sorted by vote "
-            "count (most-voted first). This is the ranked list that "
-            "determines what plays next."
+            "Returns the not-yet-played songs in this event's queue, "
+            "sorted by vote count (most-voted first). This is the "
+            "ranked list that determines what plays next; a song is "
+            "left out once its playback time has genuinely elapsed (see "
+            "`Event.sync_current_song`), not by any client request."
         ),
         responses={
             200: EventSongSerializer(many=True),
@@ -161,7 +167,11 @@ class EventQueueView(APIView):
             return Response({"detail": "You do not have access to this event."},
                              status=status.HTTP_403_FORBIDDEN)
 
-        queue = sorted(event.queue.all(), key=lambda es: es.vote_count, reverse=True)
+        event.sync_current_song()
+        queue = sorted(
+            event.queue.exclude(status="played"),
+            key=lambda es: es.vote_count, reverse=True
+        )
         serializer = EventSongSerializer(queue, many=True, context={"request": request})
         return Response(serializer.data)
 
@@ -185,6 +195,7 @@ class EventQueueView(APIView):
                 "external_id": data.get("external_id", ""),
                 "album_art_url": data.get("album_art_url", ""),
                 "preview_url": data.get("preview_url", ""),
+                "playback_type": data.get("playback_type", "preview"),
             },
         )
 
@@ -202,6 +213,11 @@ class EventQueueView(APIView):
             "song_title": song.title,
             "artist": song.artist,
         })
+        event.sync_current_song()
+        # `sync_current_song` may have mutated this exact row's `status`
+        # through a separately-fetched instance (e.g. it's the only song,
+        # so it just became current) — reload so the response reflects it.
+        event_song.refresh_from_db()
         broadcast_queue_update(event)
         return Response(
             EventSongSerializer(event_song, context={"request": request}).data,
@@ -284,6 +300,7 @@ class VoteView(APIView):
             "song_title": event_song.song.title,
             "artist": event_song.song.artist,
         })
+        event.sync_current_song()
         broadcast_queue_update(event)
         return Response(
             {"detail": "Vote recorded.", "vote_count": event_song.vote_count},
@@ -306,7 +323,8 @@ class VoteView(APIView):
             "song_title": event_song.song.title,
             "artist": event_song.song.artist,
         })
-        broadcast_queue_update(event_song.event) 
+        event_song.event.sync_current_song()
+        broadcast_queue_update(event_song.event)
         return Response(
             {"detail": "Vote retracted.", "vote_count": event_song.vote_count},
             status=status.HTTP_200_OK

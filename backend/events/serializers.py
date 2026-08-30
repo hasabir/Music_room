@@ -1,4 +1,5 @@
 # events/serializers.py
+from django.utils import timezone
 from rest_framework import serializers
 from .models import Event, EventGuest, EventMembership, Song, EventSong, Vote
 
@@ -7,6 +8,8 @@ class EventSerializer(serializers.ModelSerializer):
     host = serializers.StringRelatedField(read_only=True)
     song_count = serializers.ReadOnlyField()
     voting_is_open = serializers.ReadOnlyField()
+    current_song = serializers.SerializerMethodField()
+    current_position_seconds = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -15,9 +18,33 @@ class EventSerializer(serializers.ModelSerializer):
             "venue_center_latitude", "venue_center_longitude", "allowed_distance_meters",
             "voting_opens_at", "voting_closes_at",
             "song_count", "voting_is_open",
+            "current_song", "current_position_seconds",
             "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "host", "song_count", "voting_is_open", "created_at", "updated_at"]
+        read_only_fields = [
+            "id", "host", "song_count", "voting_is_open",
+            "current_song", "current_position_seconds",
+            "created_at", "updated_at",
+        ]
+
+    def get_current_song(self, obj):
+        if obj.current_song_id is None:
+            return None
+        return EventSongSerializer(obj.current_song, context=self.context).data
+
+    def get_current_position_seconds(self, obj):
+        """
+        Elapsed playback position, derived fresh from the persisted start
+        timestamp rather than stored — see `Event.current_song_started_at`.
+        Clamped to the song's playable length when that's known.
+        """
+        if obj.current_song_id is None or obj.current_song_started_at is None:
+            return None
+        elapsed = (timezone.now() - obj.current_song_started_at).total_seconds()
+        duration = obj.current_song.song.effective_duration_seconds
+        if duration is not None:
+            elapsed = min(elapsed, duration)
+        return max(elapsed, 0)
 
     def validate(self, attrs):
         vote_permission = attrs.get("vote_permission", getattr(self.instance, "vote_permission", None))
@@ -52,7 +79,10 @@ class EventGuestSerializer(serializers.ModelSerializer):
 class SongSerializer(serializers.ModelSerializer):
     class Meta:
         model = Song
-        fields = ["id", "external_id", "title", "artist", "duration_seconds", "album_art_url", "preview_url"]
+        fields = [
+            "id", "external_id", "title", "artist", "duration_seconds",
+            "album_art_url", "preview_url", "playback_type",
+        ]
         read_only_fields = ["id"]
 
 
@@ -64,6 +94,9 @@ class AddSongToQueueSerializer(serializers.Serializer):
     external_id = serializers.CharField(max_length=100, required=False, allow_blank=True)
     album_art_url = serializers.URLField(max_length=500, required=False, allow_blank=True)
     preview_url = serializers.URLField(max_length=500, required=False, allow_blank=True)
+    playback_type = serializers.ChoiceField(
+        choices=Song.PLAYBACK_TYPE_CHOICES, required=False, default="preview",
+    )
 
 
 class EventSongSerializer(serializers.ModelSerializer):
