@@ -1,5 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../playback/playback_controller.dart';
+
 /// Persists the backend's JWT access/refresh tokens in the platform's
 /// secure storage (Android Keystore / iOS Keychain), so a session survives
 /// app restarts without ever touching the user's password.
@@ -41,6 +43,13 @@ class TokenStorage {
   }
 
   Future<void> clear() async {
+    // Playback belongs to the signed-in session too. Clear it before
+    // navigating away so the root-level mini player cannot survive logout.
+    try {
+      await PlaybackController.instance.stop();
+    } catch (_) {
+      // A player teardown error must never prevent signing out.
+    }
     await Future.wait([
       _storage.delete(key: _accessTokenKey),
       _storage.delete(key: _refreshTokenKey),

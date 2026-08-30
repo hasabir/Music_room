@@ -84,14 +84,25 @@ class PlaylistAccessRequestListCreateView(APIView):
         return Response(PlaylistAccessRequestSerializer(access_request).data, status=status.HTTP_201_CREATED)
 
 
-@extend_schema(
-    summary="Get my access request status for a playlist",
-    description="Returns the signed-in user's most recent access request for this playlist.",
-    responses={
-        200: PlaylistAccessRequestSerializer,
-        404: OpenApiResponse(description="No access request from you exists for this playlist."),
-    },
-    tags=["playlists"],
+@extend_schema_view(
+    get=extend_schema(
+        summary="Get my access request status for a playlist",
+        description="Returns the signed-in user's most recent access request for this playlist.",
+        responses={
+            200: PlaylistAccessRequestSerializer,
+            404: OpenApiResponse(description="No access request from you exists for this playlist."),
+        },
+        tags=["playlists"],
+    ),
+    delete=extend_schema(
+        summary="Cancel my pending playlist access request",
+        description="Cancels the signed-in user's pending request, if one exists.",
+        responses={
+            204: None,
+            404: OpenApiResponse(description="No pending access request from you exists for this playlist."),
+        },
+        tags=["playlists"],
+    ),
 )
 class PlaylistAccessRequestMineView(APIView):
     permission_classes = [IsAuthenticated]
@@ -102,6 +113,25 @@ class PlaylistAccessRequestMineView(APIView):
         if not access_request:
             return Response({"detail": "No access request found."}, status=status.HTTP_404_NOT_FOUND)
         return Response(PlaylistAccessRequestSerializer(access_request).data)
+
+    def delete(self, request, playlist_id):
+        playlist = get_object_or_404(Playlist, id=playlist_id)
+        access_request = playlist.access_requests.filter(
+            requester=request.user,
+            status=PlaylistAccessRequest.STATUS_PENDING,
+        ).first()
+        if not access_request:
+            return Response(
+                {"detail": "No pending access request found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        access_request.delete()
+        log_action(request, "playlist.access_request_cancelled", user=request.user, metadata={
+            "playlist_id": playlist.id,
+            "title": playlist.title,
+        })
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema(
