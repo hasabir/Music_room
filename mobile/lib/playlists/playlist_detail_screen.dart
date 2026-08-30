@@ -169,7 +169,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         _loadError = null;
         _loadErrorStatusCode = null;
       });
-      if (playlist.owner != authUser.email) {
+      if (playlist.owner != authUser.username) {
         unawaited(_loadMyAccessRequest());
       }
     } on SessionExpiredException {
@@ -727,9 +727,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     }
 
     final authUser = _authUser!;
-    final isOwner = playlist.owner == authUser.email;
+    final isOwner = playlist.owner == authUser.username;
     final isCollaborator = _collaborators.any(
-      (c) => c.collaboratorEmail == authUser.email,
+      (c) => c.collaboratorUsername == authUser.username,
     );
     final canEdit =
         isOwner ||
@@ -1145,7 +1145,7 @@ class _CollaboratorsRow extends StatelessWidget {
                 for (var i = 0; i < shown.length; i++)
                   Positioned(
                     left: i * _overlap,
-                    child: _Avatar(email: shown[i].collaboratorEmail),
+                    child: _Avatar(username: shown[i].collaboratorUsername),
                   ),
                 if (overflow > 0)
                   Positioned(
@@ -1187,9 +1187,9 @@ class _CollaboratorsRow extends StatelessWidget {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({required this.email});
+  const _Avatar({required this.username});
 
-  final String email;
+  final String username;
 
   @override
   Widget build(BuildContext context) {
@@ -1205,7 +1205,7 @@ class _Avatar extends StatelessWidget {
       ),
       alignment: Alignment.center,
       child: Text(
-        email.isNotEmpty ? email[0].toUpperCase() : '?',
+        username.isNotEmpty ? username[0].toUpperCase() : '?',
         style: const TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w700,

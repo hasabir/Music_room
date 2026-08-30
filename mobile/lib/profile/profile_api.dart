@@ -10,10 +10,13 @@ import 'profile_models.dart';
 /// delegates the actual refresh call to an [AuthApi] instance rather than
 /// re-implementing it.
 class ProfileApi {
-  ProfileApi({ApiClient? apiClient, TokenStorage? tokenStorage, AuthApi? authApi})
-    : _apiClient = apiClient ?? ApiClient(),
-      _tokenStorage = tokenStorage ?? TokenStorage(),
-      _authApi = authApi ?? AuthApi(tokenStorage: tokenStorage);
+  ProfileApi({
+    ApiClient? apiClient,
+    TokenStorage? tokenStorage,
+    AuthApi? authApi,
+  }) : _apiClient = apiClient ?? ApiClient(),
+       _tokenStorage = tokenStorage ?? TokenStorage(),
+       _authApi = authApi ?? AuthApi(tokenStorage: tokenStorage);
 
   final ApiClient _apiClient;
   final TokenStorage _tokenStorage;
@@ -32,6 +35,7 @@ class ProfileApi {
   /// touch this field" for every other parameter, clearing an existing
   /// birthday needs [clearBirthday] instead of passing `birthday: null`.
   Future<UserProfile> updateMyProfile({
+    String? username,
     String? displayName,
     String? bio,
     String? location,
@@ -43,6 +47,7 @@ class ProfileApi {
     Map<String, String>? fieldVisibility,
   }) async {
     final body = <String, dynamic>{
+      if (username != null) 'username': username,
       if (displayName != null) 'display_name': displayName,
       if (bio != null) 'bio': bio,
       if (location != null) 'location': location,
@@ -56,7 +61,10 @@ class ProfileApi {
       if (fieldVisibility != null) 'field_visibility': fieldVisibility,
     };
 
-    final response = await _authorizedPatch(ApiConfig.myProfileUri(), body: body);
+    final response = await _authorizedPatch(
+      ApiConfig.myProfileUri(),
+      body: body,
+    );
     return UserProfile.fromJson(response);
   }
 
@@ -88,14 +96,20 @@ class ProfileApi {
   /// Lists friend requests sent to the signed-in user that are still
   /// awaiting their response.
   Future<List<FriendRequest>> getReceivedRequests() async {
-    final response = await _authorizedGetList(ApiConfig.friendRequestsReceivedUri());
-    return response.map((json) => FriendRequest.fromReceivedJson(json)).toList();
+    final response = await _authorizedGetList(
+      ApiConfig.friendRequestsReceivedUri(),
+    );
+    return response
+        .map((json) => FriendRequest.fromReceivedJson(json))
+        .toList();
   }
 
   /// Lists friend requests the signed-in user has sent that are still
   /// awaiting the other person's response.
   Future<List<FriendRequest>> getSentRequests() async {
-    final response = await _authorizedGetList(ApiConfig.friendRequestsSentUri());
+    final response = await _authorizedGetList(
+      ApiConfig.friendRequestsSentUri(),
+    );
     return response.map((json) => FriendRequest.fromSentJson(json)).toList();
   }
 
@@ -120,11 +134,17 @@ class ProfileApi {
     if (accessToken == null) throw SessionExpiredException();
 
     try {
-      await _apiClient.delete(ApiConfig.removeFriendUri(userId), accessToken: accessToken);
+      await _apiClient.delete(
+        ApiConfig.removeFriendUri(userId),
+        accessToken: accessToken,
+      );
     } on ApiException catch (error) {
       if (error.statusCode != 401) rethrow;
       final refreshedToken = await _refreshOrThrow();
-      await _apiClient.delete(ApiConfig.removeFriendUri(userId), accessToken: refreshedToken);
+      await _apiClient.delete(
+        ApiConfig.removeFriendUri(userId),
+        accessToken: refreshedToken,
+      );
     }
   }
 
@@ -142,7 +162,10 @@ class ProfileApi {
     if (accessToken == null) throw SessionExpiredException();
 
     try {
-      await _apiClient.delete(ApiConfig.cancelFriendRequestUri(userId), accessToken: accessToken);
+      await _apiClient.delete(
+        ApiConfig.cancelFriendRequestUri(userId),
+        accessToken: accessToken,
+      );
     } on ApiException catch (error) {
       if (error.statusCode != 401) rethrow;
       final refreshedToken = await _refreshOrThrow();
@@ -179,11 +202,19 @@ class ProfileApi {
     if (accessToken == null) throw SessionExpiredException();
 
     try {
-      return await _apiClient.post(uri, body: const {}, accessToken: accessToken);
+      return await _apiClient.post(
+        uri,
+        body: const {},
+        accessToken: accessToken,
+      );
     } on ApiException catch (error) {
       if (error.statusCode != 401) rethrow;
       final refreshedToken = await _refreshOrThrow();
-      return await _apiClient.post(uri, body: const {}, accessToken: refreshedToken);
+      return await _apiClient.post(
+        uri,
+        body: const {},
+        accessToken: refreshedToken,
+      );
     }
   }
 
@@ -199,7 +230,11 @@ class ProfileApi {
     } on ApiException catch (error) {
       if (error.statusCode != 401) rethrow;
       final refreshedToken = await _refreshOrThrow();
-      return await _apiClient.patch(uri, body: body, accessToken: refreshedToken);
+      return await _apiClient.patch(
+        uri,
+        body: body,
+        accessToken: refreshedToken,
+      );
     }
   }
 

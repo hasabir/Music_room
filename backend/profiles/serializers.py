@@ -38,6 +38,13 @@ class FriendshipSerializer(serializers.ModelSerializer):
 
 class ProfileSerializer(serializers.ModelSerializer):
 
+    username = serializers.CharField(
+        source="user.username",
+        max_length=30,
+        required=False,
+        validators=User._meta.get_field("username").validators,
+    )
+
     favorite_genres = serializers.ListField(
         child=serializers.ChoiceField(
             choices=Profile.MUSIC_GENRE_CHOICES
@@ -53,6 +60,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         model = Profile
         fields = [
             "id",
+            "username",
             "display_name",
             "bio",
             "location",
@@ -100,7 +108,22 @@ class ProfileSerializer(serializers.ModelSerializer):
 
         return value
 
+    def validate_username(self, value):
+        username = value.strip()
+        if not username:
+            raise serializers.ValidationError("Username cannot be empty.")
+        if User.objects.filter(username__iexact=username).exclude(
+            id=self.instance.user_id if self.instance else None
+        ).exists():
+            raise serializers.ValidationError("This username is already taken.")
+        return username
+
     def update(self, instance, validated_data):
+        user_data = validated_data.pop("user", {})
+        username = user_data.get("username")
+        if username is not None and username != instance.user.username:
+            instance.user.username = username
+            instance.user.save(update_fields=["username"])
         incoming_visibility = validated_data.pop("field_visibility", None)
         if incoming_visibility is not None:
             instance.field_visibility = {**instance.field_visibility, **incoming_visibility}

@@ -217,12 +217,12 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                   }
 
                   final data = snapshot.data!;
-                  final email = data.authUser?.email ?? '';
+                  final username = data.authUser?.username ?? '';
                   final visible = data.playlists
                       .where(
                         (p) => _tab == _PlaylistTab.mine
-                            ? _isMine(p, email)
-                            : !_isMine(p, email),
+                            ? _isMine(p, username)
+                            : !_isMine(p, username),
                       )
                       .toList();
 
@@ -251,7 +251,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                               final playlist = visible[index];
                               return _PlaylistHeroCard(
                                 playlist: playlist,
-                                isOwner: playlist.owner == email,
+                                isOwner: playlist.owner == username,
                                 onTap: () => _onOpenPlaylist(playlist),
                                 onDelete: () => _onDeletePlaylist(playlist),
                               );
@@ -278,8 +278,8 @@ enum _PlaylistTab { mine, discover }
 /// private (the list endpoint only ever returns a private playlist to its
 /// owner or an invited collaborator, so either way it's not something to
 /// "discover").
-bool _isMine(Playlist playlist, String currentUserEmail) =>
-    playlist.owner == currentUserEmail ||
+bool _isMine(Playlist playlist, String currentUsername) =>
+    playlist.owner == currentUsername ||
     playlist.visibility == playlistVisibilityPrivate;
 
 class _ListData {

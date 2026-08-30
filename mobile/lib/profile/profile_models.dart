@@ -1,11 +1,22 @@
 const _monthNames = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 
 /// Formats a birthday for display (e.g. "August 26, 2006"). Shared by the
 /// Edit Profile and Profile screens so the two stay in sync.
-String formatBirthday(DateTime date) => '${_monthNames[date.month - 1]} ${date.day}, ${date.year}';
+String formatBirthday(DateTime date) =>
+    '${_monthNames[date.month - 1]} ${date.day}, ${date.year}';
 
 /// Human-readable labels for the backend's `Profile.MUSIC_GENRE_CHOICES`
 /// (see `backend/profiles/models.py`). Keys are the genre codes stored/sent
@@ -55,6 +66,7 @@ const Map<String, String> defaultFieldVisibility = {
 class UserProfile {
   const UserProfile({
     required this.id,
+    required this.username,
     required this.displayName,
     required this.bio,
     required this.location,
@@ -70,12 +82,15 @@ class UserProfile {
 
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
     id: json['id'] as int,
+    username: json['username'] as String? ?? '',
     displayName: json['display_name'] as String? ?? '',
     bio: json['bio'] as String? ?? '',
     location: json['location'] as String? ?? '',
     favoriteArtist: json['favorite_artist'] as String? ?? '',
     phoneNumber: json['phone_number'] as String? ?? '',
-    birthday: json['birthday'] != null ? DateTime.parse(json['birthday'] as String) : null,
+    birthday: json['birthday'] != null
+        ? DateTime.parse(json['birthday'] as String)
+        : null,
     profileImageUrl: json['profile_image'] as String?,
     favoriteGenres:
         (json['favorite_genres'] as List<dynamic>?)
@@ -94,6 +109,7 @@ class UserProfile {
   );
 
   final int id;
+  final String username;
   final String displayName;
   final String bio;
   final String location;
@@ -116,7 +132,11 @@ class UserProfile {
 /// One accepted friend, as returned by `GET /api/v1/profile/friends/`
 /// (`FriendSerializer`).
 class Friend {
-  const Friend({required this.id, required this.firstName, required this.lastName});
+  const Friend({
+    required this.id,
+    required this.firstName,
+    required this.lastName,
+  });
 
   factory Friend.fromJson(Map<String, dynamic> json) => Friend(
     id: json['id'] as int,
@@ -198,6 +218,7 @@ enum RelationshipStatus {
 class SearchUser {
   const SearchUser({
     required this.id,
+    required this.username,
     required this.firstName,
     required this.lastName,
     required this.email,
@@ -207,6 +228,7 @@ class SearchUser {
 
   factory SearchUser.fromJson(Map<String, dynamic> json) => SearchUser(
     id: json['id'] as int,
+    username: json['username'] as String? ?? '',
     firstName: json['first_name'] as String? ?? '',
     lastName: json['last_name'] as String? ?? '',
     email: json['email'] as String? ?? '',
@@ -217,6 +239,7 @@ class SearchUser {
   );
 
   final int id;
+  final String username;
   final String firstName;
   final String lastName;
   final String email;
@@ -225,11 +248,19 @@ class SearchUser {
 
   String get fullName {
     final name = '$firstName $lastName'.trim();
-    return name.isEmpty ? email : name;
+    return name.isEmpty
+        ? (username.isNotEmpty ? '@$username' : 'Unknown user')
+        : name;
   }
 
-  SearchUser copyWith({RelationshipStatus? relationshipStatus, int? friendshipId}) => SearchUser(
+  String get publicName => username.isNotEmpty ? '@$username' : fullName;
+
+  SearchUser copyWith({
+    RelationshipStatus? relationshipStatus,
+    int? friendshipId,
+  }) => SearchUser(
     id: id,
+    username: username,
     firstName: firstName,
     lastName: lastName,
     email: email,
@@ -255,19 +286,24 @@ class OtherUserProfile {
     required this.playlistsCount,
   });
 
-  factory OtherUserProfile.fromJson(Map<String, dynamic> json) => OtherUserProfile(
-    displayName: json['display_name'] as String? ?? '',
-    bio: json['bio'] as String? ?? '',
-    profileImageUrl: json['profile_image'] as String?,
-    favoriteGenres:
-        (json['favorite_genres'] as List<dynamic>?)?.map((genre) => genre as String).toList() ??
-        const [],
-    location: json['location'] as String?,
-    favoriteArtist: json['favorite_artist'] as String?,
-    birthday: json['birthday'] != null ? DateTime.parse(json['birthday'] as String) : null,
-    votesCount: json['votes_count'] as int? ?? 0,
-    playlistsCount: json['playlists_count'] as int? ?? 0,
-  );
+  factory OtherUserProfile.fromJson(Map<String, dynamic> json) =>
+      OtherUserProfile(
+        displayName: json['display_name'] as String? ?? '',
+        bio: json['bio'] as String? ?? '',
+        profileImageUrl: json['profile_image'] as String?,
+        favoriteGenres:
+            (json['favorite_genres'] as List<dynamic>?)
+                ?.map((genre) => genre as String)
+                .toList() ??
+            const [],
+        location: json['location'] as String?,
+        favoriteArtist: json['favorite_artist'] as String?,
+        birthday: json['birthday'] != null
+            ? DateTime.parse(json['birthday'] as String)
+            : null,
+        votesCount: json['votes_count'] as int? ?? 0,
+        playlistsCount: json['playlists_count'] as int? ?? 0,
+      );
 
   final String displayName;
   final String bio;

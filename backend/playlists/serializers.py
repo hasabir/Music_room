@@ -34,15 +34,15 @@ class PlaylistSerializer(serializers.ModelSerializer):
 
 
 class PlaylistCollaboratorSerializer(serializers.ModelSerializer):
-    collaborator_email = serializers.EmailField(source="collaborator.email", read_only=True)
+    collaborator_username = serializers.CharField(source="collaborator.username", read_only=True)
 
     class Meta:
         model = PlaylistCollaborator
         fields = [
-            "id", "playlist", "collaborator", "collaborator_email", "invited_at",
+            "id", "playlist", "collaborator", "collaborator_username", "invited_at",
             "can_add_songs", "can_reorder_songs", "can_manage_collaborators",
         ]
-        read_only_fields = ["id", "invited_at", "collaborator_email"]
+        read_only_fields = ["id", "invited_at", "collaborator_username"]
 
 
 class AddSongToPlaylistSerializer(serializers.Serializer):
@@ -67,14 +67,14 @@ class PlaylistSongSerializer(serializers.ModelSerializer):
     song_album_art_url = serializers.CharField(source="song.album_art_url", read_only=True)
     song_duration_seconds = serializers.IntegerField(source="song.duration_seconds", read_only=True)
     song_preview_url = serializers.CharField(source="song.preview_url", read_only=True)
-    added_by_email = serializers.EmailField(source="added_by.email", read_only=True)
+    added_by_username = serializers.CharField(source="added_by.username", read_only=True)
 
     class Meta:
         model = PlaylistSong
         fields = [
             "id", "playlist", "song", "song_external_id", "song_title", "song_artist",
             "song_album_art_url", "song_duration_seconds", "song_preview_url",
-            "position", "added_by_email", "added_at",
+            "position", "added_by_username", "added_at",
         ]
         read_only_fields = fields\
 
@@ -90,11 +90,11 @@ class CollaboratorPermissionsSerializer(serializers.Serializer):
 
 
 class PlaylistAccessRequestSerializer(serializers.ModelSerializer):
-    requester_email = serializers.EmailField(source="requester.email", read_only=True)
+    requester_username = serializers.CharField(source="requester.username", read_only=True)
 
     class Meta:
         model = PlaylistAccessRequest
-        fields = ["id", "playlist", "requester", "requester_email", "status", "requested_at", "decided_at"]
+        fields = ["id", "playlist", "requester", "requester_username", "status", "requested_at", "decided_at"]
         read_only_fields = fields
 
 

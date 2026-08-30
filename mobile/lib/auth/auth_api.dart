@@ -200,7 +200,11 @@ class AuthApi {
         throw SessionExpiredException();
       }
 
-      return await _apiClient.post(uri, body: body, accessToken: refreshedToken);
+      return await _apiClient.post(
+        uri,
+        body: body,
+        accessToken: refreshedToken,
+      );
     }
   }
 

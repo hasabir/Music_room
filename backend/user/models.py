@@ -1,12 +1,30 @@
+import re
+
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from django.core.validators import RegexValidator
 
 
 class UserManager(BaseUserManager):
+    def _generated_username(self, email):
+        base = re.sub(r"[^a-z0-9_.]", "", email.split("@", 1)[0].lower())
+        base = (base or "musicroom")[:24]
+        if len(base) < 3:
+            base = f"{base}user"[:24]
+        candidate = base
+        suffix = 1
+        while self.model.objects.filter(username__iexact=candidate).exists():
+            suffix_text = str(suffix)
+            candidate = f"{base[:30 - len(suffix_text)]}{suffix_text}"
+            suffix += 1
+        return candidate
+
     def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError("Users must have an email address")
         email = self.normalize_email(email)
+        if not extra_fields.get("username"):
+            extra_fields["username"] = self._generated_username(email)
         user = self.model(email=email, **extra_fields)
         if password:
             user.set_password(password)
@@ -28,6 +46,16 @@ class User(AbstractBaseUser, PermissionsMixin):
     ]
 
     email = models.EmailField(unique=True)
+    username = models.CharField(
+        max_length=30,
+        unique=True,
+        validators=[
+            RegexValidator(
+                r"^[A-Za-z0-9_.]{3,30}$",
+                "Username must be 3–30 letters, numbers, dots, or underscores.",
+            ),
+        ],
+    )
     first_name = models.CharField(max_length=30, blank=True)
     last_name = models.CharField(max_length=30, blank=True)
     registration_method = models.CharField(
@@ -44,7 +72,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     REQUIRED_FIELDS = []  # email + password already required by USERNAME_FIELD/AbstractBaseUser
 
     def __str__(self):
-        return self.email
+        return self.username
 
 class SocialAccount(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='social_accounts')
