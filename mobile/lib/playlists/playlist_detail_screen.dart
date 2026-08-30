@@ -94,6 +94,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   /// access-denied screen and the view-only banner.
   PlaylistAccessRequest? _myAccessRequest;
   var _isRequestingAccess = false;
+  var _isCancellingAccessRequest = false;
 
   /// True while a drag gesture is in progress, so a poll tick landing
   /// mid-drag doesn't yank the list out from under the user's finger.
@@ -222,6 +223,25 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _isRequestingAccess = false);
+      _showMessage(error.message);
+    }
+  }
+
+  Future<void> _onCancelAccessRequest() async {
+    setState(() => _isCancellingAccessRequest = true);
+    try {
+      await _playlistApi.cancelMyAccessRequest(widget.playlistId);
+      if (!mounted) return;
+      setState(() {
+        _myAccessRequest = null;
+        _isCancellingAccessRequest = false;
+      });
+      _showMessage('Access request cancelled.');
+    } on SessionExpiredException {
+      await _signOutAndReturnToWelcome();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _isCancellingAccessRequest = false);
       _showMessage(error.message);
     }
   }
@@ -628,6 +648,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       var updated = await _playlistApi.updatePlaylist(
         playlist.id,
         title: edit.title,
+        visibility: edit.visibility,
+        editPermission: edit.editPermission,
         coverPreset: edit.coverPath == null ? edit.coverPreset : null,
       );
       if (edit.coverPath != null) {
@@ -690,7 +712,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 ? _AccessDeniedState(
                     myRequest: _myAccessRequest,
                     isRequesting: _isRequestingAccess,
+                    isCancelling: _isCancellingAccessRequest,
                     onRequestAccess: _onRequestAccess,
+                    onCancelAccessRequest: _onCancelAccessRequest,
                     onReturnHome: _onReturnHome,
                   )
                 : _ErrorState(
@@ -739,7 +763,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           _EditLockedBanner(
             myRequest: _myAccessRequest,
             isRequesting: _isRequestingAccess,
+            isCancelling: _isCancellingAccessRequest,
             onRequestAccess: _onRequestAccess,
+            onCancelAccessRequest: _onCancelAccessRequest,
           ),
           const SizedBox(height: 16),
         ],
@@ -989,12 +1015,16 @@ class _EditLockedBanner extends StatelessWidget {
   const _EditLockedBanner({
     required this.myRequest,
     required this.isRequesting,
+    required this.isCancelling,
     required this.onRequestAccess,
+    required this.onCancelAccessRequest,
   });
 
   final PlaylistAccessRequest? myRequest;
   final bool isRequesting;
+  final bool isCancelling;
   final VoidCallback onRequestAccess;
+  final VoidCallback onCancelAccessRequest;
 
   @override
   Widget build(BuildContext context) {
@@ -1034,28 +1064,43 @@ class _EditLockedBanner extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: _PlaylistColors.muted),
           ),
           const SizedBox(height: 10),
-          TextButton(
-            onPressed: alreadyRequested || isRequesting
-                ? null
-                : onRequestAccess,
-            style: TextButton.styleFrom(
-              foregroundColor: _PlaylistColors.tertiary,
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(0, 0),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: Text(
-              alreadyRequested ? 'Request sent' : 'Request access to edit',
-              style: TextStyle(
-                fontFamily: 'Sora',
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-                color: alreadyRequested
-                    ? _PlaylistColors.muted
-                    : _PlaylistColors.tertiary,
+          if (alreadyRequested)
+            TextButton.icon(
+              onPressed: isCancelling ? null : onCancelAccessRequest,
+              icon: isCancelling
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.close_rounded, size: 16),
+              label: Text(isCancelling ? 'Cancelling…' : 'Cancel request'),
+              style: TextButton.styleFrom(
+                foregroundColor: _PlaylistColors.muted,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 0),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            )
+          else
+            TextButton(
+              onPressed: isRequesting ? null : onRequestAccess,
+              style: TextButton.styleFrom(
+                foregroundColor: _PlaylistColors.tertiary,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 0),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Request access to edit',
+                style: TextStyle(
+                  fontFamily: 'Sora',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  color: _PlaylistColors.tertiary,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -1221,13 +1266,17 @@ class _AccessDeniedState extends StatelessWidget {
   const _AccessDeniedState({
     required this.myRequest,
     required this.isRequesting,
+    required this.isCancelling,
     required this.onRequestAccess,
+    required this.onCancelAccessRequest,
     required this.onReturnHome,
   });
 
   final PlaylistAccessRequest? myRequest;
   final bool isRequesting;
+  final bool isCancelling;
   final VoidCallback onRequestAccess;
+  final VoidCallback onCancelAccessRequest;
   final VoidCallback onReturnHome;
 
   @override
@@ -1297,7 +1346,7 @@ class _AccessDeniedState extends StatelessWidget {
                       : null,
                 ),
                 child: ElevatedButton(
-                  onPressed: alreadyRequested || isRequesting
+                  onPressed: alreadyRequested || isRequesting || isCancelling
                       ? null
                       : onRequestAccess,
                   style: ElevatedButton.styleFrom(
@@ -1337,6 +1386,24 @@ class _AccessDeniedState extends StatelessWidget {
                 ),
               ),
             ),
+            if (alreadyRequested) ...[
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: isCancelling ? null : onCancelAccessRequest,
+                icon: isCancelling
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.close_rounded, size: 18),
+                label: Text(isCancelling ? 'CANCELLING…' : 'CANCEL REQUEST'),
+                style: TextButton.styleFrom(
+                  foregroundColor: _PlaylistColors.muted,
+                  minimumSize: const Size.fromHeight(44),
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,

@@ -10,10 +10,14 @@ import 'playlist_widgets.dart';
 class PlaylistEditResult {
   const PlaylistEditResult({
     required this.title,
+    required this.visibility,
+    required this.editPermission,
     this.coverPath,
     this.coverPreset,
   });
   final String title;
+  final String visibility;
+  final String editPermission;
   final String? coverPath;
   final String? coverPreset;
 }
@@ -31,6 +35,8 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
   late final _title = TextEditingController(text: widget.playlist.title);
   String? _coverPath;
   late String? _coverPreset = widget.playlist.coverPreset;
+  late String _visibility = widget.playlist.visibility;
+  late String _editPermission = widget.playlist.editPermission;
 
   @override
   void dispose() {
@@ -56,6 +62,8 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
     Navigator.of(context).pop(
       PlaylistEditResult(
         title: _title.text.trim(),
+        visibility: _visibility,
+        editPermission: _editPermission,
         coverPath: _coverPath,
         coverPreset: _coverPath == null ? _coverPreset : null,
       ),
@@ -165,6 +173,42 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
                 ],
               ),
               const SizedBox(height: 30),
+              const _FormLabel('VISIBILITY'),
+              const SizedBox(height: 10),
+              _ChoiceRow(
+                options: const {
+                  playlistVisibilityPublic: 'Public',
+                  playlistVisibilityPrivate: 'Private',
+                },
+                value: _visibility,
+                onChanged: (value) => setState(() {
+                  _visibility = value;
+                  if (value == playlistVisibilityPrivate &&
+                      _editPermission == playlistEditPermissionEveryone) {
+                    _editPermission = playlistEditPermissionInvitedOnly;
+                  } else if (value == playlistVisibilityPublic &&
+                      _editPermission == playlistEditPermissionOwnerOnly) {
+                    _editPermission = playlistEditPermissionInvitedOnly;
+                  }
+                }),
+              ),
+              const SizedBox(height: 22),
+              const _FormLabel('WHO CAN EDIT'),
+              const SizedBox(height: 10),
+              _ChoiceRow(
+                options: _visibility == playlistVisibilityPrivate
+                    ? const {
+                        playlistEditPermissionOwnerOnly: 'Only me',
+                        playlistEditPermissionInvitedOnly: 'Invited people',
+                      }
+                    : const {
+                        playlistEditPermissionEveryone: 'Everyone',
+                        playlistEditPermissionInvitedOnly: 'Invited people',
+                      },
+                value: _editPermission,
+                onChanged: (value) => setState(() => _editPermission = value),
+              ),
+              const SizedBox(height: 30),
               FilledButton.icon(
                 onPressed: _save,
                 icon: const Icon(Icons.check_rounded),
@@ -246,6 +290,59 @@ class _PresetButton extends StatelessWidget {
         child: Image.asset(preset.assetPath, fit: BoxFit.cover),
       ),
     ),
+  );
+}
+
+class _ChoiceRow extends StatelessWidget {
+  const _ChoiceRow({
+    required this.options,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final Map<String, String> options;
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      for (final option in options.entries) ...[
+        Expanded(
+          child: InkWell(
+            onTap: () => onChanged(option.key),
+            borderRadius: BorderRadius.circular(14),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: value == option.key
+                    ? const Color(0xFF8083FF)
+                    : const Color(0xFF17161F),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: value == option.key
+                      ? const Color(0xFF8083FF)
+                      : const Color(0xFF2A2935),
+                ),
+              ),
+              child: Text(
+                option.value,
+                style: TextStyle(
+                  color: value == option.key
+                      ? const Color(0xFF0E0E15)
+                      : const Color(0xFFE4E1EB),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (option.key != options.keys.last) const SizedBox(width: 10),
+      ],
+    ],
   );
 }
 

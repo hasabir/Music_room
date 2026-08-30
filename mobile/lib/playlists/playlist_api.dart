@@ -265,6 +265,11 @@ class PlaylistApi {
     }
   }
 
+  /// Cancels the signed-in user's pending access request for [playlistId].
+  Future<void> cancelMyAccessRequest(int playlistId) async {
+    await _authorizedDelete(ApiConfig.playlistAccessRequestMineUri(playlistId));
+  }
+
   /// Lists every access request ever made for this playlist. Owner only.
   Future<List<PlaylistAccessRequest>> listAccessRequests(int playlistId) async {
     final response = await _authorizedGetList(
