@@ -15,6 +15,8 @@ class HomeView(APIView):
 
 
 DEEZER_SEARCH_URL = "https://api.deezer.com/search"
+DEEZER_ARTIST_SEARCH_URL = "https://api.deezer.com/search/artist"
+DEEZER_ARTIST_TOP_URL = "https://api.deezer.com/artist/{artist_id}/top"
 DEEZER_CHART_TRACKS_URL = "https://api.deezer.com/chart/0/tracks"
 DEEZER_TRACK_URL = "https://api.deezer.com/track/{external_id}"
 AUDIOUS_API_URL = "https://api.audius.co/v1"
@@ -91,11 +93,34 @@ def _fetch_audius_tracks(url, params):
 
 
 def _search_audius(query):
-    """Returns full-length, streamable Audius tracks matching `query`,
-    without failing search if Audius is unreachable."""
+    """Returns full-length, streamable Audius tracks matching `query` by
+    title/artist/etc (Audius's default full-text track search), without
+    failing search if Audius is unreachable."""
     return _fetch_audius_tracks(
         f"{AUDIOUS_API_URL}/tracks/search", {"query": query, "limit": 10}
     )
+
+
+def _search_audius_by_artist(query):
+    """Returns full-length, streamable tracks by the Audius artist whose
+    name best matches `query` — a two-step find-the-artist-then-list-their-
+    tracks lookup, as opposed to `_search_audius`'s single keyword search
+    that happens to also match the artist field. Empty (never raising) if
+    no artist matches or either Audius call fails, same as `_search_audius`."""
+    try:
+        response = requests.get(
+            f"{AUDIOUS_API_URL}/users/search", params={"query": query, "limit": 1}, timeout=5
+        )
+        response.raise_for_status()
+        users = response.json().get("data", [])
+    except (requests.RequestException, ValueError):
+        return []
+
+    user_id = users[0].get("id") if users else None
+    if not user_id:
+        return []
+
+    return _fetch_audius_tracks(f"{AUDIOUS_API_URL}/users/{user_id}/tracks", {"limit": 10})
 
 
 def _trending_audius():
@@ -104,16 +129,57 @@ def _trending_audius():
     return _fetch_audius_tracks(f"{AUDIOUS_API_URL}/tracks/trending", {"limit": 10})
 
 
+def _search_deezer_by_artist(query):
+    """Returns 30-second-preview Deezer tracks — the current top tracks of
+    the artist whose name best matches `query` — mirroring
+    `_search_audius_by_artist`'s two-step lookup. Returns `(tracks, ok)`
+    where `ok` is `False` only when Deezer could not be reached at all
+    (empty-but-`ok` means Deezer was reachable but no artist matched),
+    same contract `TrackSearchView.get` already expects from the plain
+    Deezer search request it makes inline."""
+    try:
+        search_response = requests.get(
+            DEEZER_ARTIST_SEARCH_URL, params={"q": query, "limit": 1}, timeout=5
+        )
+        search_response.raise_for_status()
+        artists = search_response.json().get("data", [])
+        if not artists:
+            return [], True
+
+        top_response = requests.get(
+            DEEZER_ARTIST_TOP_URL.format(artist_id=artists[0]["id"]),
+            params={"limit": 10},
+            timeout=5,
+        )
+        top_response.raise_for_status()
+        top_payload = top_response.json()
+    except (requests.RequestException, ValueError, KeyError):
+        return [], False
+
+    return [_format_deezer_track(track) for track in top_payload.get("data", [])], True
+
+
 @extend_schema(
     summary="Search for tracks",
     description=(
         "Returns legal, full-length Audius streams first when available, then "
         "falls back to Deezer's 30-second previews. Each result includes a "
         "`playback_type` of `full` or `preview` plus the fields needed to add "
-        "the track to a playlist or an event's queue."
+        "the track to a playlist or an event's queue.\n\n"
+        "By default `q` is matched against title/artist/etc using each "
+        "source's normal full-text track search. Passing `by=artist` "
+        "switches to an artist lookup instead: `q` is matched against artist "
+        "names only, and the results are that best-matching artist's "
+        "tracks (their current Deezer top tracks, plus their Audius "
+        "tracks) rather than a keyword match against every field."
     ),
     parameters=[
         OpenApiParameter(name="q", type=str, required=True, description="Search query (title, artist, ...)"),
+        OpenApiParameter(
+            name="by", type=str, required=False,
+            description="`track` (default) matches title/artist/etc; `artist` looks up an artist by name "
+                         "and returns their tracks.",
+        ),
     ],
     responses={
         200: OpenApiResponse(description="List of matching tracks."),
@@ -131,13 +197,24 @@ class TrackSearchView(APIView):
         if not query:
             return Response({"detail": "Query parameter 'q' is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        full_tracks = _search_audius(query)
+        by_artist = request.query_params.get("by", "").strip().lower() == "artist"
 
-        try:
-            response = requests.get(DEEZER_SEARCH_URL, params={"q": query}, timeout=5)
-            response.raise_for_status()
-            payload = response.json()
-        except (requests.RequestException, ValueError):
+        if by_artist:
+            full_tracks = _search_audius_by_artist(query)
+            preview_tracks, deezer_ok = _search_deezer_by_artist(query)
+        else:
+            full_tracks = _search_audius(query)
+            try:
+                response = requests.get(DEEZER_SEARCH_URL, params={"q": query}, timeout=5)
+                response.raise_for_status()
+                preview_tracks = [
+                    _format_deezer_track(track) for track in response.json().get("data", [])
+                ]
+                deezer_ok = True
+            except (requests.RequestException, ValueError):
+                preview_tracks, deezer_ok = [], False
+
+        if not deezer_ok:
             if full_tracks:
                 return Response(full_tracks)
             return Response(
@@ -145,7 +222,6 @@ class TrackSearchView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        preview_tracks = [_format_deezer_track(track) for track in payload.get("data", [])]
         return Response([*full_tracks, *preview_tracks])
 
 

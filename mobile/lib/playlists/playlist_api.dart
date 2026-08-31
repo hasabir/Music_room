@@ -141,8 +141,19 @@ class PlaylistApi {
   /// Searches the backend's legal music sources for tracks matching [query].
   /// Audius results can stream in full; Deezer results provide a 30-second
   /// preview. Every result carries the fields [addSong] needs.
-  Future<List<TrackSearchResult>> searchTracks(String query) async {
-    final response = await _authorizedGetList(ApiConfig.trackSearchUri(query));
+  ///
+  /// By default [query] is matched against title/artist/etc. Passing
+  /// [byArtist] switches to an artist-name lookup instead: [query] is
+  /// matched against artist names only, and the results are that
+  /// best-matching artist's tracks rather than a keyword match against
+  /// every field — see `TrackSearchView` (`backend/api/views.py`).
+  Future<List<TrackSearchResult>> searchTracks(
+    String query, {
+    bool byArtist = false,
+  }) async {
+    final response = await _authorizedGetList(
+      ApiConfig.trackSearchUri(query, byArtist: byArtist),
+    );
     return response.map((json) => TrackSearchResult.fromJson(json)).toList();
   }
 

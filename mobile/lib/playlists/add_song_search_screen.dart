@@ -64,6 +64,13 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
   var _isLoading = false;
   String? _error;
 
+  /// `false` searches by title/artist/etc (the default keyword match);
+  /// `true` looks the query up as an artist name instead and returns that
+  /// artist's tracks — see `PlaylistApi.searchTracks`'s `byArtist` param.
+  /// Only affects [_search]; the trending list shown before the user
+  /// types anything is unaffected by this toggle.
+  var _searchByArtist = false;
+
   bool get _isSearching => _controller.text.trim().isNotEmpty;
   List<TrackSearchResult>? get _results =>
       _isSearching ? _searchResults : _trending;
@@ -135,9 +142,27 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
     _debounce = Timer(const Duration(milliseconds: 400), () => _search(query));
   }
 
+  /// Switches between title/artist keyword search and an artist-name
+  /// lookup. Re-runs the current query immediately (no debounce — this is
+  /// an explicit user action, not keystroke-driven) if one is active;
+  /// otherwise there's nothing to re-run since the trending list ignores
+  /// this toggle.
+  void _onSearchModeChanged(bool byArtist) {
+    if (byArtist == _searchByArtist) return;
+    setState(() => _searchByArtist = byArtist);
+    if (_isSearching) {
+      _debounce?.cancel();
+      setState(() => _isLoading = true);
+      _search(_controller.text);
+    }
+  }
+
   Future<void> _search(String query) async {
     try {
-      final results = await _playlistApi.searchTracks(query);
+      final results = await _playlistApi.searchTracks(
+        query,
+        byArtist: _searchByArtist,
+      );
       if (!mounted) return;
       setState(() {
         _searchResults = results;
@@ -270,7 +295,9 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
                         onChanged: _onQueryChanged,
                         style: const TextStyle(color: _AddSongColors.body),
                         decoration: InputDecoration(
-                          hintText: 'Search for a song to add...',
+                          hintText: _searchByArtist
+                              ? 'Search for an artist...'
+                              : 'Search for a song to add...',
                           hintStyle: const TextStyle(
                             color: _AddSongColors.muted,
                           ),
@@ -291,6 +318,17 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
                       ),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 16),
+                  child: _SearchModeToggle(
+                    byArtist: _searchByArtist,
+                    onChanged: _onSearchModeChanged,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -320,9 +358,14 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
 
     final results = _results ?? const [];
     if (results.isEmpty) {
+      final message = !_isSearching
+          ? 'Nothing trending right now.'
+          : _searchByArtist
+          ? 'No artist found.'
+          : 'No tracks found.';
       return Center(
         child: Text(
-          _isSearching ? 'No tracks found.' : 'Nothing trending right now.',
+          message,
           style: const TextStyle(color: _AddSongColors.muted),
         ),
       );
@@ -358,6 +401,77 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
           onAdd: () => _onAdd(track),
         );
       },
+    );
+  }
+}
+
+/// Two-way pill switch between the default title/artist/etc keyword
+/// search and an artist-name lookup — see [_AddSongSearchScreenState._searchByArtist].
+class _SearchModeToggle extends StatelessWidget {
+  const _SearchModeToggle({required this.byArtist, required this.onChanged});
+
+  final bool byArtist;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: _AddSongColors.card,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ModeChip(
+            label: 'Track',
+            isSelected: !byArtist,
+            onTap: () => onChanged(false),
+          ),
+          _ModeChip(
+            label: 'Artist',
+            isSelected: byArtist,
+            onTap: () => onChanged(true),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModeChip extends StatelessWidget {
+  const _ModeChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(13),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? _AddSongColors.border : Colors.transparent,
+          borderRadius: BorderRadius.circular(13),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Sora',
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+            color: isSelected ? _AddSongColors.body : _AddSongColors.muted,
+          ),
+        ),
+      ),
     );
   }
 }

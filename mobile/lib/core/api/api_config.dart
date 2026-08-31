@@ -108,9 +108,12 @@ class ApiConfig {
       Uri.parse('$baseUrl$playlistsEndpoint$playlistId/collaborators/');
   static Uri playlistCollaboratorDetailUri(int playlistId, int userId) =>
       Uri.parse('$baseUrl$playlistsEndpoint$playlistId/collaborators/$userId/');
-  static Uri trackSearchUri(String query) =>
-      Uri.parse('$baseUrl$trackSearchEndpoint')
-          .replace(queryParameters: {'q': query});
+  /// [byArtist] switches from the default title/artist/etc keyword match
+  /// to an artist-name lookup — see `TrackSearchView` (`backend/api/views.py`).
+  static Uri trackSearchUri(String query, {bool byArtist = false}) =>
+      Uri.parse('$baseUrl$trackSearchEndpoint').replace(
+        queryParameters: {'q': query, if (byArtist) 'by': 'artist'},
+      );
   static Uri trackTrendingUri() => Uri.parse('$baseUrl$trackTrendingEndpoint');
   static Uri trackPreviewUri(String externalId) => Uri.parse(
     '$baseUrl/api/v1/tracks/${Uri.encodeComponent(externalId)}/preview/',
