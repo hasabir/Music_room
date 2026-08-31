@@ -583,16 +583,16 @@ class _EventHeroCard extends StatelessWidget {
                       fontStyle: FontStyle.italic,
                     ),
                   ),
-                  // const SizedBox(height: 14),
-                  // Align(
-                  //   alignment: Alignment.centerRight,
-                  //   child: showJoinButton
-                  //       ? _GradientButton(label: 'Join Event', onTap: onJoin)
-                  //       : _OutlinedPillButton(
-                  //           label: 'View Details',
-                  //           onTap: onTap,
-                  //         ),
-                  // ),
+                  const SizedBox(height: 14),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: showJoinButton
+                        ? _GradientButton(label: 'Join Event', onTap: onJoin)
+                        : _OutlinedPillButton(
+                            label: 'View Details',
+                            onTap: onTap,
+                          ),
+                  ),
                 ],
               ),
             ),
