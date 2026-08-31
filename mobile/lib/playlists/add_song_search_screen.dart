@@ -29,6 +29,16 @@ class _AddSongColors {
 /// 30-second previews. Tapping "Add" sends the track's
 /// title/artist/duration/external id to `PlaylistApi.addSong` — the exact
 /// same call a manually-typed song would make.
+///
+/// Before the user types anything, shows a "popular now" list
+/// (`PlaylistApi.fetchTrending`, the same call and same source priority —
+/// Audius trending plus Deezer's top chart — as `SuggestTrackScreen` uses
+/// for an event's queue), fetched once on screen load; typing switches to
+/// a debounced search against the query, and clearing the query falls
+/// back to the already-fetched trending list rather than an empty prompt.
+/// Unlike the event screen, tap-to-preview audio ([_onTogglePreview])
+/// still applies to both lists here — there's no event track already
+/// playing in the background to compete with.
 class AddSongSearchScreen extends StatefulWidget {
   const AddSongSearchScreen({super.key, required this.playlistId});
 
@@ -46,9 +56,17 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
   Timer? _debounce;
   StreamSubscription<void>? _completeSub;
 
-  List<TrackSearchResult>? _results;
+  /// Trending tracks, fetched once on screen load and shown before the
+  /// user types anything. Kept separate from [_searchResults] so clearing
+  /// the search field can fall back to it instantly, with no refetch.
+  List<TrackSearchResult>? _trending;
+  List<TrackSearchResult>? _searchResults;
   var _isLoading = false;
   String? _error;
+
+  bool get _isSearching => _controller.text.trim().isNotEmpty;
+  List<TrackSearchResult>? get _results =>
+      _isSearching ? _searchResults : _trending;
 
   String? _playingExternalId;
   var _addedExternalIds = <String>{};
@@ -66,6 +84,31 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
     _completeSub = _previewPlayer.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _playingExternalId = null);
     });
+    _loadTrending();
+  }
+
+  Future<void> _loadTrending() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final results = await _playlistApi.fetchTrending();
+      if (!mounted) return;
+      setState(() {
+        _trending = results;
+        _isLoading = false;
+      });
+    } on SessionExpiredException {
+      await _signOutAndReturnToWelcome();
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = error.message;
+        });
+      }
+    }
   }
 
   @override
@@ -81,7 +124,7 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
     _debounce?.cancel();
     if (query.trim().isEmpty) {
       setState(() {
-        _results = null;
+        _searchResults = null;
         _isLoading = false;
         _error = null;
       });
@@ -97,7 +140,7 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
       final results = await _playlistApi.searchTracks(query);
       if (!mounted) return;
       setState(() {
-        _results = results;
+        _searchResults = results;
         _isLoading = false;
         _error = null;
       });
@@ -275,31 +318,37 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
       );
     }
 
-    final results = _results;
-    if (results == null) {
-      return const Center(
-        child: Text(
-          'Search by title or artist to find a song.',
-          style: TextStyle(color: _AddSongColors.muted),
-        ),
-      );
-    }
-
+    final results = _results ?? const [];
     if (results.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
-          'No tracks found.',
-          style: TextStyle(color: _AddSongColors.muted),
+          _isSearching ? 'No tracks found.' : 'Nothing trending right now.',
+          style: const TextStyle(color: _AddSongColors.muted),
         ),
       );
     }
 
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-      itemCount: results.length,
+      itemCount: results.length + 1,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
-        final track = results[index];
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(
+              _isSearching ? 'RESULTS' : 'POPULAR NOW',
+              style: const TextStyle(
+                fontFamily: 'Sora',
+                fontSize: 11,
+                letterSpacing: 1,
+                fontWeight: FontWeight.w800,
+                color: _AddSongColors.tertiary,
+              ),
+            ),
+          );
+        }
+        final track = results[index - 1];
         return _TrackRow(
           track: track,
           isPlaying: _playingExternalId == track.externalId,
