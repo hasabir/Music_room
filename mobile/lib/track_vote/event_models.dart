@@ -401,6 +401,8 @@ class EventGuest {
     required this.event,
     required this.guest,
     required this.guestEmail,
+    required this.guestUsername,
+    required this.guestDisplayName,
     required this.invitedAt,
   });
 
@@ -409,6 +411,8 @@ class EventGuest {
     event: json['event'] as int,
     guest: json['guest'] as int,
     guestEmail: json['guest_email'] as String? ?? '',
+    guestUsername: json['guest_username'] as String? ?? '',
+    guestDisplayName: json['guest_display_name'] as String? ?? '',
     invitedAt: DateTime.parse(json['invited_at'] as String),
   );
 
@@ -418,7 +422,44 @@ class EventGuest {
   /// The invited user's id.
   final int guest;
   final String guestEmail;
+  final String guestUsername;
+  final String guestDisplayName;
   final DateTime invitedAt;
+}
+
+/// One person who has self-joined an event, as returned by
+/// `GET /api/v1/events/<event_id>/attendees/` (`EventMembershipSerializer`)
+/// — distinct from [EventGuest], which is who's been *invited*.
+class EventMembership {
+  const EventMembership({
+    required this.id,
+    required this.event,
+    required this.member,
+    required this.memberEmail,
+    required this.memberUsername,
+    required this.memberDisplayName,
+    required this.joinedAt,
+  });
+
+  factory EventMembership.fromJson(Map<String, dynamic> json) => EventMembership(
+    id: json['id'] as int,
+    event: json['event'] as int,
+    member: json['member'] as int,
+    memberEmail: json['member_email'] as String? ?? '',
+    memberUsername: json['member_username'] as String? ?? '',
+    memberDisplayName: json['member_display_name'] as String? ?? '',
+    joinedAt: DateTime.parse(json['joined_at'] as String),
+  );
+
+  final int id;
+  final int event;
+
+  /// The joined user's id.
+  final int member;
+  final String memberEmail;
+  final String memberUsername;
+  final String memberDisplayName;
+  final DateTime joinedAt;
 }
 
 /// Response shape shared by both `POST` (cast) and `DELETE` (retract) on

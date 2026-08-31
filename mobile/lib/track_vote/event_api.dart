@@ -239,6 +239,20 @@ class EventApi {
     await _authorizedDelete(ApiConfig.eventGuestDetailUri(eventId, userId));
   }
 
+  /// Lists everyone who has self-joined the event (as opposed to
+  /// [listGuests], which is who's been invited).
+  Future<List<EventMembership>> listAttendees(int eventId) async {
+    final response = await _authorizedGetList(
+      ApiConfig.eventAttendeesUri(eventId),
+    );
+    return response.map((json) => EventMembership.fromJson(json)).toList();
+  }
+
+  /// Removes an attendee's membership from the event. Host only.
+  Future<void> removeAttendee(int eventId, int userId) async {
+    await _authorizedDelete(ApiConfig.eventAttendeeDetailUri(eventId, userId));
+  }
+
   Future<Map<String, dynamic>> _authorizedGet(Uri uri) async {
     final accessToken = await _tokenStorage.readAccessToken();
     if (accessToken == null) throw SessionExpiredException();

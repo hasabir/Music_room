@@ -1,6 +1,7 @@
 # events/serializers.py
 from django.utils import timezone
 from rest_framework import serializers
+from profiles.serializers import _actor_display_name
 from .models import Event, EventGuest, EventMembership, Song, EventSong, Vote, EventAccessRequest
 
 
@@ -84,11 +85,21 @@ class EventSerializer(serializers.ModelSerializer):
 
 class EventGuestSerializer(serializers.ModelSerializer):
     guest_email = serializers.EmailField(source="guest.email", read_only=True)
+    guest_username = serializers.CharField(source="guest.username", read_only=True)
+    guest_display_name = serializers.SerializerMethodField()
 
     class Meta:
         model = EventGuest
-        fields = ["id", "event", "guest", "guest_email", "rsvp_status", "invited_at"]
-        read_only_fields = ["id", "invited_at", "guest_email", "rsvp_status"]
+        fields = [
+            "id", "event", "guest", "guest_email", "guest_username", "guest_display_name",
+            "rsvp_status", "invited_at",
+        ]
+        read_only_fields = [
+            "id", "invited_at", "guest_email", "guest_username", "guest_display_name", "rsvp_status",
+        ]
+
+    def get_guest_display_name(self, obj):
+        return _actor_display_name(obj.guest)
 
 
 class SongSerializer(serializers.ModelSerializer):
@@ -141,11 +152,18 @@ class InviteGuestSerializer(serializers.Serializer):
 
 class EventMembershipSerializer(serializers.ModelSerializer):
     member_email = serializers.EmailField(source="member.email", read_only=True)
+    member_username = serializers.CharField(source="member.username", read_only=True)
+    member_display_name = serializers.SerializerMethodField()
 
     class Meta:
         model = EventMembership
-        fields = ["id", "event", "member", "member_email", "joined_at"]
+        fields = [
+            "id", "event", "member", "member_email", "member_username", "member_display_name", "joined_at",
+        ]
         read_only_fields = fields
+
+    def get_member_display_name(self, obj):
+        return _actor_display_name(obj.member)
 
 
 class EventAccessRequestSerializer(serializers.ModelSerializer):

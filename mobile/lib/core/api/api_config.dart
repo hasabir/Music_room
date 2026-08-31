@@ -139,4 +139,8 @@ class ApiConfig {
       Uri.parse('$baseUrl$eventsEndpoint$eventId/guests/$userId/');
   static Uri eventJoinUri(int eventId) =>
       Uri.parse('$baseUrl$eventsEndpoint$eventId/join/');
+  static Uri eventAttendeesUri(int eventId) =>
+      Uri.parse('$baseUrl$eventsEndpoint$eventId/attendees/');
+  static Uri eventAttendeeDetailUri(int eventId, int userId) =>
+      Uri.parse('$baseUrl$eventsEndpoint$eventId/attendees/$userId/');
 }

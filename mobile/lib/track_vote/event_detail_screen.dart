@@ -56,6 +56,17 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   AuthUser? _authUser;
   List<EventSong> _queue = const [];
 
+  /// Invited guests — the "Invited" tab of the participants sheet.
+  /// Visible to anyone who can see the event at all: `GET .../guests/`
+  /// is gated by the same `can_user_see_event` check as the event detail
+  /// fetch itself, so there's no extra permission concern in fetching
+  /// this unconditionally alongside it.
+  List<EventGuest> _guests = const [];
+
+  /// Everyone who's self-joined the event — the "Joined" tab. Same
+  /// visibility gate as [_guests]; see `GET .../attendees/`.
+  List<EventMembership> _attendees = const [];
+
   /// A song this screen already tried to auto-play and found unplayable
   /// (no preview URL) — guards against retrying it on every poll tick
   /// until the leader actually changes.
@@ -68,6 +79,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   /// server keeps advancing by wall-clock time on its own regardless of
   /// whether any client is connected.
   EventSong? get _currentlyPlaying => _event?.currentSong;
+
+  /// `event.host` renders server-side as `str(user)` (`StringRelatedField`),
+  /// which is the user's `username`, not their `email` — see the same note
+  /// on `_isMine` in events_landing_screen.dart. This is the single gate on
+  /// both the cover's "..." menu button and the participants sheet's
+  /// invite/remove actions — nothing else checks host status separately.
+  bool get _isHost => _authUser?.username == _event?.host;
 
   @override
   void initState() {
@@ -109,12 +127,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         _eventApi.getEvent(widget.eventId),
         _eventApi.listQueue(widget.eventId),
         _authApi.getCurrentUser(),
+        _eventApi.listGuests(widget.eventId),
+        _eventApi.listAttendees(widget.eventId),
       ]);
       if (!mounted) return;
       setState(() {
         _event = results[0] as Event;
         _queue = results[1] as List<EventSong>;
         _authUser = results[2] as AuthUser;
+        _guests = results[3] as List<EventGuest>;
+        _attendees = results[4] as List<EventMembership>;
         _isLoading = false;
       });
       _syncAutoPlay();
@@ -334,6 +356,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         builder: (_) => EventGuestsScreen(eventId: widget.eventId),
       ),
     );
+    // The guest list may have just changed on that screen — keep the
+    // "members" row in sync without a full reload/spinner.
+    try {
+      final guests = await _eventApi.listGuests(widget.eventId);
+      if (mounted) setState(() => _guests = guests);
+    } on ApiException {
+      // Keep showing the last known guest list on a transient failure.
+    }
   }
 
   Future<void> _openEventSettings() async {
@@ -359,6 +389,88 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         onTryAgain: () {
           Navigator.pop(sheetContext);
           setState(() => _voteRestrictionReason = null);
+        },
+      ),
+    );
+  }
+
+  /// Opens the "Joined"/"Invited" participants panel. Invite/remove actions
+  /// inside it are gated on [_isHost] by the sheet itself — see
+  /// [_ParticipantsSheet]'s own doc comment.
+  void _openParticipantsSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _EventColors.card,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetContext) => _ParticipantsSheet(
+        attendees: _attendees,
+        guests: _guests,
+        isHost: _isHost,
+        onInviteMore: () {
+          Navigator.pop(sheetContext);
+          _openGuestManagement();
+        },
+        onRemoveAttendee: _removeAttendee,
+        onRemoveGuest: _removeGuest,
+      ),
+    );
+  }
+
+  /// Host-only (see [_ParticipantsSheet]) — revokes [membership] via
+  /// `DELETE .../attendees/<user_id>/` and drops it locally on success.
+  Future<void> _removeAttendee(EventMembership membership) async {
+    try {
+      await _eventApi.removeAttendee(widget.eventId, membership.member);
+      if (mounted) {
+        setState(() {
+          _attendees = _attendees.where((a) => a.id != membership.id).toList();
+        });
+      }
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    }
+  }
+
+  /// Host-only (see [_ParticipantsSheet]) — revokes [guest]'s invitation via
+  /// `DELETE .../guests/<user_id>/` and drops it locally on success.
+  Future<void> _removeGuest(EventGuest guest) async {
+    try {
+      await _eventApi.removeGuest(widget.eventId, guest.guest);
+      if (mounted) {
+        setState(() {
+          _guests = _guests.where((g) => g.id != guest.id).toList();
+        });
+      }
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    }
+  }
+
+  /// Host-only — see the `if (isHost) ...` gate at the call site in
+  /// [_buildBody] (the "..." button on the cover only exists in the tree
+  /// at all when `isHost` is true; a non-host has no way to trigger this).
+  /// Opens a plain bottom sheet rather than a `PopupMenuButton` — that
+  /// was tried first, but `PopupMenuButton`'s own `Overlay`/`RenderBox`
+  /// anchor positioning is fragile mid-route-transition and crashed with
+  /// "Infinity or NaN toInt" on both entering and leaving this screen.
+  void _showEventMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _EventColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetContext) => _EventMenuSheet(
+        onManageGuests: () {
+          Navigator.pop(sheetContext);
+          _openGuestManagement();
+        },
+        onOpenSettings: () {
+          Navigator.pop(sheetContext);
+          _openEventSettings();
         },
       ),
     );
@@ -391,39 +503,37 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final upNext = playing == null
         ? _queue
         : _queue.where((entry) => entry.id != playing.id).toList();
-    final participants = <String>{
-      event.host,
-      ..._queue.map((entry) => entry.addedByEmail).whereType<String>(),
-    }.toList();
-    // event.host renders server-side as str(user) (StringRelatedField),
-    // which is the user's `username`, not their `email` — see the same
-    // note on `_isMine` in events_landing_screen.dart.
-    final isHost = _authUser?.username == event.host;
     final isVotingRestricted = _voteRestrictionReason != null;
 
-    return Column(
-      children: [
-        _TopBar(
-          title: event.title,
-          onManageGuests: isHost ? _openGuestManagement : null,
-          onOpenSettings: isHost ? _openEventSettings : null,
-        ),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: _loadAll,
-            color: _EventColors.tertiary,
-            backgroundColor: _EventColors.card,
-            child: ValueListenableBuilder<PlaybackState>(
-              valueListenable: _playback.state,
-              builder: (context, playbackState, _) {
-                final isPlayingHere = playing != null &&
-                    playbackState.trackKey == _playbackKey(playing.id);
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+    return RefreshIndicator(
+      onRefresh: _loadAll,
+      color: _EventColors.tertiary,
+      backgroundColor: _EventColors.card,
+      child: ValueListenableBuilder<PlaybackState>(
+        valueListenable: _playback.state,
+        builder: (context, playbackState, _) {
+          final isPlayingHere = playing != null &&
+              playbackState.trackKey == _playbackKey(playing.id);
+          return ListView(
+            // Horizontal inset moved to the Padding below the cover, so
+            // the cover alone can span the full screen width — see
+            // _CoverHeader's own doc comment for why (two fancier
+            // one-item-only tricks were tried and both hit real Flutter
+            // framework issues; this plain nested-Column approach has
+            // none of that risk).
+            padding: const EdgeInsets.only(top: 4, bottom: 32),
+            children: [
+              _CoverHeader(
+                event: event,
+                isHost: _isHost,
+                onBack: () => Navigator.of(context).pop(),
+                onOpenMenu: _showEventMenu,
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Center(
-                      child: EventCoverThumb(coverPreset: event.coverPreset, size: 160, radius: 28),
-                    ),
                     const SizedBox(height: 18),
                     Text(
                       event.title,
@@ -459,7 +569,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    _ParticipantAvatars(emails: participants),
+                    _ParticipantsSummaryCard(
+                      attendees: _attendees,
+                      onTap: _openParticipantsSheet,
+                    ),
                     const SizedBox(height: 28),
                     const _SectionLabel('NOW PLAYING'),
                     const SizedBox(height: 10),
@@ -523,15 +636,19 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         ),
                       )
                     else
-                      OutlinedButton.icon(
-                        onPressed: _openSuggestTrack,
-                        icon: const Icon(Icons.add_rounded, size: 18),
-                        label: const Text('Suggest a track'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: _EventColors.tertiary,
-                          side: const BorderSide(color: _EventColors.cardBorder),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _openSuggestTrack,
+                          icon: const Icon(Icons.add_rounded, size: 20),
+                          label: const Text('Suggest a track'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _EventColors.tertiary,
+                            side: const BorderSide(color: _EventColors.cardBorder),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
                           ),
                         ),
                       ),
@@ -551,63 +668,187 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         const SizedBox(height: 8),
                       ],
                   ],
-                );
-              },
-            ),
-          ),
-        ),
-      ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.title,
+/// The event's cover — full screen width, 30% of screen height, edge to
+/// edge. The back button and the host-only "..." button float on top of
+/// it, bottom-left carries the live/closed/canceled + visibility badges.
+///
+/// **The "..." button only exists in this tree at all when `isHost` is
+/// true** (`if (isHost) _CircleIconButton(...)` below) — a non-host gets
+/// no menu button here, full stop, not a disabled/hidden one; there is
+/// no other path to open it.
+class _CoverHeader extends StatelessWidget {
+  const _CoverHeader({
+    required this.event,
+    required this.isHost,
+    required this.onBack,
+    required this.onOpenMenu,
+  });
+
+  final Event event;
+  final bool isHost;
+  final VoidCallback onBack;
+
+  /// Host-only — opens the "Manage guests"/"Event settings" bottom sheet
+  /// (`_EventDetailScreenState._showEventMenu`). A plain bottom sheet,
+  /// not a `PopupMenuButton`: that was tried first, but its `Overlay`/
+  /// `RenderBox` anchor positioning is fragile mid-route-transition and
+  /// crashed with "Infinity or NaN toInt" on both entering and leaving
+  /// this screen.
+  final VoidCallback onOpenMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    final preset = EventCoverPreset.byId(event.coverPreset);
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.3,
+      width: MediaQuery.sizeOf(context).width,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          preset == null
+              ? const _CoverHeaderFallback()
+              : Image.asset(
+                  preset.assetPath,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const _CoverHeaderFallback(),
+                ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Colors.black87],
+                stops: [0.45, 1],
+              ),
+            ),
+          ),
+          Positioned(
+            top: 10,
+            left: 10,
+            right: 10,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _CircleIconButton(
+                  icon: Icons.arrow_back_rounded,
+                  onTap: onBack,
+                ),
+                if (isHost)
+                  _CircleIconButton(
+                    icon: Icons.more_vert_rounded,
+                    onTap: onOpenMenu,
+                  ),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 12,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (event.status == eventStatusClosed)
+                  const EventOverlayStatusBadge(
+                    label: 'CLOSED',
+                    color: EventBadgeColors.statusClosed,
+                  )
+                else if (event.status == eventStatusCanceled)
+                  const EventOverlayStatusBadge(
+                    label: 'CANCELED',
+                    color: EventBadgeColors.statusCanceled,
+                  )
+                else if (event.votingIsOpen)
+                  const LiveBadge(),
+                EventVisibilityBadge(visibility: event.visibility),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CoverHeaderFallback extends StatelessWidget {
+  const _CoverHeaderFallback();
+  @override
+  Widget build(BuildContext context) => const DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF8083FF), Color(0xFF494BD6)],
+      ),
+    ),
+    child: Center(
+      child: Icon(Icons.graphic_eq_rounded, color: Colors.white, size: 48),
+    ),
+  );
+}
+
+/// A small circular button matching the semi-transparent-over-photo style
+/// both the back button and the cover's host-only menu button use.
+class _CircleIconButton extends StatelessWidget {
+  const _CircleIconButton({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.black.withValues(alpha: 0.35),
+    shape: const CircleBorder(),
+    child: InkWell(
+      customBorder: const CircleBorder(),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(icon, color: Colors.white, size: 18),
+      ),
+    ),
+  );
+}
+
+/// The host-only "Manage guests"/"Event settings" bottom sheet opened by
+/// tapping the cover's "..." button (see `_EventDetailScreenState._showEventMenu`
+/// — that method is only ever wired to a button that exists for the host).
+class _EventMenuSheet extends StatelessWidget {
+  const _EventMenuSheet({
     required this.onManageGuests,
     required this.onOpenSettings,
   });
-  final String title;
-  final VoidCallback? onManageGuests;
+  final VoidCallback onManageGuests;
+  final VoidCallback onOpenSettings;
 
-  /// Host-only — opens [EventSettingsScreen] to change [Event.status].
-  /// `null` for anyone but the host, same gating as [onManageGuests].
-  final VoidCallback? onOpenSettings;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(4, 8, 16, 4),
-    child: Row(
-      children: [
-        IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_rounded, color: _EventColors.body),
-        ),
-        Expanded(
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: 'Sora',
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: _EventColors.body,
-            ),
+  Widget build(BuildContext context) => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.group_rounded, color: _EventColors.tertiary),
+            title: const Text('Manage guests', style: TextStyle(color: _EventColors.body)),
+            onTap: onManageGuests,
           ),
-        ),
-        if (onManageGuests != null)
-          IconButton(
-            onPressed: onManageGuests,
-            icon: const Icon(Icons.group_rounded, color: _EventColors.tertiary),
-            tooltip: 'Manage guests',
+          ListTile(
+            leading: const Icon(Icons.settings_rounded, color: _EventColors.tertiary),
+            title: const Text('Event settings', style: TextStyle(color: _EventColors.body)),
+            onTap: onOpenSettings,
           ),
-        if (onOpenSettings != null)
-          IconButton(
-            onPressed: onOpenSettings,
-            icon: const Icon(Icons.settings_rounded, color: _EventColors.tertiary),
-            tooltip: 'Event settings',
-          ),
-      ],
+        ],
+      ),
     ),
   );
 }
@@ -628,46 +869,109 @@ class _SectionLabel extends StatelessWidget {
   );
 }
 
-class _ParticipantAvatars extends StatelessWidget {
-  const _ParticipantAvatars({required this.emails});
-  final List<String> emails;
+/// The collapsed "Participants" card — a stack of the first few joined
+/// people's avatars + a count, tapping into the full [_ParticipantsSheet]
+/// (Joined/Invited tabs). Shows [EventMembership] ("Joined") avatars
+/// specifically, matching the shared mockup's collapsed state — the
+/// "Invited" list lives one tap away, inside the sheet.
+class _ParticipantsSummaryCard extends StatelessWidget {
+  const _ParticipantsSummaryCard({required this.attendees, required this.onTap});
+  final List<EventMembership> attendees;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final names = attendees
+        .map((a) => a.memberDisplayName.isNotEmpty ? a.memberDisplayName : a.memberEmail)
+        .toList();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: _EventColors.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _EventColors.cardBorder),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Row(
+          children: [
+            _AvatarStack(names: names),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'PARTICIPANTS',
+                    style: TextStyle(
+                      fontFamily: 'Sora',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.6,
+                      color: _EventColors.tertiary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    attendees.isEmpty ? 'No one has joined yet' : '${attendees.length} joined',
+                    style: const TextStyle(
+                      fontFamily: 'Sora',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: _EventColors.body,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: _EventColors.muted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Just the overlapping avatar circles (+ overflow count) — used inside
+/// [_ParticipantsSummaryCard], which supplies its own label and count text
+/// around it.
+class _AvatarStack extends StatelessWidget {
+  const _AvatarStack({required this.names});
+  final List<String> names;
   @override
   Widget build(BuildContext context) {
     const displayed = 4;
-    final people = emails.take(displayed).toList();
+    final people = names.take(displayed).toList();
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         for (var i = 0; i < people.length; i++)
           Transform.translate(
             offset: Offset(-i * 8.0, 0),
             child: _Avatar(people[i]),
           ),
-        if (emails.length > displayed)
+        if (names.length > displayed)
           Transform.translate(
             offset: Offset(-displayed * 8.0, 0),
-            child: _CountAvatar(emails.length - displayed),
+            child: _CountAvatar(names.length - displayed),
           ),
-        const Spacer(),
-        Text(
-          '${emails.length} participant${emails.length == 1 ? '' : 's'}',
-          style: const TextStyle(fontSize: 12, color: _EventColors.muted),
-        ),
       ],
     );
   }
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar(this.email);
-  final String email;
+  const _Avatar(this.label);
+  final String label;
   @override
   Widget build(BuildContext context) => Tooltip(
-    message: email,
+    message: label,
     child: CircleAvatar(
       radius: 15,
       backgroundColor: _EventColors.cardBorder,
       child: Text(
-        email.isEmpty ? '?' : email[0].toUpperCase(),
+        label.isEmpty ? '?' : label[0].toUpperCase(),
         style: const TextStyle(
           fontWeight: FontWeight.w800,
           fontSize: 12,
@@ -689,6 +993,370 @@ class _CountAvatar extends StatelessWidget {
       '+$count',
       style: const TextStyle(fontSize: 10, color: _EventColors.body),
     ),
+  );
+}
+
+/// Opened by tapping [_ParticipantsSummaryCard] — "Joined" ([EventMembership])
+/// and "Invited" ([EventGuest]) as two searchable tabs.
+///
+/// Inviting and removing are both host-only ("the host is the only one who
+/// can invite people") — gated purely on [isHost]: a non-host sees neither
+/// the "Invite More Friends" button nor any row's "..." action, full stop,
+/// matching the same all-or-nothing gating `_CoverHeader` uses for its own
+/// host-only menu button.
+///
+/// Keeps its own local copies of [attendees]/[guests] (seeded from the
+/// constructor in `initState`) rather than reading `widget.attendees`/
+/// `widget.guests` directly — this sheet is a separate overlay route, so it
+/// wouldn't otherwise see the parent screen's list update after a removal
+/// until closed and reopened.
+class _ParticipantsSheet extends StatefulWidget {
+  const _ParticipantsSheet({
+    required this.attendees,
+    required this.guests,
+    required this.isHost,
+    required this.onInviteMore,
+    required this.onRemoveAttendee,
+    required this.onRemoveGuest,
+  });
+
+  final List<EventMembership> attendees;
+  final List<EventGuest> guests;
+  final bool isHost;
+  final VoidCallback onInviteMore;
+  final Future<void> Function(EventMembership) onRemoveAttendee;
+  final Future<void> Function(EventGuest) onRemoveGuest;
+
+  @override
+  State<_ParticipantsSheet> createState() => _ParticipantsSheetState();
+}
+
+class _ParticipantsSheetState extends State<_ParticipantsSheet> {
+  var _tab = 0;
+  var _query = '';
+  late List<EventMembership> _attendees;
+  late List<EventGuest> _guests;
+
+  @override
+  void initState() {
+    super.initState();
+    _attendees = widget.attendees;
+    _guests = widget.guests;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final joined = _attendees.where(_matchesMember).toList();
+    final invited = _guests.where(_matchesGuest).toList();
+
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.85,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Participants',
+                style: TextStyle(
+                  fontFamily: 'Sora',
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: _EventColors.body,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _ParticipantsTabSwitcher(
+                joinedLabel: 'Joined (${_attendees.length})',
+                invitedLabel: 'Invited (${_guests.length})',
+                selectedIndex: _tab,
+                onChanged: (index) => setState(() => _tab = index),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                onChanged: (value) => setState(() => _query = value),
+                style: const TextStyle(color: _EventColors.body),
+                decoration: InputDecoration(
+                  hintText: 'Search participants',
+                  hintStyle: const TextStyle(color: _EventColors.muted),
+                  prefixIcon: const Icon(Icons.search_rounded, color: _EventColors.tertiary),
+                  filled: true,
+                  fillColor: _EventColors.background,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Expanded(
+                child: _tab == 0
+                    ? (joined.isEmpty
+                        ? const _EmptyParticipants(message: 'No one has joined yet.')
+                        : ListView.separated(
+                            itemCount: joined.length,
+                            separatorBuilder: (_, _) => const SizedBox(height: 10),
+                            itemBuilder: (context, index) {
+                              final entry = joined[index];
+                              final name = entry.memberDisplayName.isNotEmpty
+                                  ? entry.memberDisplayName
+                                  : entry.memberEmail;
+                              return _ParticipantRow(
+                                name: name,
+                                username: entry.memberUsername,
+                                onRemove: widget.isHost
+                                    ? () => _confirmAndRemoveAttendee(entry)
+                                    : null,
+                              );
+                            },
+                          ))
+                    : (invited.isEmpty
+                        ? const _EmptyParticipants(message: 'No one has been invited yet.')
+                        : ListView.separated(
+                            itemCount: invited.length,
+                            separatorBuilder: (_, _) => const SizedBox(height: 10),
+                            itemBuilder: (context, index) {
+                              final entry = invited[index];
+                              final name = entry.guestDisplayName.isNotEmpty
+                                  ? entry.guestDisplayName
+                                  : entry.guestEmail;
+                              return _ParticipantRow(
+                                name: name,
+                                username: entry.guestUsername,
+                                onRemove:
+                                    widget.isHost ? () => _confirmAndRemoveGuest(entry) : null,
+                              );
+                            },
+                          )),
+              ),
+              if (widget.isHost) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: widget.onInviteMore,
+                    icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                    label: const Text('Invite More Friends'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _EventColors.tertiary,
+                      foregroundColor: const Color(0xFF15151C),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: const StadiumBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool _matchesMember(EventMembership m) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    return m.memberDisplayName.toLowerCase().contains(q) ||
+        m.memberUsername.toLowerCase().contains(q) ||
+        m.memberEmail.toLowerCase().contains(q);
+  }
+
+  bool _matchesGuest(EventGuest g) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    return g.guestDisplayName.toLowerCase().contains(q) ||
+        g.guestUsername.toLowerCase().contains(q) ||
+        g.guestEmail.toLowerCase().contains(q);
+  }
+
+  Future<void> _confirmAndRemoveAttendee(EventMembership entry) async {
+    final name = entry.memberDisplayName.isNotEmpty ? entry.memberDisplayName : entry.memberEmail;
+    if (!await _confirmRemoveFromEvent(context, name)) return;
+    await widget.onRemoveAttendee(entry);
+    if (mounted) {
+      setState(() => _attendees = _attendees.where((a) => a.id != entry.id).toList());
+    }
+  }
+
+  Future<void> _confirmAndRemoveGuest(EventGuest entry) async {
+    final name = entry.guestDisplayName.isNotEmpty ? entry.guestDisplayName : entry.guestEmail;
+    if (!await _confirmRemoveFromEvent(context, name)) return;
+    await widget.onRemoveGuest(entry);
+    if (mounted) {
+      setState(() => _guests = _guests.where((g) => g.id != entry.id).toList());
+    }
+  }
+}
+
+/// Confirms a host-only removal before it fires — mirrors
+/// `EventSettingsScreen`'s own cancel-event confirmation dialog.
+Future<bool> _confirmRemoveFromEvent(BuildContext context, String name) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: _EventColors.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Text(
+        'Remove from event?',
+        style: TextStyle(fontFamily: 'Sora', color: _EventColors.body),
+      ),
+      content: Text(
+        '${name.isEmpty ? 'This person' : name} will lose access and have to be invited '
+        'again to rejoin.',
+        style: const TextStyle(color: _EventColors.muted),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel', style: TextStyle(color: _EventColors.muted)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Remove', style: TextStyle(color: Color(0xFFFFB4AB))),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
+}
+
+class _ParticipantsTabSwitcher extends StatelessWidget {
+  const _ParticipantsTabSwitcher({
+    required this.joinedLabel,
+    required this.invitedLabel,
+    required this.selectedIndex,
+    required this.onChanged,
+  });
+  final String joinedLabel;
+  final String invitedLabel;
+  final int selectedIndex;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(4),
+    decoration: BoxDecoration(
+      color: _EventColors.background,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          child: _ParticipantsTabButton(
+            label: joinedLabel,
+            isSelected: selectedIndex == 0,
+            onTap: () => onChanged(0),
+          ),
+        ),
+        Expanded(
+          child: _ParticipantsTabButton(
+            label: invitedLabel,
+            isSelected: selectedIndex == 1,
+            onTap: () => onChanged(1),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ParticipantsTabButton extends StatelessWidget {
+  const _ParticipantsTabButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(16),
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        color: isSelected ? _EventColors.cardBorder : Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontFamily: 'Sora',
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+          color: isSelected ? _EventColors.body : _EventColors.muted,
+        ),
+      ),
+    ),
+  );
+}
+
+/// One row in [_ParticipantsSheet] — avatar, display name, "@username"
+/// (hidden when empty), and a host-only "..." that confirms-then-removes
+/// (see [_confirmRemoveFromEvent]). [onRemove] is only ever non-null when
+/// the signed-in user is the host — a non-host gets no trailing icon here
+/// at all, not a disabled one.
+class _ParticipantRow extends StatelessWidget {
+  const _ParticipantRow({required this.name, required this.username, required this.onRemove});
+  final String name;
+  final String username;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(
+      color: _EventColors.background,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: _EventColors.cardBorder),
+    ),
+    child: Row(
+      children: [
+        _Avatar(name),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name.isEmpty ? 'Unknown' : name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700, color: _EventColors.body),
+              ),
+              if (username.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  '@$username',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, color: _EventColors.muted),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (onRemove != null)
+          IconButton(
+            onPressed: onRemove,
+            icon: const Icon(Icons.more_vert_rounded, color: _EventColors.muted, size: 20),
+            tooltip: 'Remove from event',
+          ),
+      ],
+    ),
+  );
+}
+
+class _EmptyParticipants extends StatelessWidget {
+  const _EmptyParticipants({required this.message});
+  final String message;
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Text(message, style: const TextStyle(color: _EventColors.muted)),
   );
 }
 
