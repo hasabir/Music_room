@@ -428,7 +428,25 @@ class _EventHeroCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (event.votingIsOpen)
+                if (event.status == eventStatusClosed)
+                  const Positioned(
+                    top: 12,
+                    left: 12,
+                    child: EventOverlayStatusBadge(
+                      label: 'CLOSED',
+                      color: EventBadgeColors.statusClosed,
+                    ),
+                  )
+                else if (event.status == eventStatusCanceled)
+                  const Positioned(
+                    top: 12,
+                    left: 12,
+                    child: EventOverlayStatusBadge(
+                      label: '⦸ CANCELED',
+                      color: EventBadgeColors.statusCanceled,
+                    ),
+                  )
+                else if (event.votingIsOpen)
                   const Positioned(top: 12, left: 12, child: LiveBadge()),
                 Positioned(
                   top: 12,
@@ -504,25 +522,30 @@ class _EventHeroCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    event.votingIsOpen
-                        ? '${event.songCount} songs queued — voting is live'
-                        : 'Waiting for songs — need at least 2 to start voting',
+                    switch (event.status) {
+                      eventStatusClosed =>
+                        'This event is closed — no new tracks can be suggested.',
+                      eventStatusCanceled => 'This event has been canceled.',
+                      _ => event.votingIsOpen
+                          ? '${event.songCount} songs queued — voting is live'
+                          : 'Waiting for songs — need at least 2 to start voting',
+                    },
                     style: const TextStyle(
                       fontSize: 12.5,
                       color: _EventColors.muted,
                       fontStyle: FontStyle.italic,
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: showJoinButton
-                        ? _GradientButton(label: 'Join Event', onTap: onJoin)
-                        : _OutlinedPillButton(
-                            label: 'View Details',
-                            onTap: onTap,
-                          ),
-                  ),
+                  // const SizedBox(height: 14),
+                  // Align(
+                  //   alignment: Alignment.centerRight,
+                  //   child: showJoinButton
+                  //       ? _GradientButton(label: 'Join Event', onTap: onJoin)
+                  //       : _OutlinedPillButton(
+                  //           label: 'View Details',
+                  //           onTap: onTap,
+                  //         ),
+                  // ),
                 ],
               ),
             ),

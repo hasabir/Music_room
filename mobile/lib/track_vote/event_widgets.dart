@@ -235,8 +235,35 @@ class _EventCoverFallback extends StatelessWidget {
   }
 }
 
+/// A small static (non-pulsing, deliberately — nothing is actually live)
+/// overlay pill for the same corner [LiveBadge] occupies, shown instead
+/// of it once an event is [eventStatusClosed]/[eventStatusCanceled] —
+/// "LIVE" would be actively wrong there regardless of `votingIsOpen`.
+class EventOverlayStatusBadge extends StatelessWidget {
+  const EventOverlayStatusBadge({super.key, required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
+    child: Text(
+      label,
+      style: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
+        color: Colors.white,
+        letterSpacing: 0.4,
+      ),
+    ),
+  );
+}
+
 /// A small pulsing red "LIVE" pill, shown on an event card when
-/// `event.votingIsOpen` is true (see [Event.votingIsOpen]).
+/// `event.votingIsOpen` is true (see [Event.votingIsOpen]) and the event
+/// isn't closed/canceled — see [EventOverlayStatusBadge] for that case.
 class LiveBadge extends StatefulWidget {
   const LiveBadge({super.key});
 
