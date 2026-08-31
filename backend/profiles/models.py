@@ -59,6 +59,11 @@ def _default_field_visibility():
         "phone_number": "private",
         "birthday": "friends",
         "activity": "public",
+        # Defaults to "public" — this preserves the field's previous
+        # behavior (unconditionally visible to anyone, same bucket as
+        # avatar/display_name) for every profile that hasn't explicitly
+        # picked a tier for it.
+        "favorite_genres": "public",
     }
 
 
@@ -147,10 +152,12 @@ class Profile(models.Model):
     birthday = models.DateField(null=True, blank=True)
 
     # Per-field visibility for the fields above plus "activity" (which
-    # gates GET /profile/<id>/activity/ — see UserActivityView). Keyed by
-    # "bio", "location", "favorite_artist", "phone_number", "birthday",
-    # "activity"; values are one of VISIBILITY_CHOICES. display_name has
-    # no entry — it's always public and not user-configurable.
+    # gates GET /profile/<id>/activity/ — see UserActivityView) and
+    # "favorite_genres" (below). Keyed by "bio", "location",
+    # "favorite_artist", "phone_number", "birthday", "activity",
+    # "favorite_genres"; values are one of VISIBILITY_CHOICES.
+    # display_name has no entry — it's always public and not
+    # user-configurable.
     field_visibility = models.JSONField(default=_default_field_visibility)
 
     # Avatar — public information (see DECISIONS.md). `avatar_type` says

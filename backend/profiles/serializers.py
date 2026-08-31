@@ -121,6 +121,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 
         allowed_fields = {
             "bio", "location", "favorite_artist", "phone_number", "birthday", "activity",
+            "favorite_genres",
         }
         allowed_tiers = {tier for tier, _ in Profile.VISIBILITY_CHOICES}
 

@@ -3,7 +3,7 @@ from rest_framework.test import APITestCase
 from rest_framework import status
 
 from user.models import User
-from .models import AVATAR_PRESET_IDS, Profile
+from .models import AVATAR_PRESET_IDS, Friendship, Profile
 from .services import create_profile_for_user
 
 
@@ -128,3 +128,86 @@ class ProfileAvatarApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["avatar_type"], "preset")
         self.assertEqual(response.data["avatar"], other_profile.avatar_preset_id)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class FavoriteGenresVisibilityTests(APITestCase):
+    """`favorite_genres` ("Vibe Signature" on the client) used to be
+    unconditionally visible on another user's profile, same bucket as
+    avatar/display_name. It now respects `field_visibility` like bio/
+    location/favorite_artist/phone_number/birthday already did — see
+    `UserProfileView`. Defaults to 'public' so a profile that hasn't
+    picked a tier for it keeps its previous always-visible behavior."""
+
+    def setUp(self):
+        self.owner = create_verified_user("owner@test.com")
+        self.owner_profile = create_profile_for_user(self.owner)
+        self.owner_profile.favorite_genres = ["jazz", "soul"]
+        self.owner_profile.save(update_fields=["favorite_genres"])
+
+        self.friend = create_verified_user("friend@test.com")
+        create_profile_for_user(self.friend)
+        Friendship.objects.create(sender=self.owner, receiver=self.friend, status="accepted")
+
+        self.stranger = create_verified_user("stranger@test.com")
+        create_profile_for_user(self.stranger)
+
+        self.profile_url = f"/api/v1/profile/profile/{self.owner.id}/"
+
+    def test_defaults_to_visible_for_a_stranger(self):
+        self.client.force_authenticate(self.stranger)
+        response = self.client.get(self.profile_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["favorite_genres"], ["jazz", "soul"])
+
+    def test_hidden_from_a_stranger_once_set_to_friends_only(self):
+        self.owner_profile.field_visibility["favorite_genres"] = "friends"
+        self.owner_profile.save(update_fields=["field_visibility"])
+
+        self.client.force_authenticate(self.stranger)
+        response = self.client.get(self.profile_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("favorite_genres", response.data)
+
+    def test_visible_to_a_friend_when_set_to_friends_only(self):
+        self.owner_profile.field_visibility["favorite_genres"] = "friends"
+        self.owner_profile.save(update_fields=["field_visibility"])
+
+        self.client.force_authenticate(self.friend)
+        response = self.client.get(self.profile_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["favorite_genres"], ["jazz", "soul"])
+
+    def test_hidden_from_everyone_including_friends_when_private(self):
+        self.owner_profile.field_visibility["favorite_genres"] = "private"
+        self.owner_profile.save(update_fields=["field_visibility"])
+
+        self.client.force_authenticate(self.friend)
+        response = self.client.get(self.profile_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("favorite_genres", response.data)
+
+    def test_always_visible_to_the_owner_themselves(self):
+        self.owner_profile.field_visibility["favorite_genres"] = "private"
+        self.owner_profile.save(update_fields=["field_visibility"])
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(self.profile_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["favorite_genres"], ["jazz", "soul"])
+
+    def test_owner_can_set_the_tier_via_patch(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.patch(
+            "/api/v1/profile/me/",
+            {"field_visibility": {"favorite_genres": "private"}},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["field_visibility"]["favorite_genres"], "private")

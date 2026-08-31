@@ -4,42 +4,26 @@ add miniplay like in the playlist
 
 
 [] avatar logic
-[] geo localisation
+[✓] geo localisation
 
 
 
 
 
 
-[] search by artist name
-[] popular music in playlist
+[✓] search by artist name
+[✓] popular music in playlist
 [] remove the miniplayer when entring the music page
-[] change the ui of the event page
+[✓] change the ui of the event page
 
 
+[] the owner of the event must be able to delete the event, and when deleting the event all the participants and members must be notified that the event has been deleted, and also show a message in the event page that the event has been deleted.
+[] add limit on how many participants and members can join the event, and show the number of participants and members joined in the event page, and also show the limit of participants and members that can join the event.
+[] when creating the event the host must be able to set the limit of participants and members that can join the event, and also show the limit of participants and members that can join the event in the event page. but he can't exceed 100 participants/members and can't set the limit less than 2 participants/members.
+[] people can like the event and the number of likes must be shown in the event page, and also show the number of likes in the event page.
 
-[] in events the owner can add collaborators to the event
-[] anyone can see the invited collaborators of the event
-[] separate time restriction with the geolocalisation restriction for events the user can choose to have both or only one of them
-[] add in the event page the ability to see the list of attendees
-[] add in the event page the ability to see the list of invited users
-[] add in the event page the ability to see the list of users who have accepted the invitation
-[] add in the event page the ability to see the list of users who have declined the invitation
-[] add in the event page the ability to see the list of users who have not responded to the invitation
+[] in the profile page, instead of number of vote, there should be number of the addition of likes he has received in all of his events.
 
-[] the owner of the event can remove collaborators from the event
-[] the owner of the event can remove attendees from the event
-[] the owner of the event can remove invited users from the event
-[] the owner of the event can remove users who have accepted the invitation from the event
-[] the owner of the event can remove users who have declined the invitation from the event
-[] the owner of the event can remove users who have not responded to the invitation from the event
+[] avatars/profile pictures of the participants and members must be clickable and when clicking on them a pop up must appear showing the profile picture, the name, the username, and the bio of the user and request frindship if not already friends, and go to the profile page.
 
-
-[] the owner of the event can change the time restriction of the event any time
-[] the owner of the event can change the geolocalisation restriction of the event any time
-[] the owner of the event can change both the time and geolocalisation restriction of the event any time
-
-the event detail is going to be a scrollable screen , because when entering an event the user must see first the cover of the event , its name, the tags, and the participants and the members (envited people that can vote) when clicking on the participents a pop up must appear that shows also the names not just the profile picture, then the user scroll down to the rest of screen
-
-
-if someone wants to vote but not invited to the event, he can click on the "request to vote" button and a pop up will appear that will ask him to write a message to the owner of the event, then the owner will receive a notification and he can accept or decline the request, if he accepts the user will be added to the list of invited users and he will be able to vote, if he declines the user will receive a notification that his request was declined.
+[] fix the bug of the event page, the participants and members are not showing up when entering the event page, the user must be able to see the participants and members of the event when entering the event page, and also when clicking on the participants and members a pop up must appear showing the profile picture, the name, the username, and the bio of the user and request frindship if not already friends, and go to the profile page.

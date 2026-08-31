@@ -146,14 +146,7 @@ class SettingsScreen extends StatelessWidget {
                           color: _SettingsColors.body,
                         ),
                       ),
-                      Text(
-                        'ID: USER_${authUser.id}',
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 12,
-                          color: _SettingsColors.muted,
-                        ),
-                      ),
+                      
                     ],
                   ),
                 ),

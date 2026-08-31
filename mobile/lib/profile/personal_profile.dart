@@ -218,6 +218,9 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                         const SizedBox(height: 16),
                         _VibeSignatureCard(
                           genres: data.profile.favoriteGenres,
+                          privacy: _privacyFor(
+                            data.profile.fieldVisibility['favorite_genres']!,
+                          ),
                           onEdit: () => _onMusicPreferences(data.profile),
                         ),
                         const SizedBox(height: 24),
@@ -697,6 +700,24 @@ class _DetailsCard extends StatelessWidget {
           ),
           const _DetailDivider(),
           _DetailRow(
+            icon: Icons.star_rounded,
+            label: 'Favorite Artist',
+            value: profile.favoriteArtist.isNotEmpty
+                ? profile.favoriteArtist
+                : 'Not set',
+            privacy: _privacyFor(profile.fieldVisibility['favorite_artist']!),
+          ),
+          const _DetailDivider(),
+          _DetailRow(
+            icon: Icons.phone_iphone_rounded,
+            label: 'Phone Number',
+            value: profile.phoneNumber.isNotEmpty
+                ? profile.phoneNumber
+                : 'Not set',
+            privacy: _privacyFor(profile.fieldVisibility['phone_number']!),
+          ),
+          const _DetailDivider(),
+          _DetailRow(
             icon: Icons.mail_rounded,
             label: 'Email',
             value: email.isNotEmpty ? email : 'Not set',
@@ -823,9 +844,14 @@ class _PrivacyBadge extends StatelessWidget {
 }
 
 class _VibeSignatureCard extends StatelessWidget {
-  const _VibeSignatureCard({required this.genres, required this.onEdit});
+  const _VibeSignatureCard({
+    required this.genres,
+    required this.privacy,
+    required this.onEdit,
+  });
 
   final List<String> genres;
+  final _Privacy privacy;
   final VoidCallback onEdit;
 
   @override
@@ -861,6 +887,7 @@ class _VibeSignatureCard extends StatelessWidget {
                   ],
                 ),
               ),
+              _PrivacyBadge(privacy: privacy),
               IconButton(
                 onPressed: onEdit,
                 visualDensity: VisualDensity.compact,

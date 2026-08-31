@@ -327,6 +327,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     'favorite_artist',
     'phone_number',
     'birthday',
+    'favorite_genres',
     'activity',
   ];
 
@@ -406,7 +407,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           onChanged: onChanged,
         ),
       ),
-      _ => _ListeningActivityRow(
+      'favorite_genres' => _SimpleVisibilityRow(
+        icon: Icons.music_note_rounded,
+        label: 'Favorite Genres',
+        value: _visibility['favorite_genres']!,
+        onChanged: onChanged,
+      ),
+      _ => _SimpleVisibilityRow(
+        icon: Icons.graphic_eq_rounded,
+        label: 'Listening Activity',
         value: _visibility['activity']!,
         onChanged: onChanged,
       ),
@@ -971,9 +980,22 @@ class _VisibilityDropdown extends StatelessWidget {
 /// its visibility tier, matching the other configurable fields. Unlike a
 /// text field it has no value of its own to edit — it's just an access
 /// gate on an existing endpoint.
-class _ListeningActivityRow extends StatelessWidget {
-  const _ListeningActivityRow({required this.value, required this.onChanged});
+/// A visibility-configurable row with no field of its own to edit inline
+/// — the value lives (and is edited) elsewhere, this row only carries the
+/// label and its [_VisibilityDropdown]. Used for "Listening Activity"
+/// (derived from the user's own actions) and "Favorite Genres" (edited on
+/// the separate Music Preferences screen, reachable from the "Vibe
+/// Signature" card on the profile itself).
+class _SimpleVisibilityRow extends StatelessWidget {
+  const _SimpleVisibilityRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
 
+  final IconData icon;
+  final String label;
   final String value;
   final ValueChanged<String> onChanged;
 
@@ -981,16 +1003,12 @@ class _ListeningActivityRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(
-          Icons.graphic_eq_rounded,
-          size: 18,
-          color: _EditColors.muted,
-        ),
+        Icon(icon, size: 18, color: _EditColors.muted),
         const SizedBox(width: 12),
-        const Expanded(
+        Expanded(
           child: Text(
-            'Listening Activity',
-            style: TextStyle(
+            label,
+            style: const TextStyle(
               fontFamily: 'Sora',
               fontWeight: FontWeight.w700,
               fontSize: 14,

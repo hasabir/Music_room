@@ -25,11 +25,19 @@ class _ViewProfileColors {
 /// Votes and Playlists counts both come straight from the backend
 /// (`votes_count`/`playlists_count` on the profile response — both are
 /// always returned regardless of the visibility filtering applied to the
-/// rest of the profile, per `UserProfileView` on the backend). "Listening
-/// Now" and a "Recent Activity" feed from the original design are
-/// deliberately not shown: there's no backend concept of either, and
-/// faking them would assert real-time behavior about a specific person
-/// rather than read as generic UI chrome.
+/// rest of the profile, per `UserProfileView` on the backend). Bio and
+/// birthday render inline on [_ProfileCard]; `location`/`favorite_artist`/
+/// `phone_number` — each present only when this viewer clears the
+/// target's visibility tier for it — render as their own "DETAILS" card
+/// (see [_DetailsCard]) when at least one of them is present, and
+/// `favorite_genres` (also visibility-gated, same rules) gets its own
+/// "Vibe Signature" card (see [_VibeSignatureCard]) when non-empty — same
+/// section layout and card styling as the owner's own profile screen
+/// (`personal_profile.dart`), minus the edit affordances a viewer has no
+/// use for. "Listening Now" and a "Recent Activity" feed from the
+/// original design are deliberately not shown: there's no backend
+/// concept of either, and faking them would assert real-time behavior
+/// about a specific person rather than read as generic UI chrome.
 class ViewProfileScreen extends StatefulWidget {
   const ViewProfileScreen({
     super.key,
@@ -138,6 +146,11 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
                       ? profile.displayName
                       : widget.initialFullName;
 
+                  final hasDetails =
+                      (profile.location ?? '').isNotEmpty ||
+                      (profile.favoriteArtist ?? '').isNotEmpty ||
+                      (profile.phoneNumber ?? '').isNotEmpty;
+
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                     children: [
@@ -147,7 +160,6 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
                         avatarType: profile.avatarType,
                         bio: profile.bio,
                         birthday: profile.birthday,
-                        genres: profile.favoriteGenres,
                         relationshipStatus: _relationshipStatus,
                         isActing: _isActing,
                         onAdd: _onAdd,
@@ -158,6 +170,20 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
                       ),
                       const SizedBox(height: 16),
                       _StatsRow(votes: profile.votesCount, playlists: profile.playlistsCount),
+                      if (hasDetails) ...[
+                        const SizedBox(height: 16),
+                        const _DetailsLabel(),
+                        const SizedBox(height: 12),
+                        _DetailsCard(
+                          location: profile.location,
+                          favoriteArtist: profile.favoriteArtist,
+                          phoneNumber: profile.phoneNumber,
+                        ),
+                      ],
+                      if (profile.favoriteGenres.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        _VibeSignatureCard(genres: profile.favoriteGenres),
+                      ],
                     ],
                   );
                 },
@@ -209,7 +235,6 @@ class _ProfileCard extends StatelessWidget {
     required this.avatarType,
     required this.bio,
     required this.birthday,
-    required this.genres,
     required this.relationshipStatus,
     required this.isActing,
     required this.onAdd,
@@ -224,7 +249,6 @@ class _ProfileCard extends StatelessWidget {
   final String avatarType;
   final String bio;
   final DateTime? birthday;
-  final List<String> genres;
   final RelationshipStatus relationshipStatus;
   final bool isActing;
   final VoidCallback onAdd;
@@ -307,15 +331,6 @@ class _ProfileCard extends StatelessWidget {
                   style: const TextStyle(fontSize: 13, color: _ViewProfileColors.muted),
                 ),
               ],
-            ),
-          ],
-          if (genres.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
-              children: genres.map((code) => _Chip(label: musicGenreLabels[code] ?? code)).toList(),
             ),
           ],
         ],
@@ -520,6 +535,221 @@ class _StatTile extends StatelessWidget {
               letterSpacing: 0.8,
               color: _ViewProfileColors.muted,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailsLabel extends StatelessWidget {
+  const _DetailsLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(left: 4),
+      child: Text(
+        'DETAILS',
+        style: TextStyle(
+          fontFamily: 'Sora',
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1,
+          color: _ViewProfileColors.muted,
+        ),
+      ),
+    );
+  }
+}
+
+/// The visibility-gated fields ([OtherUserProfile.location]/
+/// [OtherUserProfile.favoriteArtist]/[OtherUserProfile.phoneNumber]) —
+/// each is `null` (or blank) unless the backend already decided this
+/// viewer is allowed to see it (public, or friends-only and actually
+/// friends — see `UserProfileView`), so this card only ever renders
+/// what's already been cleared for display, one row per non-blank field.
+/// Unlike the owner's own profile screen there's no "Not set" fallback
+/// or privacy badge here: a viewer can't tell "hidden from me" apart
+/// from "never set", and the tier itself is the owner's business, not
+/// this viewer's.
+class _DetailsCard extends StatelessWidget {
+  const _DetailsCard({
+    required this.location,
+    required this.favoriteArtist,
+    required this.phoneNumber,
+  });
+
+  final String? location;
+  final String? favoriteArtist;
+  final String? phoneNumber;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = [
+      if ((location ?? '').isNotEmpty)
+        _DetailRow(
+          icon: Icons.location_on_rounded,
+          label: 'Location',
+          value: location!,
+        ),
+      if ((favoriteArtist ?? '').isNotEmpty)
+        _DetailRow(
+          icon: Icons.star_rounded,
+          label: 'Favorite Artist',
+          value: favoriteArtist!,
+        ),
+      if ((phoneNumber ?? '').isNotEmpty)
+        _DetailRow(
+          icon: Icons.phone_iphone_rounded,
+          label: 'Phone Number',
+          value: phoneNumber!,
+        ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _ViewProfileColors.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _ViewProfileColors.border),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) const _DetailDivider(),
+            rows[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailDivider extends StatelessWidget {
+  const _DetailDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 14),
+      child: Divider(height: 1, color: _ViewProfileColors.border),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: _ViewProfileColors.muted),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontFamily: 'Sora',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                  color: _ViewProfileColors.muted,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: _ViewProfileColors.description,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A view-only counterpart to the "Vibe Signature" card on the owner's
+/// own profile screen (`personal_profile.dart`'s `_VibeSignatureCard`) —
+/// same title/subtitle/"TOP GENRES" label styling, but with no edit
+/// pencil or "+ Add" chip, since a viewer can't touch someone else's
+/// genres. Only ever built when [genres] is non-empty (see the
+/// call site) — [OtherUserProfile.favoriteGenres] is already `[]` both
+/// when the owner picked none and when this viewer isn't allowed to see
+/// them, so there's nothing meaningful to distinguish here; an empty
+/// card would just be noise.
+///
+/// "Instruments / Gear" from the owner's card isn't mirrored here: it's
+/// mock-only decoration with no backing profile field at all yet (see
+/// `profile_mock_data.dart`) — showing invented gear on a real person's
+/// profile would be actively misleading, not just incomplete.
+class _VibeSignatureCard extends StatelessWidget {
+  const _VibeSignatureCard({required this.genres});
+
+  final List<String> genres;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _ViewProfileColors.card,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _ViewProfileColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Vibe Signature',
+            style: TextStyle(
+              fontFamily: 'Sora',
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+              color: _ViewProfileColors.body,
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'Aesthetic & tonal preferences',
+            style: TextStyle(fontSize: 12, color: _ViewProfileColors.muted),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'TOP GENRES',
+            style: TextStyle(
+              fontFamily: 'Sora',
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+              color: _ViewProfileColors.muted,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: genres
+                .map((code) => _Chip(label: musicGenreLabels[code] ?? code))
+                .toList(),
           ),
         ],
       ),

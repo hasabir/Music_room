@@ -459,14 +459,16 @@ class MyProfileView(generics.RetrieveUpdateAPIView):
         "Returns another user's profile, filtered by visibility tier:\n\n"
         "- If you are viewing your own profile, all fields are returned.\n"
         "- `display_name`, `profile_image`, `avatar`, `avatar_type`, "
-        "`favorite_genres`, `votes_count`, and `playlists_count` are "
-        "always returned — avatar is public information.\n"
-        "- `bio`, `location`, `favorite_artist`, `phone_number`, and "
-        "`birthday` are each returned only if their tier in "
-        "`field_visibility` is "
+        "`votes_count`, and `playlists_count` are always returned — "
+        "avatar is public information.\n"
+        "- `bio`, `location`, `favorite_artist`, `phone_number`, "
+        "`birthday`, and `favorite_genres` are each returned only if "
+        "their tier in `field_visibility` is "
         "'public', or 'friends' and you're friends with the target user; "
-        "otherwise the key is omitted entirely. See `PATCH /profile/me/` "
-        "to change your own tiers."
+        "otherwise the key is omitted entirely (`favorite_genres` "
+        "defaults to 'public', matching its previous always-visible "
+        "behavior, for any profile that hasn't picked a tier for it). "
+        "See `PATCH /profile/me/` to change your own tiers."
     ),
     responses={200: OpenApiResponse(description="Profile data, filtered according to visibility rules above.")},
     tags=["profile"],
@@ -490,7 +492,6 @@ class UserProfileView(generics.GenericAPIView):
             "profile_image": profile.profile_image.url if profile.profile_image else None,
             "avatar": serialized["avatar"],
             "avatar_type": serialized["avatar_type"],
-            "favorite_genres": profile.favorite_genres,
             "votes_count": serialized["votes_count"],
             "playlists_count": serialized["playlists_count"],
         }
@@ -503,6 +504,7 @@ class UserProfileView(generics.GenericAPIView):
             "favorite_artist": profile.favorite_artist,
             "phone_number": profile.phone_number,
             "birthday": profile.birthday,
+            "favorite_genres": profile.favorite_genres,
         }
         for field, value in field_values.items():
             tier = visibility.get(field, defaults[field])

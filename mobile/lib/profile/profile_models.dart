@@ -61,6 +61,10 @@ const Map<String, String> defaultFieldVisibility = {
   'phone_number': 'private',
   'birthday': 'friends',
   'activity': 'public',
+  // Defaults to 'public' — preserves favorite_genres' previous
+  // unconditionally-visible behavior for any profile that hasn't
+  // explicitly picked a tier for it. See `UserProfileView` on the backend.
+  'favorite_genres': 'public',
 };
 
 /// Allowed values for `Profile.avatar_type`
@@ -343,9 +347,11 @@ class SearchUser {
 }
 
 /// Another user's profile as filtered by visibility rules, from
-/// `GET /api/v1/profile/profile/<user_id>/`. `location` and
-/// `favoriteArtist` are only present when you're friends with them —
-/// `null` otherwise (as opposed to `''`, which means "set but empty").
+/// `GET /api/v1/profile/profile/<user_id>/`. `location`, `favoriteArtist`,
+/// and `phoneNumber` are only present when their `field_visibility` tier
+/// is 'public', or 'friends' and you're friends with them — `null`
+/// otherwise (as opposed to `''`, which means "set but empty"). See
+/// `UserProfileView` on the backend.
 class OtherUserProfile {
   const OtherUserProfile({
     required this.displayName,
@@ -356,6 +362,7 @@ class OtherUserProfile {
     required this.favoriteGenres,
     required this.location,
     required this.favoriteArtist,
+    required this.phoneNumber,
     required this.birthday,
     required this.votesCount,
     required this.playlistsCount,
@@ -375,6 +382,7 @@ class OtherUserProfile {
             const [],
         location: json['location'] as String?,
         favoriteArtist: json['favorite_artist'] as String?,
+        phoneNumber: json['phone_number'] as String?,
         birthday: json['birthday'] != null
             ? DateTime.parse(json['birthday'] as String)
             : null,
@@ -396,6 +404,7 @@ class OtherUserProfile {
   final List<String> favoriteGenres;
   final String? location;
   final String? favoriteArtist;
+  final String? phoneNumber;
   final DateTime? birthday;
   final int votesCount;
 
