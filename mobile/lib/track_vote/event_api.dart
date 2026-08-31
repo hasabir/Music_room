@@ -42,16 +42,20 @@ class EventApi {
   }
 
   /// Creates a new event. The signed-in user automatically becomes the
-  /// host. [venueCenterLatitude]/[venueCenterLongitude]/
-  /// [allowedDistanceMeters]/[votingOpensAt]/[votingClosesAt] are required
-  /// by the backend only when [votePermission] is
-  /// [eventVotePermissionLocationTimeRestricted].
+  /// host. [votePermission] (who's allowed to vote at all) and the two
+  /// restriction toggles are independent — any combination is valid.
+  /// [votingOpensAt]/[votingClosesAt] are required by the backend when
+  /// [timeRestrictionEnabled] is `true`; [venueCenterLatitude]/
+  /// [venueCenterLongitude]/[allowedDistanceMeters] are required when
+  /// [locationRestrictionEnabled] is `true`.
   Future<Event> createEvent({
     required String title,
     String? description,
     String? coverPreset,
     String? visibility,
     String? votePermission,
+    bool? timeRestrictionEnabled,
+    bool? locationRestrictionEnabled,
     double? venueCenterLatitude,
     double? venueCenterLongitude,
     int? allowedDistanceMeters,
@@ -64,6 +68,8 @@ class EventApi {
       'cover_preset': ?coverPreset,
       'visibility': ?visibility,
       'vote_permission': ?votePermission,
+      'time_restriction_enabled': ?timeRestrictionEnabled,
+      'location_restriction_enabled': ?locationRestrictionEnabled,
       'venue_center_latitude': ?venueCenterLatitude,
       'venue_center_longitude': ?venueCenterLongitude,
       'allowed_distance_meters': ?allowedDistanceMeters,
@@ -84,14 +90,17 @@ class EventApi {
 
   /// Partially updates an event. Only the host may do this. Only
   /// non-null parameters are sent, so callers can update a subset of
-  /// fields.
+  /// fields — e.g. [EventSettingsScreen] only ever sends [status].
   Future<Event> updateEvent(
     int eventId, {
     String? title,
     String? description,
     String? coverPreset,
     String? visibility,
+    String? status,
     String? votePermission,
+    bool? timeRestrictionEnabled,
+    bool? locationRestrictionEnabled,
     double? venueCenterLatitude,
     double? venueCenterLongitude,
     int? allowedDistanceMeters,
@@ -103,7 +112,10 @@ class EventApi {
       'description': ?description,
       'cover_preset': ?coverPreset,
       'visibility': ?visibility,
+      'status': ?status,
       'vote_permission': ?votePermission,
+      'time_restriction_enabled': ?timeRestrictionEnabled,
+      'location_restriction_enabled': ?locationRestrictionEnabled,
       'venue_center_latitude': ?venueCenterLatitude,
       'venue_center_longitude': ?venueCenterLongitude,
       'allowed_distance_meters': ?allowedDistanceMeters,
@@ -168,8 +180,8 @@ class EventApi {
   }
 
   /// Casts the signed-in user's vote for [eventSongId]. [latitude]/
-  /// [longitude] are only required when the event's `votePermission` is
-  /// [eventVotePermissionLocationTimeRestricted].
+  /// [longitude] are only required when the event's
+  /// `locationRestrictionEnabled` is `true`.
   ///
   /// Throws [VoteNotPermittedException] (rather than a bare
   /// [ApiException]) on a 403 — see that class for why.

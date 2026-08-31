@@ -14,6 +14,7 @@ import 'event_api.dart';
 import 'event_models.dart';
 import 'event_widgets.dart';
 import 'event_guests_screen.dart';
+import 'event_settings_screen.dart';
 import 'suggest_track_screen.dart';
 
 class _EventColors {
@@ -207,7 +208,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Future<Position?> _positionFor(Event event) async {
-    if (event.votePermission != eventVotePermissionLocationTimeRestricted) {
+    if (!event.locationRestrictionEnabled) {
       return null;
     }
     if (!await Geolocator.isLocationServiceEnabled()) {
@@ -335,6 +336,17 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
+  Future<void> _openEventSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => EventSettingsScreen(eventId: widget.eventId),
+      ),
+    );
+    // The status may have just changed (e.g. closed/canceled) — refresh so
+    // the badge and the "Suggest a track" gating below reflect it.
+    await _refetchState();
+  }
+
   void _showRequirements(Event event) {
     showModalBottomSheet<void>(
       context: context,
@@ -394,6 +406,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         _TopBar(
           title: event.title,
           onManageGuests: isHost ? _openGuestManagement : null,
+          onOpenSettings: isHost ? _openEventSettings : null,
         ),
         Expanded(
           child: RefreshIndicator(
@@ -437,7 +450,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       runSpacing: 8,
                       children: [
                         EventVisibilityBadge(visibility: event.visibility),
+                        EventStatusBadge(status: event.status),
                         EventLicenseBadge(votePermission: event.votePermission),
+                        if (event.timeRestrictionEnabled)
+                          const EventTimeRestrictionBadge(),
+                        if (event.locationRestrictionEnabled)
+                          const EventLocationRestrictionBadge(),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -454,11 +472,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     const SizedBox(height: 28),
                     if (isVotingRestricted) ...[
                       _VotingRestrictedCard(
-                        message:
-                            event.votePermission ==
-                                eventVotePermissionLocationTimeRestricted
-                            ? "You are currently outside the event geofence or the voting window hasn't started yet."
-                            : _voteRestrictionReason!,
+                        // The backend already returns a specific reason
+                        // for whichever check failed (2-songs minimum,
+                        // invited-only, time window, or venue distance —
+                        // see can_user_vote in events/permissions.py) —
+                        // no need for a generic fallback here now that
+                        // time/location are independent, separately
+                        // reported restrictions rather than one bundled
+                        // license value.
+                        message: _voteRestrictionReason!,
                         onCheckRequirements: () => _showRequirements(event),
                       ),
                       const SizedBox(height: 22),
@@ -479,18 +501,40 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: _openSuggestTrack,
-                      icon: const Icon(Icons.add_rounded, size: 18),
-                      label: const Text('Suggest a track'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: _EventColors.tertiary,
-                        side: const BorderSide(color: _EventColors.cardBorder),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                    // The backend only 403s POST .../queue/ for closed or
+                    // canceled — NOT for the three automatic
+                    // ghost_town/rip_attendance/party_of_nobody statuses,
+                    // which stay fully functional (suggesting a track is
+                    // exactly what un-ghosts one — see
+                    // eventStatusIsAutoInactive). Gating on "isn't live"
+                    // instead of "is actually blocked" was a bug: it
+                    // hid this button and showed a false "this event is
+                    // closed" message the moment an event went quiet.
+                    if (event.status == eventStatusClosed ||
+                        event.status == eventStatusCanceled)
+                      Text(
+                        event.status == eventStatusCanceled
+                            ? 'This event has been canceled.'
+                            : 'This event is closed — no new tracks can be suggested.',
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: _EventColors.muted,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      )
+                    else
+                      OutlinedButton.icon(
+                        onPressed: _openSuggestTrack,
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: const Text('Suggest a track'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _EventColors.tertiary,
+                          side: const BorderSide(color: _EventColors.cardBorder),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                         ),
                       ),
-                    ),
                     const SizedBox(height: 8),
                     if (upNext.isEmpty)
                       const _EmptyQueue()
@@ -518,9 +562,17 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.title, required this.onManageGuests});
+  const _TopBar({
+    required this.title,
+    required this.onManageGuests,
+    required this.onOpenSettings,
+  });
   final String title;
   final VoidCallback? onManageGuests;
+
+  /// Host-only — opens [EventSettingsScreen] to change [Event.status].
+  /// `null` for anyone but the host, same gating as [onManageGuests].
+  final VoidCallback? onOpenSettings;
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(4, 8, 16, 4),
@@ -548,6 +600,12 @@ class _TopBar extends StatelessWidget {
             onPressed: onManageGuests,
             icon: const Icon(Icons.group_rounded, color: _EventColors.tertiary),
             tooltip: 'Manage guests',
+          ),
+        if (onOpenSettings != null)
+          IconButton(
+            onPressed: onOpenSettings,
+            icon: const Icon(Icons.settings_rounded, color: _EventColors.tertiary),
+            tooltip: 'Event settings',
           ),
       ],
     ),
@@ -1087,8 +1145,11 @@ class _VotingRequirementsSheet extends StatelessWidget {
           label: 'License',
           value: _licenseText(event.votePermission),
         ),
-        if (event.votePermission ==
-            eventVotePermissionLocationTimeRestricted) ...[
+        // Time and location are independent restrictions — each shown
+        // only when its own toggle is on, not gated by the other or by
+        // `votePermission` (see Event.timeRestrictionEnabled /
+        // Event.locationRestrictionEnabled).
+        if (event.timeRestrictionEnabled) ...[
           _RequirementRow(
             label: 'voting_opens_at',
             value: _dateTime(event.votingOpensAt),
@@ -1097,6 +1158,8 @@ class _VotingRequirementsSheet extends StatelessWidget {
             label: 'voting_closes_at',
             value: _dateTime(event.votingClosesAt),
           ),
+        ],
+        if (event.locationRestrictionEnabled) ...[
           _RequirementRow(
             label: 'allowed_distance_meters',
             value: event.allowedDistanceMeters?.toString() ?? 'Not set',
@@ -1122,7 +1185,6 @@ class _VotingRequirementsSheet extends StatelessWidget {
 
   static String _licenseText(String permission) => switch (permission) {
     eventVotePermissionInvitedOnly => 'Invited guests only',
-    eventVotePermissionLocationTimeRestricted => 'Location and time restricted',
     _ => 'Everyone can vote',
   };
 

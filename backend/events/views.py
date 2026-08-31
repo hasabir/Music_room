@@ -33,9 +33,13 @@ from .broadcast import broadcast_queue_update
         summary="Create an event",
         description=(
             "Creates a new event. The logged-in user automatically "
-            "becomes the host. Set `vote_permission` to "
-            "`location_time_restricted` to require venue coordinates "
-            "and a voting time window."
+            "becomes the host. `vote_permission` (`everyone`/`invited_only`) "
+            "controls who can vote at all; `time_restriction_enabled` and "
+            "`location_restriction_enabled` are independent toggles that "
+            "layer on top of either — enable one, both, or neither. "
+            "Enabling `time_restriction_enabled` requires `voting_opens_at`/"
+            "`voting_closes_at`; enabling `location_restriction_enabled` "
+            "requires venue coordinates and `allowed_distance_meters`."
         ),
         request=EventSerializer,
         responses={201: EventSerializer},
@@ -109,6 +113,7 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
         # it's serialized — this is what a new joiner or a rejoining user
         # syncs to (see `Event.sync_current_song`).
         event.sync_current_song()
+        event.sync_activity_status()
         return event
 
     def perform_update(self, serializer):
@@ -171,9 +176,12 @@ class EventQueueView(APIView):
                              status=status.HTTP_403_FORBIDDEN)
 
         event.sync_current_song()
+        event.sync_activity_status()
+        # Most-voted first; a tie goes to whichever song reached that
+        # vote count first — see EventSong.rank_sort_key.
         queue = sorted(
             event.queue.exclude(status="played"),
-            key=lambda es: es.vote_count, reverse=True
+            key=lambda es: es.rank_sort_key()
         )
         serializer = EventSongSerializer(queue, many=True, context={"request": request})
         return Response(serializer.data)
@@ -182,6 +190,18 @@ class EventQueueView(APIView):
         event = get_object_or_404(Event, id=event_id)
         if not can_user_see_event(request.user, event):
             return Response({"detail": "You do not have access to this event."},
+                             status=status.HTTP_403_FORBIDDEN)
+
+        # Closed: viewing/voting stays open, but the queue is frozen — no
+        # new track suggestions from anyone, host included. Canceled is a
+        # stricter superset of that (and already blocks everyone but the
+        # host from reaching this point at all, via can_user_see_event
+        # above) — the host still can't add to a canceled event's queue.
+        if event.status == Event.STATUS_CLOSED:
+            return Response({"detail": "This event is closed — new tracks can no longer be suggested."},
+                             status=status.HTTP_403_FORBIDDEN)
+        if event.status == Event.STATUS_CANCELED:
+            return Response({"detail": "This event has been canceled."},
                              status=status.HTTP_403_FORBIDDEN)
 
         serializer = AddSongToQueueSerializer(data=request.data)
@@ -251,6 +271,11 @@ class EventQueueView(APIView):
             "revived": revived,
         })
         event.sync_current_song()
+        # A fresh suggestion is exactly what resets the inactivity ladder
+        # — this naturally drops the event straight back to STATUS_LIVE
+        # if it had drifted into ghost_town/rip_attendance/party_of_nobody
+        # (see Event.sync_activity_status / Event._last_track_suggested_at).
+        event.sync_activity_status()
         # `sync_current_song` may have mutated this exact row's `status`
         # through a separately-fetched instance (e.g. it's the only song,
         # so it just became current) — reload so the response reflects it.
@@ -268,12 +293,19 @@ class EventQueueView(APIView):
         description=(
             "Casts a vote for a song in this event's queue. Requires "
             "at least 2 songs in the queue. Access depends on the "
-            "event's `vote_permission` setting:\n\n"
-            "- `everyone`: any user who can see the event can vote.\n"
-            "- `invited_only`: only the host and invited guests can vote.\n"
-            "- `location_time_restricted`: requires `latitude`/`longitude` "
-            "in the request body, and the current time must be within "
-            "the event's voting window."
+            "event's `vote_permission` setting plus its two independent "
+            "restriction toggles:\n\n"
+            "- `vote_permission=everyone`: any user who can see the event "
+            "can vote (subject to the restrictions below).\n"
+            "- `vote_permission=invited_only`: only the host and invited "
+            "guests can vote (subject to the restrictions below).\n"
+            "- `time_restriction_enabled`: the current time must be within "
+            "the event's `voting_opens_at`/`voting_closes_at` window.\n"
+            "- `location_restriction_enabled`: requires `latitude`/"
+            "`longitude` in the request body, within `allowed_distance_meters` "
+            "of the venue.\n\n"
+            "Both restrictions can be enabled together, independent of "
+            "which `vote_permission` is set."
         ),
         request={
             "application/json": {
@@ -281,11 +313,11 @@ class EventQueueView(APIView):
                 "properties": {
                     "latitude": {
                         "type": "number",
-                        "description": "Required only for location_time_restricted events"
+                        "description": "Required only when location_restriction_enabled is true"
                     },
                     "longitude": {
                         "type": "number",
-                        "description": "Required only for location_time_restricted events"
+                        "description": "Required only when location_restriction_enabled is true"
                     },
                 },
             }

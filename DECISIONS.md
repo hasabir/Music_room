@@ -214,3 +214,167 @@ on the request row rather than as a separate response object.
 and the invitee can set it. No list-filtering-by-status endpoints (invited/accepted/declined/
 pending/attendees) and no changes to guest-removal logic were built here — later work builds on
 top of this field for that. See `docs/EVENTS_PLAYLISTS_API_DOCS.md` for the endpoint reference.
+
+## Event voting restrictions: split `location_time_restricted` into two composable booleans
+
+**Decision:** `Event.vote_permission` used to have three mutually-exclusive values —
+`everyone`, `invited_only`, and `location_time_restricted` — where the third bundled a time
+window check *and* a geolocation check together as one inseparable option. That's replaced
+with: `vote_permission` narrowed to just `everyone`/`invited_only` (who's allowed to vote at
+all), plus two independent boolean toggles that layer on top of *either* permission level —
+`time_restriction_enabled` (requires `voting_opens_at`/`voting_closes_at` when on) and
+`location_restriction_enabled` (requires `venue_center_latitude`/`venue_center_longitude`/
+`allowed_distance_meters` when on). A host can now express "everyone can vote, but only
+4-6pm" or "invited only, must be at the venue" — combinations the old single enum value could
+never distinguish.
+
+**Why composable booleans over a combined enum, or a nested sub-object:** the old enum forced
+an all-or-nothing choice between "no restriction" and "both restrictions simultaneously" —
+there was no way to want just one. A flat pair of booleans on `Event` (rather than, say, a
+separate `EventVoteRestriction` model, or nested `time_restriction`/`location_restriction`
+JSON sub-objects) keeps the shape consistent with how this exact kind of thing is already done
+elsewhere in this codebase: `PlaylistCollaborator.can_add_songs`/`can_reorder_songs`/
+`can_manage_collaborators` are flat independent booleans on a directly-related row, not a
+sub-object, and the venue/time fields were already flat fields directly on `Event` rather than
+a separate model (see the original "location+time-boxed license" note in the API reference
+doc) — there was never a lifecycle reason for these fields to be anything other than columns
+on the event itself. Two booleans is the smallest change that makes the two restrictions
+genuinely independent without introducing a new table for something that's always 1:1 with the
+event.
+
+**Permission-check ordering, made explicit:** `can_user_vote` (`events/permissions.py`) now
+checks, in order: visibility → 2-songs-minimum → `invited_only` guest gate (only if
+`vote_permission == invited_only`) → time window (only if `time_restriction_enabled`) →
+location/distance (only if `location_restriction_enabled`). Both restriction checks apply
+regardless of which `vote_permission` is set — they're genuinely orthogonal to "who's allowed
+at all," not scoped to `invited_only` the way the old combined value implicitly was. When both
+are enabled and both would fail, time is checked first, so its message is what surfaces —
+this is a real, testable, and intentionally simple tie-break (`VoteRestrictionCombinationTests`
+locks it in), not an arbitrary implementation accident.
+
+**Validation, split the same way:** `EventSerializer.validate()` no longer has one combined
+"all 5 fields required" block — it has two independent blocks, each checked (and reported)
+against only its own toggle and its own field group, so enabling just one restriction never
+mentions the other's fields in a 400 response. Each still validates against the incoming PATCH
+attrs merged with the existing instance's current values (same pattern as before), so a
+partial `PATCH {"title": "..."}` on an already-restricted event doesn't spuriously fail.
+
+**Migration (`0011`-`0013`):** split into three migrations specifically so the data migration
+runs while `location_time_restricted` is still a legal value in the model's Python `choices`
+(schema/AddField in `0011`, data conversion in `0012`, then the choices removal in `0013`) —
+though this ordering is really just for clarity, since Django `choices` on a `CharField` is
+form/serializer-level validation only, with no backing database `CHECK` constraint, so the
+raw `UPDATE` in the data migration would have worked in any order. Every existing
+`location_time_restricted` event is converted to `vote_permission=invited_only` (not
+`everyone` — chosen deliberately to preserve the "restricted" spirit of the original setting
+rather than silently opening these events up to anyone) with both new toggles set `True`,
+carrying over its existing venue/time field values unchanged. Verified directly against the
+one real `location_time_restricted` row that existed in the dev database at the time this
+migration was written, in addition to the automated test coverage.
+
+**Mobile follow-up — done in a later pass:** the mobile app (`mobile/lib/track_vote/`) has
+since been updated to match — `eventVotePermissionLocationTimeRestricted` is gone from all
+five files it touched (`event_models.dart`, `event_api.dart`, `event_widgets.dart`,
+`create_event_screen.dart`, `event_detail_screen.dart`). `Event` now carries
+`timeRestrictionEnabled`/`locationRestrictionEnabled` alongside `votePermission`;
+`CreateEventScreen` has a 2-option "WHO CAN VOTE" segmented choice plus two independent
+`_RestrictionToggle` switches (time window, venue location), each revealing only its own
+fields, validated independently client-side the same way the backend validates them
+server-side; `EventDetailScreen._positionFor` now fetches GPS only when
+`locationRestrictionEnabled` (not tied to `votePermission` at all anymore); and the event
+card / detail-screen badge rows gained `EventTimeRestrictionBadge`/
+`EventLocationRestrictionBadge` alongside the existing `EventLicenseBadge`, each shown
+independently. The `_VotingRestrictedCard` on a failed vote also stopped overriding the
+backend's specific error message with a generic combined one — now that the two restrictions
+are independently reported by `can_user_vote`, the backend's own message is always the
+precise one to show.
+
+## Event lifecycle: `status` (live/closed/canceled), host-only
+
+**Decision:** added `Event.status` — `live` (default), `closed`, `canceled` — a single
+mutually-exclusive field, unlike `vote_permission` + the two restriction toggles above (those
+are genuinely independent axes; live/closed/canceled are phases of the same event, not
+composable with each other). No new endpoint: `status` is just another writable field on
+`EventSerializer`, so it's already host-only for free via `EventDetailView.perform_update`'s
+existing "only the host can edit this event" gate — the same mechanism that already guards
+every other event field.
+
+**Semantics, as specified:**
+- `canceled` — nobody but the host can access the event anymore, **even someone who'd already
+  joined or been invited before the cancellation**. Implemented at the single choke-point most
+  of the app's "can this user get at this event at all" checks already funnel through —
+  `can_user_see_event` (`events/permissions.py`) — so it's inherited for free by
+  `EventDetailView`, `EventQueueView` (get and post), `can_user_vote` (via its own
+  `can_user_see_event` call), `EventAttendeeListView`, and the WebSocket consumer's
+  `_can_user_see_event` wrapper. It deliberately overrides prior `EventGuest`/
+  `EventMembership` status, not just base `visibility` — that's the "even if they already
+  joined" part; only the host is exempt.
+- `closed` — visibility/joining/voting are **unaffected** (closed events stay exactly as
+  enterable as live ones); the only thing it blocks is suggesting new tracks
+  (`EventQueueView.post`), checked right after the existing `can_user_see_event` gate. A
+  canceled event also can't have tracks suggested to it — trivially true for everyone but the
+  host (who's already locked out earlier by the check above), but the host themselves is also
+  explicitly blocked from adding to their own canceled event's queue, for the same "frozen
+  queue" reasoning as closed.
+
+**One fix made along the way, not a new behavior:** `EventGuestListView.get` had its own
+inline copy of the host/guest/public visibility check instead of calling the shared
+`can_user_see_event` — the only "entering" endpoint that did this. Switched it to call the
+shared function so a canceled event's guest list is locked out too, consistent with
+everywhere else; this also collapses a small duplicate-logic drift risk that existed before
+`status` was ever added.
+
+**Deliberately not touched, to keep this change to what was actually asked:** the mobile app
+has no UI yet for the host to actually set `status`, nor any client-side handling of a
+canceled/closed event's screens (this mirrors the backend-first/mobile-follow-up split from
+the restriction-toggle work above). Also left alone: `POST /access-requests/` and
+`POST /guests/respond/` don't check `status` at all, so a pending access request or an RSVP
+response can still be created/changed against a canceled event — neither of those grants
+actual entry on their own (an access request needs a separate host approval; an RSVP is just a
+yes/no on file), so leaving them alone doesn't let anyone actually get in. `voting_is_open`
+and `sync_current_song`/playback are also untouched — the spec never mentioned playback
+behavior for a closed or canceled event, so nothing was assumed there. The events list
+queryset (`EventListCreateView.get_queryset`) still includes canceled events for anyone who
+could already see them pre-cancellation — a canceled event doesn't vanish from "my events"/
+discover, it just 403s if opened; this seemed like the more literal reading of "no one can
+*enter*" (about access, not listing) and arguably better UX (a visible "canceled" badge beats
+an event silently disappearing), but it's a judgment call worth revisiting if the intent was
+broader.
+
+## Event activity ladder: live -> ghost_town -> rip_attendance -> party_of_nobody
+
+**Decision:** three more automatic `Event.status` values, on top of the host-controlled
+live/closed/canceled — `ghost_town` 👻, `rip_attendance`, `party_of_nobody` — that escalate
+purely based on how long the event has gone without a *new track suggestion*, and drop
+straight back to `live` the instant one is added. Unlike closed/canceled, nothing about this
+ladder restricts behavior — voting, joining, and suggesting tracks all keep working exactly as
+on a `live` event at every rung; it's a cosmetic/informational label only.
+
+**Same lazy pattern as `sync_current_song`, deliberately:** no background worker (this project
+doesn't have one) ticks the ladder forward on a timer. `Event.sync_activity_status()` just
+recomputes "how long since the last track suggestion" fresh every time it's called — from
+`EventDetailView.get_object`, `EventQueueView.get`, and after a successful add in
+`EventQueueView.post` — and writes a new `status` only if the computed rung actually differs
+from what's stored. This is the same "catch up on read, not on a clock" shape already
+established for playback, applied to a second, independent piece of state.
+
+**Where the thresholds live (for testing — change these, nothing else):**
+`backend/events/models.py`, class-level constants on `Event`:
+```python
+GHOST_TOWN_AFTER = timedelta(days=1)
+RIP_ATTENDANCE_AFTER = timedelta(days=2)
+PARTY_OF_NOBODY_AFTER = timedelta(days=3)
+```
+Swap any of these for e.g. `timedelta(minutes=1)` to test without waiting real days — nothing
+else needs to change; `sync_activity_status` and its `_ACTIVITY_LADDER` ordering read only
+these three values.
+
+**"Last track suggestion", precisely:** the most recent `EventSong.added_at` across the whole
+queue (`Event._last_track_suggested_at`) — including songs that have since been played, not
+just what's still queued, since a played song still *was* suggested at some point. Falls back
+to `Event.created_at` when nothing has ever been added. Re-adding a played song (revival)
+bumps `added_at` to now, so that counts as fresh activity too, same as any other add.
+
+**Never touches a host-controlled event:** `sync_activity_status` is a no-op unless
+`status in Event.AUTO_STATUSES` (live + the three ghost-town rungs) — a `closed` or `canceled`
+event is the host's explicit call and this automatic ladder never overrides or fights with it.

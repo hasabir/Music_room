@@ -16,7 +16,56 @@ class Event(models.Model):
     VOTE_PERMISSION_CHOICES = [
         ("everyone", "Everyone can vote"),
         ("invited_only", "Only invited guests can vote"),
-        ("location_time_restricted", "Only people at the venue, during the time window, can vote"),
+    ]
+    # The event's own lifecycle state — distinct from vote_permission
+    # (who can vote) and the restriction toggles (when/where).
+    #
+    # STATUS_LIVE/CLOSED/CANCELED are host-only to change, via the
+    # existing PATCH/PUT host-only gate on EventDetailView.perform_update
+    # — no dedicated endpoint needed.
+    #
+    # The other three are the opposite: fully automatic, never set by a
+    # host or any endpoint directly. They're a lazily-recomputed "how
+    # dead is this room" ladder — see `sync_activity_status` — that
+    # escalates the longer the event goes without a new track suggestion,
+    # and drops straight back to STATUS_LIVE the moment one is added.
+    # They behave exactly like STATUS_LIVE everywhere else (voting,
+    # joining, suggesting tracks are all still fully allowed) — this is a
+    # cosmetic/informational label only, never a restriction. Only
+    # STATUS_CLOSED/STATUS_CANCELED are the host taking manual control;
+    # `sync_activity_status` never touches an event in either of those.
+    STATUS_LIVE = "live"
+    STATUS_CLOSED = "closed"
+    STATUS_CANCELED = "canceled"
+    STATUS_GHOST_TOWN = "ghost_town"
+    STATUS_RIP_ATTENDANCE = "rip_attendance"
+    STATUS_PARTY_OF_NOBODY = "party_of_nobody"
+    STATUS_CHOICES = [
+        (STATUS_LIVE, "Live — open as normal"),
+        (STATUS_CLOSED, "Closed — still viewable/votable, but no new track suggestions"),
+        (STATUS_CANCELED, "Canceled — inaccessible to everyone but the host, even previous guests/members"),
+        (STATUS_GHOST_TOWN, "Ghost Town 👻 — no new track suggested in a while"),
+        (STATUS_RIP_ATTENDANCE, "RIP Attendance — no new track suggested in even longer"),
+        (STATUS_PARTY_OF_NOBODY, "Party of Nobody — no new track suggested in a long while"),
+    ]
+    # Statuses sync_activity_status is allowed to move an event into/out
+    # of on its own — i.e. everything except the host-controlled ones.
+    AUTO_STATUSES = {STATUS_LIVE, STATUS_GHOST_TOWN, STATUS_RIP_ATTENDANCE, STATUS_PARTY_OF_NOBODY}
+
+    # ---- THE testing knobs: how long without a new track suggestion
+    # before the status escalates one rung. Change these (e.g. to
+    # timedelta(minutes=1)) to test this without waiting real days —
+    # nothing else needs editing, sync_activity_status reads only these. ----
+    GHOST_TOWN_AFTER = timedelta(minutes=1)
+    RIP_ATTENDANCE_AFTER = timedelta(minutes=2)
+    PARTY_OF_NOBODY_AFTER = timedelta(minutes=3)
+    # Longest inactivity threshold first, so the loop in
+    # sync_activity_status picks the correct (highest-matching) rung in
+    # a single pass.
+    _ACTIVITY_LADDER = [
+        (PARTY_OF_NOBODY_AFTER, STATUS_PARTY_OF_NOBODY),
+        (RIP_ATTENDANCE_AFTER, STATUS_RIP_ATTENDANCE),
+        (GHOST_TOWN_AFTER, STATUS_GHOST_TOWN),
     ]
     COVER_PRESET_CHOICES = [
         ("party", "Party"),
@@ -40,9 +89,22 @@ class Event(models.Model):
     cover_preset = models.CharField(max_length=20, choices=COVER_PRESET_CHOICES, default="party")
 
     visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default="public")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_LIVE)
+    # Who is allowed to vote at all. Independent of the two restriction
+    # toggles below — e.g. `everyone` + time_restriction_enabled is valid
+    # ("everyone can vote, but only 4-6pm"), same as `invited_only` alone
+    # or combined with either/both restrictions.
     vote_permission = models.CharField(max_length=30, choices=VOTE_PERMISSION_CHOICES, default="everyone")
 
-    # Only filled in when vote_permission == "location_time_restricted"
+    # Two independent, composable restrictions layered on top of
+    # vote_permission — replaces the old single `location_time_restricted`
+    # enum value, which could never express "time only" or "location only".
+    # Each toggle gates its own field group; the fields themselves are
+    # unchanged from before (still nullable — only required together when
+    # their toggle is on, enforced in EventSerializer.validate()).
+    time_restriction_enabled = models.BooleanField(default=False)
+    location_restriction_enabled = models.BooleanField(default=False)
+
     venue_center_latitude = models.FloatField(null=True, blank=True)
     venue_center_longitude = models.FloatField(null=True, blank=True)
     allowed_distance_meters = models.PositiveIntegerField(null=True, blank=True)
@@ -92,12 +154,15 @@ class Event(models.Model):
         return self.song_count >= 2
 
     def _highest_voted_unplayed(self):
-        """The best not-yet-played candidate to be current, ties broken by
-        queue order (i.e. whichever was added first)."""
+        """The best not-yet-played candidate to be current. Ties (same
+        vote_count) are broken by whichever song reached that vote count
+        first — see EventSong.vote_count_reached_at — not simply
+        whichever was added to the queue first (that's only ever the
+        fallback, for a tie at zero votes)."""
         unplayed = list(self.queue.exclude(status="played"))
         if not unplayed:
             return None
-        return sorted(unplayed, key=lambda es: es.vote_count, reverse=True)[0]
+        return sorted(unplayed, key=lambda es: es.rank_sort_key())[0]
 
     def sync_current_song(self):
         """
@@ -163,6 +228,62 @@ class Event(models.Model):
         if changed:
             self.save(update_fields=["current_song", "current_song_started_at"])
         return self.current_song
+
+    def _last_track_suggested_at(self):
+        """
+        The moment to measure inactivity from, for sync_activity_status:
+        the most recently *added* song's `added_at` — regardless of
+        whether it's since been played, still queued, or currently
+        playing, since the thing being measured is "when was a track
+        last suggested", not "what's still in the queue". Re-adding a
+        played song (revival — see EventQueueView.post) resets its
+        `added_at` to now, so that counts as fresh activity too, exactly
+        as it should.
+
+        If nothing has ever been added, the event's own `created_at` is
+        the baseline — a freshly created, empty event starts its
+        inactivity clock immediately, it isn't exempt just because the
+        queue happens to be empty.
+        """
+        latest = self.queue.order_by("-added_at").first()
+        return latest.added_at if latest else self.created_at
+
+    def sync_activity_status(self):
+        """
+        Lazily escalates `status` through the inactivity ladder —
+        live -> ghost_town -> rip_attendance -> party_of_nobody — the
+        longer this event goes without a new track suggestion, and drops
+        straight back to live the instant one is added. There's no
+        explicit "reset" step: the clock is simply "time since the most
+        recently added song" (see _last_track_suggested_at), so a fresh
+        add always reads as zero elapsed time and the ladder naturally
+        re-evaluates to STATUS_LIVE.
+
+        Same lazy, backend-authoritative, catch-up-on-read design as
+        sync_current_song — nothing ticks this on a timer (this project
+        has no background worker); it's recomputed fresh every time this
+        is called (event detail GET, queue GET, after adding a song), so
+        it's always correct regardless of how long nobody had the event
+        open.
+
+        Never touches an event that's STATUS_CLOSED or STATUS_CANCELED —
+        those are the host's explicit, manual call, and this automatic
+        ladder must never override or fight with that.
+        """
+        if self.status not in self.AUTO_STATUSES:
+            return
+
+        elapsed = timezone.now() - self._last_track_suggested_at()
+
+        new_status = self.STATUS_LIVE
+        for threshold, status_value in self._ACTIVITY_LADDER:
+            if elapsed >= threshold:
+                new_status = status_value
+                break
+
+        if new_status != self.status:
+            self.status = new_status
+            self.save(update_fields=["status"])
 
 
 class EventGuest(models.Model):
@@ -336,6 +457,44 @@ class EventSong(models.Model):
     @property
     def vote_count(self):
         return self.votes.count()
+
+    @property
+    def vote_count_reached_at(self):
+        """
+        When this song most recently arrived at its current vote_count —
+        the tie-break signal used to rank two songs sitting at the same
+        vote_count (see Event._highest_voted_unplayed and the queue
+        sort in views.py/broadcast.py): whichever song reached that
+        shared count earlier stays ranked above the one that just
+        reached it.
+
+        A vote retraction deletes its Vote row outright (there's no
+        retraction history), so "reached N votes" can only be measured
+        from votes that still exist right now. `Vote.Meta.ordering =
+        ["-created_at"]`, so `.first()` is the most recently cast
+        still-standing vote, with no extra query beyond it — that
+        vote's timestamp is exactly the moment the count last became
+        what it currently is, since nothing has changed it since. If a
+        vote is later retracted and a different vote brings the count
+        back up to the same total, this naturally advances to that
+        later timestamp — correct, since the song most recently reached
+        this count then, not whenever it first, transiently, passed
+        through the same number before dipping.
+
+        A song with zero votes has no such moment yet, so it falls back
+        to `added_at` — the moment it entered the queue already sitting
+        at 0.
+        """
+        latest_vote = self.votes.first()
+        return latest_vote.created_at if latest_vote else self.added_at
+
+    def rank_sort_key(self):
+        """Sort key for 'most-voted first, ties broken by whichever
+        reached that vote count first' — ascending order (no `reverse=`
+        needed): negating vote_count gives descending vote_count, while
+        vote_count_reached_at sorts ascending (earlier = ranks higher)
+        exactly as-is."""
+        return (-self.vote_count, self.vote_count_reached_at)
 
 
 class Vote(models.Model):

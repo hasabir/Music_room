@@ -63,9 +63,11 @@ class EventGuestListView(APIView):
     def get(self, request, event_id):
         event = get_object_or_404(Event, id=event_id)
 
-        is_host = event.host_id == request.user.id
-        is_guest = event.guests.filter(guest=request.user).exists()
-        if not (is_host or is_guest or event.visibility == "public"):
+        # Reuses the shared check (rather than the visibility-only logic
+        # this used to duplicate inline) so a canceled event's guest list
+        # is also locked out for everyone but the host, consistent with
+        # every other "entering" endpoint.
+        if not can_user_see_event(request.user, event):
             return Response({"detail": "You do not have access to this event."},
                              status=status.HTTP_403_FORBIDDEN)
 
@@ -236,6 +238,10 @@ class EventJoinView(APIView):
             return Response({"detail": "You are the host of this event."},
                              status=status.HTTP_400_BAD_REQUEST)
 
+        if event.status == Event.STATUS_CANCELED:
+            return Response({"detail": "This event has been canceled."},
+                             status=status.HTTP_403_FORBIDDEN)
+
         if event.visibility != "public":
             return Response({"detail": "This event is private — you must be invited by the host."},
                              status=status.HTTP_403_FORBIDDEN)
@@ -284,3 +290,44 @@ class EventAttendeeListView(APIView):
 
         attendees = event.members.select_related("member").all()
         return Response(EventMembershipSerializer(attendees, many=True).data)
+
+
+@extend_schema(
+    summary="Remove an attendee from an event",
+    description=(
+        "Removes a user's EventMembership (self-joined attendance) from "
+        "the event. Host only. Independent of that user's EventGuest row, "
+        "if they separately have one — removing an attendee does not "
+        "revoke guest/collaborator status, and vice versa; these are "
+        "separate lists with separate removal actions."
+    ),
+    responses={
+        204: OpenApiResponse(description="Attendee removed."),
+        403: OpenApiResponse(description="Only the host can remove attendees."),
+        404: OpenApiResponse(description="This user has not joined the event."),
+    },
+    tags=["events"],
+)
+class EventAttendeeRemoveView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, event_id, user_id):
+        event = get_object_or_404(Event, id=event_id)
+
+        if event.host_id != request.user.id:
+            return Response({"detail": "Only the host can remove attendees."},
+                             status=status.HTTP_403_FORBIDDEN)
+
+        deleted, _ = EventMembership.objects.filter(event=event, member_id=user_id).delete()
+        if not deleted:
+            return Response({"detail": "This user has not joined the event."},
+                             status=status.HTTP_404_NOT_FOUND)
+
+        log_action(request, "event.attendee_removed", user=request.user, metadata={
+            "event_id": event.id,
+            "title": event.title,
+            "visibility": event.visibility,
+            "removed_user_id": user_id,
+        })
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

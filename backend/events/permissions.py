@@ -6,13 +6,23 @@ from django.utils import timezone
 def can_user_see_event(user, event):
     """
     Can this user even find/view this event?
-    Public -> yes for everyone.
-    Private -> only the host or an invited guest.
+    Host -> always yes, regardless of status — the host retains full
+    access to manage/inspect an event no matter its lifecycle state.
+    Canceled -> nobody else at all, regardless of visibility or prior
+    EventGuest/EventMembership status — cancelling locks everyone else
+    out, even someone who had already joined before the cancellation.
+    Otherwise (live or closed): public -> yes for everyone; private ->
+    only an invited guest. (Closed events stay just as visible/enterable
+    as live ones — see can_user_vote and EventQueueView for the one
+    thing closed actually blocks: suggesting new tracks.)
     """
-    if event.visibility == "public":
+    if event.host_id == user.id:
         return True
 
-    if event.host_id == user.id:
+    if event.status == "canceled":
+        return False
+
+    if event.visibility == "public":
         return True
 
     return event.guests.filter(guest=user).exists()
@@ -22,6 +32,15 @@ def can_user_vote(user, event, user_latitude=None, user_longitude=None):
     """
     Can this user cast a vote on this event right now?
     Returns (allowed: bool, reason: str) so the view can return a clear error message.
+
+    vote_permission (who's allowed at all) and the two restriction toggles
+    (when/where they're allowed) are independent and composable — an
+    `everyone` event can still have a time and/or location restriction
+    layered on top, same as an `invited_only` one. Checked in order: see
+    event -> enough songs -> invited-only gate -> time restriction (if
+    enabled) -> location restriction (if enabled). Both restrictions must
+    pass if both are enabled; time is checked first, so a vote attempt
+    failing both surfaces the time message.
     """
     # Must be able to see the event at all first
     if not can_user_see_event(user, event):
@@ -31,24 +50,20 @@ def can_user_vote(user, event, user_latitude=None, user_longitude=None):
     if not event.voting_is_open:
         return False, "At least 2 songs must be in the queue before voting can start."
 
-    if event.vote_permission == "everyone":
-        return True, ""
-
     if event.vote_permission == "invited_only":
-        if event.host_id == user.id:
-            return True, ""
-        if event.guests.filter(guest=user).exists():
-            return True, ""
-        return False, "Only invited guests can vote on this event."
+        is_host = event.host_id == user.id
+        is_guest = event.guests.filter(guest=user).exists()
+        if not (is_host or is_guest):
+            return False, "Only invited guests can vote on this event."
 
-    if event.vote_permission == "location_time_restricted":
+    if event.time_restriction_enabled:
         now = timezone.now()
-
         if event.voting_opens_at and now < event.voting_opens_at:
             return False, "Voting has not opened yet for this event."
         if event.voting_closes_at and now > event.voting_closes_at:
             return False, "Voting has closed for this event."
 
+    if event.location_restriction_enabled:
         if user_latitude is None or user_longitude is None:
             return False, "Your location is required to vote on this event."
 
@@ -59,9 +74,7 @@ def can_user_vote(user, event, user_latitude=None, user_longitude=None):
         if distance > event.allowed_distance_meters:
             return False, "You must be near the event venue to vote."
 
-        return True, ""
-
-    return False, "Voting is not allowed on this event."
+    return True, ""
 
 
 def _distance_in_meters(lat1, lon1, lat2, lon2):

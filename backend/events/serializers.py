@@ -14,9 +14,10 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = [
-            "id", "host", "title", "description", "cover_preset", "visibility", "vote_permission",
+            "id", "host", "title", "description", "cover_preset", "visibility", "status", "vote_permission",
+            "time_restriction_enabled", "voting_opens_at", "voting_closes_at",
+            "location_restriction_enabled",
             "venue_center_latitude", "venue_center_longitude", "allowed_distance_meters",
-            "voting_opens_at", "voting_closes_at",
             "song_count", "voting_is_open",
             "current_song", "current_position_seconds",
             "created_at", "updated_at",
@@ -46,22 +47,36 @@ class EventSerializer(serializers.ModelSerializer):
             elapsed = min(elapsed, duration)
         return max(elapsed, 0)
 
-    def validate(self, attrs):
-        vote_permission = attrs.get("vote_permission", getattr(self.instance, "vote_permission", None))
+    def _current(self, attrs, field):
+        """Incoming value for `field` if present in this request, else the
+        existing instance's current value (or None on create) — so a
+        partial PATCH that doesn't touch a restriction's fields is
+        validated against what's already saved, not treated as missing."""
+        return attrs.get(field, getattr(self.instance, field, None))
 
-        if vote_permission == "location_time_restricted":
-            required_fields = [
-                "venue_center_latitude", "venue_center_longitude",
-                "allowed_distance_meters", "voting_opens_at", "voting_closes_at",
-            ]
-            missing = [
-                f for f in required_fields
-                if attrs.get(f, getattr(self.instance, f, None)) is None
-            ]
+    def validate(self, attrs):
+        # Two independent restrictions, each with its own required-fields
+        # group — replaces the old single `location_time_restricted`
+        # combined check. Each is validated (and reported) on its own, so
+        # enabling only one never mentions the other's fields.
+        if self._current(attrs, "time_restriction_enabled"):
+            required_fields = ["voting_opens_at", "voting_closes_at"]
+            missing = [f for f in required_fields if self._current(attrs, f) is None]
             if missing:
                 raise serializers.ValidationError({
-                    "detail": f"These fields are required when vote_permission is "
-                              f"'location_time_restricted': {', '.join(missing)}"
+                    "detail": f"These fields are required when time_restriction_enabled "
+                              f"is true: {', '.join(missing)}"
+                })
+
+        if self._current(attrs, "location_restriction_enabled"):
+            required_fields = [
+                "venue_center_latitude", "venue_center_longitude", "allowed_distance_meters",
+            ]
+            missing = [f for f in required_fields if self._current(attrs, f) is None]
+            if missing:
+                raise serializers.ValidationError({
+                    "detail": f"These fields are required when location_restriction_enabled "
+                              f"is true: {', '.join(missing)}"
                 })
 
         return attrs

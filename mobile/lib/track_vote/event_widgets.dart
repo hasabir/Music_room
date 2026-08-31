@@ -13,7 +13,14 @@ class EventBadgeColors {
   static const visibilityPrivate = Color(0xFF908FA0);
   static const licenseEveryone = Color(0xFF6C6FF0);
   static const licenseInvitedOnly = Color(0xFFE05FA8);
-  static const licenseLocationTimeRestricted = Color(0xFFFBBF24);
+  static const restrictionTime = Color(0xFFFBBF24);
+  static const restrictionLocation = Color(0xFF34D399);
+  static const statusLive = Color(0xFF34D399);
+  static const statusClosed = Color(0xFFFBBF24);
+  static const statusCanceled = Color(0xFFFFB4AB);
+  static const statusGhostTown = Color(0xFF908FA0);
+  static const statusRipAttendance = Color(0xFFA78BFA);
+  static const statusPartyOfNobody = Color(0xFF6C6FF0);
 }
 
 /// A small pill showing an event's `visibility`
@@ -34,9 +41,66 @@ class EventVisibilityBadge extends StatelessWidget {
   }
 }
 
-/// A small pill showing an event's `vote_permission` ("license"):
-/// [eventVotePermissionEveryone] / [eventVotePermissionInvitedOnly] /
-/// [eventVotePermissionLocationTimeRestricted].
+/// A small pill showing an event's `status` — always rendered, `live`
+/// included, sitting as a tag alongside the visibility/license/
+/// restriction badges. See `EventSettingsScreen` for where a host
+/// changes the two manual ones (`closed`/`canceled`); the three
+/// inactivity ones are automatic — see `eventStatusIsAutoInactive`.
+class EventStatusBadge extends StatelessWidget {
+  const EventStatusBadge({super.key, required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (status) {
+      case eventStatusLive:
+        return const _Badge(
+          label: 'Live',
+          icon: Icons.podcasts_rounded,
+          color: EventBadgeColors.statusLive,
+        );
+      case eventStatusClosed:
+        return const _Badge(
+          label: 'Closed',
+          icon: Icons.lock_clock_rounded,
+          color: EventBadgeColors.statusClosed,
+        );
+      case eventStatusCanceled:
+        return const _Badge(
+          label: 'Canceled',
+          icon: Icons.block_rounded,
+          color: EventBadgeColors.statusCanceled,
+        );
+      case eventStatusGhostTown:
+        return const _Badge(
+          label: 'Ghost Town 👻',
+          icon: Icons.nightlight_round,
+          color: EventBadgeColors.statusGhostTown,
+        );
+      case eventStatusRipAttendance:
+        return const _Badge(
+          label: 'RIP Attendance',
+          icon: Icons.sentiment_dissatisfied_rounded,
+          color: EventBadgeColors.statusRipAttendance,
+        );
+      case eventStatusPartyOfNobody:
+        return const _Badge(
+          label: 'Party of Nobody',
+          icon: Icons.hourglass_bottom_rounded,
+          color: EventBadgeColors.statusPartyOfNobody,
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+}
+
+/// A small pill showing an event's `vote_permission` ("license") — who's
+/// allowed to vote at all: [eventVotePermissionEveryone] /
+/// [eventVotePermissionInvitedOnly]. Independent of, and always shown
+/// alongside, [EventTimeRestrictionBadge]/[EventLocationRestrictionBadge]
+/// when those toggles are on — see [Event.timeRestrictionEnabled].
 class EventLicenseBadge extends StatelessWidget {
   const EventLicenseBadge({super.key, required this.votePermission});
 
@@ -51,12 +115,6 @@ class EventLicenseBadge extends StatelessWidget {
           icon: Icons.mail_rounded,
           color: EventBadgeColors.licenseInvitedOnly,
         );
-      case eventVotePermissionLocationTimeRestricted:
-        return const _Badge(
-          label: 'Time & place restricted',
-          icon: Icons.schedule_rounded,
-          color: EventBadgeColors.licenseLocationTimeRestricted,
-        );
       case eventVotePermissionEveryone:
       default:
         return const _Badge(
@@ -66,6 +124,34 @@ class EventLicenseBadge extends StatelessWidget {
         );
     }
   }
+}
+
+/// A small pill shown only when `Event.timeRestrictionEnabled` is `true`
+/// — meant to sit alongside [EventLicenseBadge] and
+/// [EventLocationRestrictionBadge] in the same `Wrap`, not replace it;
+/// the three toggles are independent (see [Event.timeRestrictionEnabled]).
+class EventTimeRestrictionBadge extends StatelessWidget {
+  const EventTimeRestrictionBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) => const _Badge(
+    label: 'Time restricted',
+    icon: Icons.schedule_rounded,
+    color: EventBadgeColors.restrictionTime,
+  );
+}
+
+/// A small pill shown only when `Event.locationRestrictionEnabled` is
+/// `true` — see [EventTimeRestrictionBadge].
+class EventLocationRestrictionBadge extends StatelessWidget {
+  const EventLocationRestrictionBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) => const _Badge(
+    label: 'Venue restricted',
+    icon: Icons.location_on_rounded,
+    color: EventBadgeColors.restrictionLocation,
+  );
 }
 
 class _Badge extends StatelessWidget {

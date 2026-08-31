@@ -83,7 +83,14 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
 
   Future<void> _refresh() async {
     final future = _load();
-    setState(() => _dataFuture = future);
+    // Deliberately a block body, not `() => _dataFuture = future` — that
+    // expression form evaluates to the assignment's value (the Future
+    // itself), and setState() throws at runtime if its callback returns
+    // one (it's checking the actual return value, not just the static
+    // `void Function()` type Dart lets this compile against).
+    setState(() {
+      _dataFuture = future;
+    });
     await future.catchError((_) => const _ListData(events: [], authUser: null));
   }
 
@@ -473,10 +480,27 @@ class _EventHeroCard extends StatelessWidget {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: [
-                      EventVisibilityBadge(visibility: event.visibility),
-                      EventLicenseBadge(votePermission: event.votePermission),
-                    ],
+                    // Closed/canceled are the host's explicit call and
+                    // actually restrict the event — once either is set,
+                    // the visibility/license/restriction tags stop being
+                    // the useful information on this card, so the status
+                    // tag replaces the whole row instead of joining it.
+                    // Live and the automatic ghost_town/rip_attendance/
+                    // party_of_nobody labels restrict nothing, so their
+                    // status tag just sits alongside the rest as usual.
+                    children:
+                        event.status == eventStatusClosed ||
+                            event.status == eventStatusCanceled
+                        ? [EventStatusBadge(status: event.status)]
+                        : [
+                            EventVisibilityBadge(visibility: event.visibility),
+                            EventStatusBadge(status: event.status),
+                            EventLicenseBadge(votePermission: event.votePermission),
+                            if (event.timeRestrictionEnabled)
+                              const EventTimeRestrictionBadge(),
+                            if (event.locationRestrictionEnabled)
+                              const EventLocationRestrictionBadge(),
+                          ],
                   ),
                   const SizedBox(height: 12),
                   Text(

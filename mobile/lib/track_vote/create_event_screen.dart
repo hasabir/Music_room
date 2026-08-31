@@ -19,11 +19,23 @@ class _CreateEventColors {
 
 /// Full-screen "Create Event" flow, reachable from the "+" on
 /// [EventsLandingScreen]. Every event is created with an explicit
-/// visibility (`eventVisibilityPublic`/`Private`) and voting license
-/// (`eventVotePermissionEveryone`/`InvitedOnly`/`LocationTimeRestricted`) —
-/// picking the location/time license reveals the extra fields the backend
-/// requires for it (`EventSerializer.validate()`): a time window plus a
-/// venue center point and radius.
+/// visibility (`eventVisibilityPublic`/`Private`). A **public** event also
+/// gets a voting license (`eventVotePermissionEveryone`/`InvitedOnly` —
+/// who's allowed to vote at all) — the "WHO CAN VOTE" section is hidden
+/// entirely for a **private** event, since only the host and invited
+/// guests can even see a private event at all (`can_user_see_event`), so
+/// "everyone can vote" and "invited only" would describe the exact same
+/// audience there; the choice only means something once strangers can
+/// reach the event in the first place. Independent of that (and shown
+/// either way): two restriction toggles layer on top — a time window
+/// and/or a venue radius. Any combination is valid — e.g. invited-only
+/// *and* time-restricted *and* location-restricted all at once — since
+/// the three are orthogonal on the backend (see DECISIONS.md, "Event
+/// voting restrictions: split location_time_restricted into two
+/// composable booleans"). Enabling a restriction reveals the extra fields
+/// the backend requires for it (`EventSerializer.validate()`): time needs
+/// a start/end window, location needs a venue center point and radius —
+/// each toggle's fields are validated independently of the other's.
 ///
 /// On success, navigates straight into the new event's detail screen
 /// (`pushReplacement`) rather than popping back to the landing list —
@@ -45,6 +57,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   var _visibility = eventVisibilityPublic;
   var _votePermission = eventVotePermissionEveryone;
   var _coverPreset = EventCoverPreset.all.first.id;
+
+  var _timeRestrictionEnabled = false;
+  var _locationRestrictionEnabled = false;
 
   DateTime? _votingOpensAt;
   DateTime? _votingClosesAt;
@@ -141,21 +156,32 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       return;
     }
 
-    int? allowedDistanceMeters;
-    if (_votePermission == eventVotePermissionLocationTimeRestricted) {
-      allowedDistanceMeters = int.tryParse(_radiusController.text.trim());
-      if (_votingOpensAt == null ||
-          _votingClosesAt == null ||
-          _venueCenterLatitude == null ||
-          _venueCenterLongitude == null ||
-          allowedDistanceMeters == null) {
+    // Time and location are independent restrictions, each validated
+    // (and reported) on its own — mirrors EventSerializer.validate() on
+    // the backend, which never mentions one toggle's fields when only
+    // the other is enabled.
+    if (_timeRestrictionEnabled) {
+      if (_votingOpensAt == null || _votingClosesAt == null) {
         setState(
-          () => _error = 'Set a start time, end time, location, and radius for a time & place restricted event.',
+          () => _error = 'Set a start and end time for the time-restricted vote.',
         );
         return;
       }
       if (!_votingClosesAt!.isAfter(_votingOpensAt!)) {
         setState(() => _error = 'The end time must be after the start time.');
+        return;
+      }
+    }
+
+    int? allowedDistanceMeters;
+    if (_locationRestrictionEnabled) {
+      allowedDistanceMeters = int.tryParse(_radiusController.text.trim());
+      if (_venueCenterLatitude == null ||
+          _venueCenterLongitude == null ||
+          allowedDistanceMeters == null) {
+        setState(
+          () => _error = 'Set a venue location and radius for the location-restricted vote.',
+        );
         return;
       }
     }
@@ -172,11 +198,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         coverPreset: _coverPreset,
         visibility: _visibility,
         votePermission: _votePermission,
-        venueCenterLatitude: _venueCenterLatitude,
-        venueCenterLongitude: _venueCenterLongitude,
+        timeRestrictionEnabled: _timeRestrictionEnabled,
+        locationRestrictionEnabled: _locationRestrictionEnabled,
+        venueCenterLatitude: _locationRestrictionEnabled ? _venueCenterLatitude : null,
+        venueCenterLongitude: _locationRestrictionEnabled ? _venueCenterLongitude : null,
         allowedDistanceMeters: allowedDistanceMeters,
-        votingOpensAt: _votingOpensAt,
-        votingClosesAt: _votingClosesAt,
+        votingOpensAt: _timeRestrictionEnabled ? _votingOpensAt : null,
+        votingClosesAt: _timeRestrictionEnabled ? _votingClosesAt : null,
       );
 
       if (!mounted) return;
@@ -193,9 +221,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isLocationTimeRestricted =
-        _votePermission == eventVotePermissionLocationTimeRestricted;
-
     return Scaffold(
       backgroundColor: _CreateEventColors.background,
       body: SafeArea(
@@ -285,25 +310,57 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       eventVisibilityPrivate: 'Private',
                     },
                     value: _visibility,
-                    onChanged: (value) => setState(() => _visibility = value),
+                    onChanged: (value) => setState(() {
+                      _visibility = value;
+                      // Once private, only the host and invited guests can
+                      // even see the event at all (can_user_see_event), so
+                      // "everyone can vote" and "invited only" describe the
+                      // exact same audience — the choice is meaningless
+                      // and the section below is hidden entirely. Reset it
+                      // back to the default so a later switch to public
+                      // doesn't surface a stale "invited only" nobody
+                      // actually chose while this was hidden.
+                      if (value == eventVisibilityPrivate) {
+                        _votePermission = eventVotePermissionEveryone;
+                      }
+                    }),
                   ),
+                  if (_visibility == eventVisibilityPublic) ...[
+                    const SizedBox(height: 24),
+                    const _FieldLabel('WHO CAN VOTE'),
+                    const SizedBox(height: 8),
+                    _SegmentedChoice(
+                      options: const {
+                        eventVotePermissionEveryone: 'Everyone can vote',
+                        eventVotePermissionInvitedOnly: 'Invited only',
+                      },
+                      value: _votePermission,
+                      onChanged: (value) =>
+                          setState(() => _votePermission = value),
+                    ),
+                  ],
                   const SizedBox(height: 24),
-                  const _FieldLabel('VOTING LICENSE'),
-                  const SizedBox(height: 8),
-                  _SegmentedChoice(
-                    options: const {
-                      eventVotePermissionEveryone: 'Everyone can vote',
-                      eventVotePermissionInvitedOnly: 'Invited only',
-                      eventVotePermissionLocationTimeRestricted:
-                          'Location & time restricted',
-                    },
-                    value: _votePermission,
-                    onChanged: (value) =>
-                        setState(() => _votePermission = value),
-                    vertical: true,
+                  const _FieldLabel('VOTING RESTRICTIONS'),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Optional, and independent of each other and of who '
+                    'can vote above — turn on either, both, or neither.',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: _CreateEventColors.muted,
+                    ),
                   ),
-                  if (isLocationTimeRestricted) ...[
-                    const SizedBox(height: 20),
+                  const SizedBox(height: 10),
+                  _RestrictionToggle(
+                    icon: Icons.schedule_rounded,
+                    title: 'Time window',
+                    subtitle: 'Only allow voting between a start and end time.',
+                    value: _timeRestrictionEnabled,
+                    onChanged: (value) =>
+                        setState(() => _timeRestrictionEnabled = value),
+                  ),
+                  if (_timeRestrictionEnabled) ...[
+                    const SizedBox(height: 16),
                     Row(
                       children: [
                         Expanded(
@@ -323,7 +380,18 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 20),
+                  ],
+                  const SizedBox(height: 16),
+                  _RestrictionToggle(
+                    icon: Icons.location_on_rounded,
+                    title: 'Venue location',
+                    subtitle: 'Only allow voting within a radius of the venue.',
+                    value: _locationRestrictionEnabled,
+                    onChanged: (value) =>
+                        setState(() => _locationRestrictionEnabled = value),
+                  ),
+                  if (_locationRestrictionEnabled) ...[
+                    const SizedBox(height: 16),
                     const _FieldLabel('ALLOWED_DISTANCE_METERS'),
                     const SizedBox(height: 8),
                     TextField(
@@ -616,6 +684,90 @@ class _DateTimeField extends StatelessWidget {
   static String _formatDateTime(DateTime value) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${value.month}/${value.day}/${value.year} ${two(value.hour)}:${two(value.minute)}';
+  }
+}
+
+/// An on/off card for one of the two independent voting restrictions
+/// (time window, venue location) — unlike [_SegmentedChoice], this isn't
+/// mutually exclusive with anything: both restrictions can be on
+/// together, or either alone, or neither, regardless of who-can-vote.
+class _RestrictionToggle extends StatelessWidget {
+  const _RestrictionToggle({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: value
+              ? _CreateEventColors.tertiary.withValues(alpha: 0.1)
+              : _CreateEventColors.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: value
+                ? _CreateEventColors.tertiary
+                : _CreateEventColors.border,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: value
+                  ? _CreateEventColors.tertiary
+                  : _CreateEventColors.muted,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontFamily: 'Sora',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: _CreateEventColors.body,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: _CreateEventColors.muted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Switch(
+              value: value,
+              onChanged: onChanged,
+              activeThumbColor: _CreateEventColors.tertiary,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

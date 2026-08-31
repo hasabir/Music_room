@@ -5,12 +5,59 @@ import 'package:flutter/material.dart';
 const String eventVisibilityPublic = 'public';
 const String eventVisibilityPrivate = 'private';
 
-/// Allowed values for `Event.vote_permission`
-/// (`backend/events/models.py`: `Event.VOTE_PERMISSION_CHOICES`).
+/// Allowed values for `Event.vote_permission` — who's allowed to vote at
+/// all (`backend/events/models.py`: `Event.VOTE_PERMISSION_CHOICES`).
+/// Independent of [Event.timeRestrictionEnabled] /
+/// [Event.locationRestrictionEnabled] below — either permission level can
+/// be combined with either restriction, both, or neither (e.g.
+/// "everyone can vote, but only 4-6pm", or "invited only, must be at the
+/// venue, 4-6pm"). There used to be a third value here,
+/// `location_time_restricted`, that bundled a time window and a location
+/// check together as one inseparable option with no `invited_only` guest
+/// gate at all — see DECISIONS.md, "Event voting restrictions: split
+/// location_time_restricted into two composable booleans".
 const String eventVotePermissionEveryone = 'everyone';
 const String eventVotePermissionInvitedOnly = 'invited_only';
-const String eventVotePermissionLocationTimeRestricted =
-    'location_time_restricted';
+
+/// Allowed values for `Event.status` — the event's own lifecycle phase,
+/// distinct from [eventVotePermissionEveryone]/[eventVotePermissionInvitedOnly]
+/// (who can vote) and the restriction toggles (when/where).
+///
+/// [eventStatusLive]/[eventStatusClosed]/[eventStatusCanceled] are
+/// host-only to change, via `PATCH /events/<id>/` — see
+/// `EventSettingsScreen`:
+/// - [eventStatusLive] (default) — open as normal.
+/// - [eventStatusClosed] — still fully viewable/joinable/votable, but
+///   [event_api.dart]'s `addToQueue` will 403: no new track suggestions.
+/// - [eventStatusCanceled] — nobody but the host can access the event at
+///   all anymore, even someone who'd already joined or been invited
+///   before the cancellation (`can_user_see_event` in
+///   `backend/events/permissions.py`).
+///
+/// The other three are the opposite: fully automatic, never sent by this
+/// client, never selectable in `EventSettingsScreen` — the backend's
+/// `Event.sync_activity_status()` sets them on its own, purely based on
+/// how long the event has gone without a new track suggestion, and drops
+/// straight back to [eventStatusLive] the instant one is added. They
+/// behave exactly like [eventStatusLive] everywhere — voting, joining,
+/// and suggesting tracks all stay fully open — this is a display-only
+/// label, never a restriction: [eventStatusGhostTown] 👻, then
+/// [eventStatusRipAttendance], then [eventStatusPartyOfNobody].
+const String eventStatusLive = 'live';
+const String eventStatusClosed = 'closed';
+const String eventStatusCanceled = 'canceled';
+const String eventStatusGhostTown = 'ghost_town';
+const String eventStatusRipAttendance = 'rip_attendance';
+const String eventStatusPartyOfNobody = 'party_of_nobody';
+
+/// True for any of the three automatic inactivity statuses above — i.e.
+/// "this event is still fully live/functional, just labeled as quiet."
+/// Never true for [eventStatusClosed]/[eventStatusCanceled], which
+/// actually do restrict something.
+bool eventStatusIsAutoInactive(String status) => switch (status) {
+  eventStatusGhostTown || eventStatusRipAttendance || eventStatusPartyOfNobody => true,
+  _ => false,
+};
 
 /// One of the built-in event cover looks, saved as `Event.cover_preset`
 /// (`backend/events/models.py`: `Event.COVER_PRESET_CHOICES`). Mirrors
@@ -128,7 +175,10 @@ class Event {
     required this.description,
     required this.coverPreset,
     required this.visibility,
+    required this.status,
     required this.votePermission,
+    required this.timeRestrictionEnabled,
+    required this.locationRestrictionEnabled,
     required this.venueCenterLatitude,
     required this.venueCenterLongitude,
     required this.allowedDistanceMeters,
@@ -149,8 +199,12 @@ class Event {
     description: json['description'] as String? ?? '',
     coverPreset: json['cover_preset'] as String? ?? 'party',
     visibility: json['visibility'] as String? ?? eventVisibilityPublic,
+    status: json['status'] as String? ?? eventStatusLive,
     votePermission:
         json['vote_permission'] as String? ?? eventVotePermissionEveryone,
+    timeRestrictionEnabled: json['time_restriction_enabled'] as bool? ?? false,
+    locationRestrictionEnabled:
+        json['location_restriction_enabled'] as bool? ?? false,
     venueCenterLatitude: (json['venue_center_latitude'] as num?)?.toDouble(),
     venueCenterLongitude: (json['venue_center_longitude'] as num?)?.toDouble(),
     allowedDistanceMeters: json['allowed_distance_meters'] as int?,
@@ -183,12 +237,30 @@ class Event {
   /// One of [eventVisibilityPublic] / [eventVisibilityPrivate].
   final String visibility;
 
+  /// One of [eventStatusLive] / [eventStatusClosed] / [eventStatusCanceled]
+  /// — the event's own lifecycle phase. Host-only to change (see
+  /// [eventStatusLive]'s doc comment for what each value means).
+  final String status;
+
   /// One of [eventVotePermissionEveryone] / [eventVotePermissionInvitedOnly]
-  /// / [eventVotePermissionLocationTimeRestricted].
+  /// — who's allowed to vote at all. Independent of the two restriction
+  /// toggles below.
   final String votePermission;
 
-  /// Only meaningful/required when [votePermission] is
-  /// [eventVotePermissionLocationTimeRestricted].
+  /// Gates [votingOpensAt]/[votingClosesAt] — when `true`, voting is only
+  /// allowed inside that window, regardless of [votePermission] or
+  /// [locationRestrictionEnabled]. Required together with both of those
+  /// fields when enabled (`EventSerializer.validate()`).
+  final bool timeRestrictionEnabled;
+
+  /// Gates [venueCenterLatitude]/[venueCenterLongitude]/
+  /// [allowedDistanceMeters] — when `true`, voting is only allowed within
+  /// range of the venue, regardless of [votePermission] or
+  /// [timeRestrictionEnabled]. Required together with all three of those
+  /// fields when enabled.
+  final bool locationRestrictionEnabled;
+
+  /// Only meaningful/required when [locationRestrictionEnabled] is `true`.
   final double? venueCenterLatitude;
   final double? venueCenterLongitude;
   final int? allowedDistanceMeters;

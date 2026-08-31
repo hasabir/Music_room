@@ -7,11 +7,12 @@
 from datetime import timedelta
 
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework.test import APITestCase
 from rest_framework import status
 
 from user.models import User
-from .models import Event, Song, EventSong, Vote, EventGuest, EventAccessRequest
+from .models import Event, Song, EventSong, Vote, EventGuest, EventAccessRequest, EventMembership
 
 
 def create_verified_user(email, password="TestPass123"):
@@ -48,12 +49,30 @@ class EventTests(APITestCase):
         self.assertEqual(response.data["song_count"], 0)
         self.assertFalse(response.data["voting_is_open"])
 
-    def test_create_location_restricted_event_requires_fields(self):
+    def test_time_restriction_enabled_without_fields_fails(self):
         self._login(self.host)
         response = self.client.post(self.events_url, {
-            "title": "Rooftop", "vote_permission": "location_time_restricted"
+            "title": "Rooftop", "time_restriction_enabled": True,
         })
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        detail = response.data["detail"][0]
+        self.assertIn("voting_opens_at", detail)
+        self.assertIn("voting_closes_at", detail)
+        # Location restriction is off — its fields must never be named here.
+        self.assertNotIn("venue_center_latitude", detail)
+
+    def test_location_restriction_enabled_without_fields_fails(self):
+        self._login(self.host)
+        response = self.client.post(self.events_url, {
+            "title": "Rooftop", "location_restriction_enabled": True,
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        detail = response.data["detail"][0]
+        self.assertIn("venue_center_latitude", detail)
+        self.assertIn("venue_center_longitude", detail)
+        self.assertIn("allowed_distance_meters", detail)
+        # Time restriction is off — its fields must never be named here.
+        self.assertNotIn("voting_opens_at", detail)
 
     def test_public_event_visible_to_stranger(self):
         self._login(self.host)
@@ -225,6 +244,51 @@ class QueueAndVotingTests(APITestCase):
         self.assertEqual(response.data[0]["vote_count"], 2)
         self.assertEqual(response.data[1]["song"]["title"], "Song A")
 
+    def test_tied_vote_count_ranks_whoever_reached_it_first(self):
+        # Song B reaches 1 vote before Song A does, even though Song A
+        # was ADDED to the queue first — the tie-break is "who reached
+        # this vote count first", not queue/add order.
+        add_a = self._add_song("Song A", "Artist A")
+        add_b = self._add_song("Song B", "Artist B")
+        add_c = self._add_song("Song C", "Artist C")  # stays at 0 votes
+
+        self.client.post(f"{self.queue_url}{add_b.data['id']}/vote/", {})
+        self.client.post(f"{self.queue_url}{add_a.data['id']}/vote/", {})
+
+        response = self.client.get(self.queue_url)
+        titles = [s["song"]["title"] for s in response.data]
+        self.assertEqual(titles, ["Song B", "Song A", "Song C"])
+        self.assertEqual(response.data[0]["vote_count"], 1)
+        self.assertEqual(response.data[1]["vote_count"], 1)
+
+    def test_retracting_and_recasting_a_vote_resets_its_tiebreak_moment(self):
+        # Song A reaches 1 vote first (leads). Its only vote is then
+        # retracted and immediately re-cast by someone else — Song A is
+        # back at 1 vote, but only just now, *after* Song B already got
+        # there. Song B must lead now: reaching a count once, dipping
+        # below it, and climbing back to the same count later is not the
+        # same as having held it continuously since the first time.
+        add_a = self._add_song("Song A", "Artist A")
+        add_b = self._add_song("Song B", "Artist B")
+        vote_url_a = f"{self.queue_url}{add_a.data['id']}/vote/"
+        vote_url_b = f"{self.queue_url}{add_b.data['id']}/vote/"
+
+        self.client.post(vote_url_a, {})  # host votes A -> A reaches 1 first
+        self._login(self.voter1)
+        self.client.post(vote_url_b, {})  # voter1 votes B -> B reaches 1 second
+
+        response = self.client.get(self.queue_url)
+        self.assertEqual(response.data[0]["song"]["title"], "Song A")
+
+        self._login(self.host)
+        self.client.delete(vote_url_a)  # A drops to 0
+        self._login(self.voter2)
+        self.client.post(vote_url_a, {})  # A climbs back to 1, later than B's 1
+
+        response = self.client.get(self.queue_url)
+        titles = [s["song"]["title"] for s in response.data]
+        self.assertEqual(titles, ["Song B", "Song A"])
+
     def test_retract_vote(self):
         self._add_song("Song A", "Artist A")
         add_resp = self._add_song("Song B", "Artist B")
@@ -381,6 +445,25 @@ class PlaybackSyncTests(APITestCase):
 
         response = self.client.get(self.event_url)
         self.assertEqual(response.data["current_song"]["song"]["title"], "Song B")
+
+    def test_current_song_tie_break_goes_to_whoever_reached_the_vote_count_first(self):
+        # Song X plays first (sole song, 0 votes) and holds the lead
+        # while it plays — voting never interrupts it, per the test
+        # above. Behind it, Song B is added before Song A (so Song B
+        # would win an add-order tie-break), but Song A reaches 1 vote
+        # before Song B does. Once Song X's time is up and a new leader
+        # has to be picked from scratch, Song A must win the tie.
+        self._add_song("Song X", "Artist X")
+        add_b = self._add_song("Song B", "Artist B")
+        add_a = self._add_song("Song A", "Artist A")
+
+        self.client.post(f"{self.queue_url}{add_a.data['id']}/vote/", {})
+        self.client.post(f"{self.queue_url}{add_b.data['id']}/vote/", {})
+
+        self._backdate_current_song(31)  # Song X's clip has now finished
+
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["current_song"]["song"]["title"], "Song A")
 
     def test_preview_type_always_caps_at_30s_even_with_a_longer_known_duration(self):
         # A Deezer `preview` clip is physically only ~30s of audio no
@@ -912,6 +995,19 @@ class EventGuestListFilterTests(APITestCase):
         response = self.client.get(self.guests_url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_host_can_remove_a_guest_regardless_of_rsvp_status(self):
+        # DELETE .../guests/<user_id>/ filters only on (event, guest) — it
+        # was never status-aware to begin with, so removal must behave
+        # identically no matter which of the three statuses the target is
+        # currently in.
+        for target in (self.pending_guest, self.accepted_guest, self.declined_guest):
+            with self.subTest(rsvp_status=target):
+                response = self.client.delete(f"{self.guests_url}{target.id}/")
+                self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+                self.assertFalse(
+                    EventGuest.objects.filter(event_id=self.event_id, guest=target).exists()
+                )
+
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class EventAttendeeListTests(APITestCase):
@@ -966,3 +1062,657 @@ class EventAttendeeListTests(APITestCase):
         self.client.force_authenticate(self.stranger)
         response = self.client.get(self.public_attendees_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class EventAttendeeRemovalTests(APITestCase):
+    """DELETE /events/<event_id>/attendees/<user_id>/ — host-only removal
+    of an EventMembership, independent of any EventGuest the same user
+    might separately hold."""
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.member = create_verified_user("member@test.com")
+        self.other_user = create_verified_user("other@test.com")
+
+        self.client.force_authenticate(self.host)
+        event_resp = self.client.post("/api/v1/events/", {"title": "Public Party", "visibility": "public"})
+        self.event_id = event_resp.data["id"]
+        self.attendees_url = f"/api/v1/events/{self.event_id}/attendees/"
+        self.guests_url = f"/api/v1/events/{self.event_id}/guests/"
+
+        self.client.force_authenticate(self.member)
+        self.client.post(f"/api/v1/events/{self.event_id}/join/", {})
+
+    def test_host_can_remove_an_attendee(self):
+        self.client.force_authenticate(self.host)
+        response = self.client.delete(f"{self.attendees_url}{self.member.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(
+            EventMembership.objects.filter(event_id=self.event_id, member=self.member).exists()
+        )
+
+    def test_non_host_cannot_remove_an_attendee(self):
+        self.client.force_authenticate(self.other_user)
+        response = self.client.delete(f"{self.attendees_url}{self.member.id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["detail"], "Only the host can remove attendees.")
+        self.assertTrue(
+            EventMembership.objects.filter(event_id=self.event_id, member=self.member).exists()
+        )
+
+    def test_removing_a_non_existent_attendee_fails(self):
+        self.client.force_authenticate(self.host)
+        response = self.client.delete(f"{self.attendees_url}{self.other_user.id}/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data["detail"], "This user has not joined the event.")
+
+    def test_removing_attendee_and_guest_for_same_user_are_independent(self):
+        # Give the same user both an EventGuest row (host-invited) and the
+        # EventMembership from setUp (self-joined) — removing one must not
+        # touch the other, since they're independent lists/records.
+        self.client.force_authenticate(self.host)
+        self.client.post(self.guests_url, {"user_id": self.member.id})
+        self.assertTrue(EventGuest.objects.filter(event_id=self.event_id, guest=self.member).exists())
+        self.assertTrue(EventMembership.objects.filter(event_id=self.event_id, member=self.member).exists())
+
+        # Remove the attendee (EventMembership) — the EventGuest row survives.
+        response = self.client.delete(f"{self.attendees_url}{self.member.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(EventMembership.objects.filter(event_id=self.event_id, member=self.member).exists())
+        self.assertTrue(EventGuest.objects.filter(event_id=self.event_id, guest=self.member).exists())
+
+        # Now remove the guest (EventGuest) too — independent action, no
+        # EventMembership left to be affected either way.
+        response = self.client.delete(f"{self.guests_url}{self.member.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(EventGuest.objects.filter(event_id=self.event_id, guest=self.member).exists())
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class EventRestrictionCreateValidationTests(APITestCase):
+    """Composable time/location restriction toggles — creation-time
+    required-fields validation, each independent of the other."""
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.client.force_authenticate(self.host)
+        self.events_url = "/api/v1/events/"
+
+    def test_neither_restriction_enabled_needs_no_extra_fields(self):
+        response = self.client.post(self.events_url, {"title": "Open Party"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(response.data["time_restriction_enabled"])
+        self.assertFalse(response.data["location_restriction_enabled"])
+
+    def test_time_only_with_all_fields_succeeds(self):
+        response = self.client.post(self.events_url, {
+            "title": "Timed Party",
+            "time_restriction_enabled": True,
+            "voting_opens_at": "2026-09-01T16:00:00Z",
+            "voting_closes_at": "2026-09-01T18:00:00Z",
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["time_restriction_enabled"])
+        self.assertFalse(response.data["location_restriction_enabled"])
+
+    def test_time_only_with_partial_fields_fails_naming_only_the_missing_one(self):
+        response = self.client.post(self.events_url, {
+            "title": "Timed Party",
+            "time_restriction_enabled": True,
+            "voting_opens_at": "2026-09-01T16:00:00Z",
+            # voting_closes_at deliberately omitted
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        detail = response.data["detail"][0]
+        self.assertIn("voting_closes_at", detail)
+        self.assertNotIn("voting_opens_at", detail)
+
+    def test_location_only_with_all_fields_succeeds(self):
+        response = self.client.post(self.events_url, {
+            "title": "Venue Party",
+            "location_restriction_enabled": True,
+            "venue_center_latitude": 33.5731,
+            "venue_center_longitude": -7.5898,
+            "allowed_distance_meters": 200,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(response.data["time_restriction_enabled"])
+        self.assertTrue(response.data["location_restriction_enabled"])
+
+    def test_location_only_with_partial_fields_fails_naming_only_missing_ones(self):
+        response = self.client.post(self.events_url, {
+            "title": "Venue Party",
+            "location_restriction_enabled": True,
+            "venue_center_latitude": 33.5731,
+            # venue_center_longitude and allowed_distance_meters omitted
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        detail = response.data["detail"][0]
+        self.assertIn("venue_center_longitude", detail)
+        self.assertIn("allowed_distance_meters", detail)
+        self.assertNotIn("voting_opens_at", detail)
+
+    def test_both_restrictions_enabled_with_all_fields_succeeds(self):
+        response = self.client.post(self.events_url, {
+            "title": "Full Party",
+            "time_restriction_enabled": True,
+            "voting_opens_at": "2026-09-01T16:00:00Z",
+            "voting_closes_at": "2026-09-01T18:00:00Z",
+            "location_restriction_enabled": True,
+            "venue_center_latitude": 33.5731,
+            "venue_center_longitude": -7.5898,
+            "allowed_distance_meters": 200,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["time_restriction_enabled"])
+        self.assertTrue(response.data["location_restriction_enabled"])
+
+    def test_both_restrictions_enabled_missing_both_fields_reports_time_first(self):
+        # Time is validated before location (see EventSerializer.validate),
+        # so with both blocks missing fields, only the time message
+        # surfaces — the request must be resubmitted to see the location
+        # one, matching can_user_vote's own time-before-location ordering.
+        response = self.client.post(self.events_url, {
+            "title": "Full Party",
+            "time_restriction_enabled": True,
+            "location_restriction_enabled": True,
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        detail = response.data["detail"][0]
+        self.assertIn("voting_opens_at", detail)
+        self.assertNotIn("venue_center_latitude", detail)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class EventRestrictionPatchTests(APITestCase):
+    """PATCH /events/<pk>/ — host can toggle restrictions on/off at any
+    time; partial patches must validate against the merged (incoming +
+    existing) state, not treat untouched fields as missing."""
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.client.force_authenticate(self.host)
+        create_resp = self.client.post("/api/v1/events/", {"title": "Party"})
+        self.event_id = create_resp.data["id"]
+        self.event_url = f"/api/v1/events/{self.event_id}/"
+
+    def test_patch_enables_time_restriction_with_fields(self):
+        response = self.client.patch(self.event_url, {
+            "time_restriction_enabled": True,
+            "voting_opens_at": "2026-09-01T16:00:00Z",
+            "voting_closes_at": "2026-09-01T18:00:00Z",
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["time_restriction_enabled"])
+
+    def test_patch_enabling_time_restriction_without_fields_fails(self):
+        response = self.client.patch(self.event_url, {"time_restriction_enabled": True})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_partial_patch_on_already_restricted_event_does_not_spuriously_fail(self):
+        self.client.patch(self.event_url, {
+            "time_restriction_enabled": True,
+            "voting_opens_at": "2026-09-01T16:00:00Z",
+            "voting_closes_at": "2026-09-01T18:00:00Z",
+        })
+        # A patch that only touches an unrelated field must validate
+        # against the event's already-saved restriction fields, not treat
+        # them as missing just because this request didn't resend them.
+        response = self.client.patch(self.event_url, {"title": "Renamed Party"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["title"], "Renamed Party")
+        self.assertTrue(response.data["time_restriction_enabled"])
+
+    def test_patch_can_disable_a_previously_enabled_restriction(self):
+        self.client.patch(self.event_url, {
+            "location_restriction_enabled": True,
+            "venue_center_latitude": 33.5731,
+            "venue_center_longitude": -7.5898,
+            "allowed_distance_meters": 200,
+        })
+        response = self.client.patch(self.event_url, {"location_restriction_enabled": False})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["location_restriction_enabled"])
+
+    def test_toggles_are_independent_of_each_other(self):
+        response = self.client.patch(self.event_url, {
+            "time_restriction_enabled": True,
+            "voting_opens_at": "2026-09-01T16:00:00Z",
+            "voting_closes_at": "2026-09-01T18:00:00Z",
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["time_restriction_enabled"])
+        self.assertFalse(response.data["location_restriction_enabled"])
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class VoteRestrictionCombinationTests(APITestCase):
+    """can_user_vote — the two restriction toggles are independent and
+    composable, layered on top of vote_permission="everyone" here so
+    those checks alone determine pass/fail."""
+
+    VENUE_LAT, VENUE_LON = 33.5731, -7.5898
+    FAR_LAT, FAR_LON = 40.7128, -74.0060  # New York — nowhere near the venue
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.voter = create_verified_user("voter@test.com")
+
+        self.client.force_authenticate(self.host)
+        event_resp = self.client.post("/api/v1/events/", {"title": "Test Party"})
+        self.event_id = event_resp.data["id"]
+        self.event_url = f"/api/v1/events/{self.event_id}/"
+        self.queue_url = f"/api/v1/events/{self.event_id}/queue/"
+
+        self.client.post(self.queue_url, {"title": "Song A", "artist": "Artist A"})
+        add_b = self.client.post(self.queue_url, {"title": "Song B", "artist": "Artist B"})
+        self.event_song_id = add_b.data["id"]
+        self.vote_url = f"{self.queue_url}{self.event_song_id}/vote/"
+
+    def _enable_time(self, opens_at, closes_at):
+        self.client.patch(self.event_url, {
+            "time_restriction_enabled": True,
+            "voting_opens_at": opens_at,
+            "voting_closes_at": closes_at,
+        })
+
+    def _enable_location(self):
+        self.client.patch(self.event_url, {
+            "location_restriction_enabled": True,
+            "venue_center_latitude": self.VENUE_LAT,
+            "venue_center_longitude": self.VENUE_LON,
+            "allowed_distance_meters": 200,
+        })
+
+    def test_time_only_blocks_outside_window_even_with_no_location_sent(self):
+        now = timezone.now()
+        self._enable_time(now - timedelta(hours=2), now - timedelta(hours=1))  # already closed
+
+        self.client.force_authenticate(self.voter)
+        response = self.client.post(self.vote_url, {})  # no lat/long — location isn't enabled
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["detail"], "Voting has closed for this event.")
+
+    def test_time_only_allows_voting_inside_window(self):
+        now = timezone.now()
+        self._enable_time(now - timedelta(hours=1), now + timedelta(hours=1))
+
+        self.client.force_authenticate(self.voter)
+        response = self.client.post(self.vote_url, {})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_location_only_blocks_when_too_far_even_with_time_disabled(self):
+        self._enable_location()
+
+        self.client.force_authenticate(self.voter)
+        response = self.client.post(self.vote_url, {
+            "latitude": self.FAR_LAT, "longitude": self.FAR_LON,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["detail"], "You must be near the event venue to vote.")
+
+    def test_location_only_requires_coordinates_when_enabled(self):
+        self._enable_location()
+
+        self.client.force_authenticate(self.voter)
+        response = self.client.post(self.vote_url, {})  # no coordinates at all
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["detail"], "Your location is required to vote on this event.")
+
+    def test_location_only_allows_voting_near_venue(self):
+        self._enable_location()
+
+        self.client.force_authenticate(self.voter)
+        response = self.client.post(self.vote_url, {
+            "latitude": self.VENUE_LAT, "longitude": self.VENUE_LON,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_both_enabled_and_both_satisfied_succeeds(self):
+        now = timezone.now()
+        self._enable_time(now - timedelta(hours=1), now + timedelta(hours=1))
+        self._enable_location()
+
+        self.client.force_authenticate(self.voter)
+        response = self.client.post(self.vote_url, {
+            "latitude": self.VENUE_LAT, "longitude": self.VENUE_LON,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_both_enabled_time_passes_location_fails(self):
+        now = timezone.now()
+        self._enable_time(now - timedelta(hours=1), now + timedelta(hours=1))
+        self._enable_location()
+
+        self.client.force_authenticate(self.voter)
+        response = self.client.post(self.vote_url, {
+            "latitude": self.FAR_LAT, "longitude": self.FAR_LON,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["detail"], "You must be near the event venue to vote.")
+
+    def test_both_enabled_and_both_fail_surfaces_time_message_first(self):
+        now = timezone.now()
+        self._enable_time(now - timedelta(hours=2), now - timedelta(hours=1))  # closed
+        self._enable_location()
+
+        self.client.force_authenticate(self.voter)
+        response = self.client.post(self.vote_url, {
+            "latitude": self.FAR_LAT, "longitude": self.FAR_LON,  # also fails location
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["detail"], "Voting has closed for this event.")
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class LocationTimeRestrictedMigrationTests(APITestCase):
+    """
+    Data migration 0012_migrate_location_time_restricted_events: converts
+    a pre-existing event using the old combined `location_time_restricted`
+    vote_permission value into the new composable-restriction shape.
+
+    Calls the migration's own migrate_forward function directly (imported
+    via importlib, since its module name starts with a digit) rather than
+    re-implementing its logic — this is testing the actual migration code,
+    not a copy of it. The live app registry is fine to pass in here since
+    migrate_forward only touches fields ("vote_permission",
+    "time_restriction_enabled", "location_restriction_enabled") that are
+    unchanged between the migration's historical state and HEAD.
+    """
+
+    def _run_migration(self):
+        import importlib
+        from django.apps import apps as django_apps
+
+        migration_module = importlib.import_module(
+            "events.migrations.0012_migrate_location_time_restricted_events"
+        )
+        migration_module.migrate_forward(django_apps, None)
+
+    def test_migration_converts_a_location_time_restricted_event(self):
+        host = create_verified_user("host@test.com")
+        event = Event.objects.create(host=host, title="Legacy Restricted Event")
+        opens_at = timezone.now()
+        closes_at = opens_at + timedelta(hours=2)
+        # Simulate a genuinely pre-migration row: `choices` on a CharField
+        # is not DB-enforced, so this write succeeds even though the
+        # current model no longer lists this value — exactly like a real
+        # un-migrated row already sitting in the database.
+        Event.objects.filter(id=event.id).update(
+            vote_permission="location_time_restricted",
+            time_restriction_enabled=False,
+            location_restriction_enabled=False,
+            venue_center_latitude=33.5731,
+            venue_center_longitude=-7.5898,
+            allowed_distance_meters=150,
+            voting_opens_at=opens_at,
+            voting_closes_at=closes_at,
+        )
+
+        self._run_migration()
+
+        event.refresh_from_db()
+        self.assertEqual(event.vote_permission, "invited_only")
+        self.assertTrue(event.time_restriction_enabled)
+        self.assertTrue(event.location_restriction_enabled)
+        self.assertEqual(event.venue_center_latitude, 33.5731)
+        self.assertEqual(event.venue_center_longitude, -7.5898)
+        self.assertEqual(event.allowed_distance_meters, 150)
+        self.assertEqual(event.voting_opens_at, opens_at)
+        self.assertEqual(event.voting_closes_at, closes_at)
+
+    def test_migration_leaves_unrelated_events_untouched(self):
+        host = create_verified_user("host@test.com")
+        untouched = Event.objects.create(host=host, title="Normal Event", vote_permission="everyone")
+        invited = Event.objects.create(host=host, title="Invited Party", vote_permission="invited_only")
+
+        self._run_migration()
+
+        untouched.refresh_from_db()
+        invited.refresh_from_db()
+        self.assertEqual(untouched.vote_permission, "everyone")
+        self.assertFalse(untouched.time_restriction_enabled)
+        self.assertFalse(untouched.location_restriction_enabled)
+        self.assertEqual(invited.vote_permission, "invited_only")
+        self.assertFalse(invited.time_restriction_enabled)
+        self.assertFalse(invited.location_restriction_enabled)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class EventStatusTests(APITestCase):
+    """Event.status (live/closed/canceled): host-only to change; canceled
+    locks out everyone but the host, even someone who'd already joined or
+    been invited; closed only blocks new track suggestions — entry and
+    voting on the existing queue keep working."""
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.guest = create_verified_user("guest@test.com")
+        self.member = create_verified_user("member@test.com")
+        self.stranger = create_verified_user("stranger@test.com")
+
+        self.client.force_authenticate(self.host)
+        event_resp = self.client.post("/api/v1/events/", {"title": "Test Party", "visibility": "public"})
+        self.event_id = event_resp.data["id"]
+        self.event_url = f"/api/v1/events/{self.event_id}/"
+        self.queue_url = f"/api/v1/events/{self.event_id}/queue/"
+        self.guests_url = f"/api/v1/events/{self.event_id}/guests/"
+        self.join_url = f"/api/v1/events/{self.event_id}/join/"
+
+        self.client.post(self.guests_url, {"user_id": self.guest.id})
+
+        self.client.force_authenticate(self.member)
+        self.client.post(self.join_url, {})
+
+        self.client.force_authenticate(self.host)
+
+    def _set_status(self, value):
+        return self.client.patch(self.event_url, {"status": value})
+
+    # ---------- host-only to change ----------
+
+    def test_default_status_is_live(self):
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["status"], "live")
+
+    def test_host_can_close_event(self):
+        response = self._set_status("closed")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "closed")
+
+    def test_host_can_cancel_event(self):
+        response = self._set_status("canceled")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "canceled")
+
+    def test_non_host_cannot_change_status(self):
+        self.client.force_authenticate(self.guest)
+        response = self.client.patch(self.event_url, {"status": "canceled"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        event = Event.objects.get(id=self.event_id)
+        self.assertEqual(event.status, "live")
+
+    # ---------- canceled: nobody but the host can enter ----------
+
+    def test_canceled_event_blocks_a_stranger(self):
+        self._set_status("canceled")
+        self.client.force_authenticate(self.stranger)
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_canceled_event_blocks_a_previously_invited_guest(self):
+        self._set_status("canceled")
+        self.client.force_authenticate(self.guest)
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_canceled_event_blocks_a_previously_joined_member(self):
+        self._set_status("canceled")
+        self.client.force_authenticate(self.member)
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_canceled_event_still_visible_to_the_host(self):
+        self._set_status("canceled")
+        response = self.client.get(self.event_url)  # still authenticated as host
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_canceled_event_blocks_new_joins(self):
+        self._set_status("canceled")
+        self.client.force_authenticate(self.stranger)
+        response = self.client.post(self.join_url, {})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["detail"], "This event has been canceled.")
+
+    def test_canceled_event_blocks_queue_view_for_a_former_member(self):
+        self._set_status("canceled")
+        self.client.force_authenticate(self.member)
+        response = self.client.get(self.queue_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_canceled_event_blocks_guest_list_view_for_a_former_guest(self):
+        self._set_status("canceled")
+        self.client.force_authenticate(self.guest)
+        response = self.client.get(self.guests_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_canceled_event_blocks_adding_tracks_even_for_the_host(self):
+        self._set_status("canceled")
+        response = self.client.post(self.queue_url, {"title": "Song A", "artist": "Artist A"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["detail"], "This event has been canceled.")
+
+    # ---------- closed: entry stays open, track suggestions don't ----------
+
+    def test_closed_event_still_visible_to_a_member(self):
+        self._set_status("closed")
+        self.client.force_authenticate(self.member)
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_closed_event_still_joinable(self):
+        self._set_status("closed")
+        self.client.force_authenticate(self.stranger)
+        response = self.client.post(self.join_url, {})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_closed_event_blocks_new_track_suggestions(self):
+        self._set_status("closed")
+        self.client.force_authenticate(self.member)
+        response = self.client.post(self.queue_url, {"title": "Song A", "artist": "Artist A"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["detail"],
+            "This event is closed — new tracks can no longer be suggested.",
+        )
+
+    def test_closed_event_still_allows_voting_on_the_existing_queue(self):
+        # Songs go in while still live, then the event closes — voting on
+        # what's already queued must keep working even though nothing new
+        # can be suggested anymore.
+        self.client.post(self.queue_url, {"title": "Song A", "artist": "Artist A"})
+        add_b = self.client.post(self.queue_url, {"title": "Song B", "artist": "Artist B"})
+        self._set_status("closed")
+
+        self.client.force_authenticate(self.member)
+        response = self.client.post(f"{self.queue_url}{add_b.data['id']}/vote/", {})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class EventActivityStatusTests(APITestCase):
+    """
+    Event.sync_activity_status — the automatic ghost_town/rip_attendance/
+    party_of_nobody inactivity ladder (live -> ghost_town after
+    Event.GHOST_TOWN_AFTER, -> rip_attendance after
+    Event.RIP_ATTENDANCE_AFTER, -> party_of_nobody after
+    Event.PARTY_OF_NOBODY_AFTER, all measured from the most recent track
+    suggestion; resets to live the instant a new one is added).
+
+    Backdates EventSong.added_at / Event.created_at directly via
+    .update() (bypassing auto_now_add — same trick already used by
+    LocationTimeRestrictedMigrationTests) instead of waiting real time.
+    """
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.client.force_authenticate(self.host)
+        event_resp = self.client.post("/api/v1/events/", {"title": "Test Party"})
+        self.event_id = event_resp.data["id"]
+        self.event_url = f"/api/v1/events/{self.event_id}/"
+        self.queue_url = f"/api/v1/events/{self.event_id}/queue/"
+
+    def _backdate_last_activity(self, delta):
+        """Simulate `delta` of real time having passed since the last
+        track suggestion — or since the event was created, if no song
+        has ever been added yet."""
+        moment = timezone.now() - delta
+        updated = EventSong.objects.filter(event_id=self.event_id).update(added_at=moment)
+        if not updated:
+            Event.objects.filter(id=self.event_id).update(created_at=moment)
+
+    def test_freshly_created_event_stays_live(self):
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["status"], "live")
+
+    def test_still_short_of_a_day_stays_live(self):
+        self._backdate_last_activity(timedelta(hours=23))
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["status"], "live")
+
+    def test_becomes_ghost_town_after_a_day_of_no_suggestions(self):
+        self._backdate_last_activity(timedelta(days=1, minutes=1))
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["status"], "ghost_town")
+
+    def test_becomes_rip_attendance_after_two_days(self):
+        self._backdate_last_activity(timedelta(days=2, minutes=1))
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["status"], "rip_attendance")
+
+    def test_becomes_party_of_nobody_after_three_days(self):
+        self._backdate_last_activity(timedelta(days=3, minutes=1))
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["status"], "party_of_nobody")
+
+    def test_queue_get_also_triggers_the_sync(self):
+        self._backdate_last_activity(timedelta(days=1, minutes=1))
+        response = self.client.get(self.queue_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        event = Event.objects.get(id=self.event_id)
+        self.assertEqual(event.status, "ghost_town")
+
+    def test_adding_a_track_resets_status_back_to_live(self):
+        self._backdate_last_activity(timedelta(days=3, minutes=1))
+        self.client.get(self.event_url)  # let it escalate to party_of_nobody
+        event = Event.objects.get(id=self.event_id)
+        self.assertEqual(event.status, "party_of_nobody")
+
+        response = self.client.post(self.queue_url, {"title": "Song A", "artist": "Artist A"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        event.refresh_from_db()
+        self.assertEqual(event.status, "live")
+
+    def test_closed_event_is_never_touched_by_the_ladder(self):
+        self.client.patch(self.event_url, {"status": "closed"})
+        self._backdate_last_activity(timedelta(days=5))
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["status"], "closed")
+
+    def test_canceled_event_is_never_touched_by_the_ladder(self):
+        self.client.patch(self.event_url, {"status": "canceled"})
+        self._backdate_last_activity(timedelta(days=5))
+        response = self.client.get(self.event_url)  # host still has access
+        self.assertEqual(response.data["status"], "canceled")
+
+    def test_activity_measured_from_most_recent_song_not_event_creation(self):
+        # The event itself is old, but a song was JUST suggested (no
+        # backdating on it) — the stale created_at must not matter once
+        # there's a real, recent suggestion to measure from instead.
+        Event.objects.filter(id=self.event_id).update(
+            created_at=timezone.now() - timedelta(days=10)
+        )
+        self.client.post(self.queue_url, {"title": "Song A", "artist": "Artist A"})
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["status"], "live")
