@@ -1,6 +1,7 @@
 # events/models.py
 from datetime import timedelta
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -24,6 +25,17 @@ class Event(models.Model):
     # existing PATCH/PUT host-only gate on EventDetailView.perform_update
     # — no dedicated endpoint needed.
     #
+    # STATUS_DELETED is different again: it's set only by
+    # EventDetailView.perform_destroy (the host-only DELETE endpoint),
+    # never by PATCH/PUT. It's a soft delete — the row (and its queue/
+    # votes/guests/members) is kept, not removed — specifically so a
+    # participant who already has the event open still gets a real
+    # response instead of a 404, and can be shown "this event has been
+    # deleted" (see can_user_see_event: unlike STATUS_CANCELED, a past
+    # guest/member can still fetch a deleted event to see that message,
+    # they just can't do anything in it anymore). Deleted events are
+    # excluded from every listing (EventListCreateView.get_queryset).
+    #
     # The other three are the opposite: fully automatic, never set by a
     # host or any endpoint directly. They're a lazily-recomputed "how
     # dead is this room" ladder — see `sync_activity_status` — that
@@ -32,11 +44,13 @@ class Event(models.Model):
     # They behave exactly like STATUS_LIVE everywhere else (voting,
     # joining, suggesting tracks are all still fully allowed) — this is a
     # cosmetic/informational label only, never a restriction. Only
-    # STATUS_CLOSED/STATUS_CANCELED are the host taking manual control;
-    # `sync_activity_status` never touches an event in either of those.
+    # STATUS_CLOSED/STATUS_CANCELED/STATUS_DELETED are the host taking
+    # manual control; `sync_activity_status` never touches an event in
+    # any of those.
     STATUS_LIVE = "live"
     STATUS_CLOSED = "closed"
     STATUS_CANCELED = "canceled"
+    STATUS_DELETED = "deleted"
     STATUS_GHOST_TOWN = "ghost_town"
     STATUS_RIP_ATTENDANCE = "rip_attendance"
     STATUS_PARTY_OF_NOBODY = "party_of_nobody"
@@ -44,6 +58,7 @@ class Event(models.Model):
         (STATUS_LIVE, "Live — open as normal"),
         (STATUS_CLOSED, "Closed — still viewable/votable, but no new track suggestions"),
         (STATUS_CANCELED, "Canceled — inaccessible to everyone but the host, even previous guests/members"),
+        (STATUS_DELETED, "Deleted — soft-deleted by the host; only past guests/members can still view it"),
         (STATUS_GHOST_TOWN, "Ghost Town 👻 — no new track suggested in a while"),
         (STATUS_RIP_ATTENDANCE, "RIP Attendance — no new track suggested in even longer"),
         (STATUS_PARTY_OF_NOBODY, "Party of Nobody — no new track suggested in a long while"),
@@ -111,6 +126,23 @@ class Event(models.Model):
     voting_opens_at = models.DateTimeField(null=True, blank=True)
     voting_closes_at = models.DateTimeField(null=True, blank=True)
 
+    # Host-set cap on the combined number of distinct people in `guests` +
+    # `members` (the host doesn't count against their own limit) — see
+    # `has_room_for`/`participant_count`. There is no "unlimited" option:
+    # every event is capped, defaulting to 100 (the ceiling itself) if the
+    # host doesn't set a lower one. Bounded to 2-100 per product
+    # requirement (todo.todo) — below 2 a "limit" is meaningless (an event
+    # needs room for at least one guest alongside the host).
+    max_participants = models.PositiveIntegerField(
+        default=100, validators=[MinValueValidator(2), MaxValueValidator(100)],
+        help_text="Cap on combined invited guests + self-joined members, "
+                   "between 2 and 100. Defaults to 100 if not set.",
+    )
+
+    # Set only when `status` becomes STATUS_DELETED — see that status's
+    # doc comment above.
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -143,6 +175,36 @@ class Event(models.Model):
     def song_count(self):
         """How many songs are currently in this event's queue."""
         return self.queue.count()
+
+    def participant_ids(self):
+        """
+        Distinct user ids counted against `max_participants`: the union of
+        invited guests and self-joined members (the host is neither and
+        never counts). A user who's both an invited guest and a
+        self-joined member is only counted once — see `has_room_for`.
+        """
+        guest_ids = set(self.guests.values_list("guest_id", flat=True))
+        member_ids = set(self.members.values_list("member_id", flat=True))
+        return guest_ids | member_ids
+
+    @property
+    def participant_count(self):
+        """How many distinct people (guests + members, deduplicated,
+        excluding the host) are currently in this event."""
+        return len(self.participant_ids())
+
+    def has_room_for(self, user):
+        """
+        Whether `user` can be added as a guest or member without breaching
+        `max_participants`. A user already counted (e.g. already a member
+        being additionally invited as a guest) never gets blocked by their
+        own existing presence — the cap only ever stops a genuinely new
+        participant once it's already full.
+        """
+        ids = self.participant_ids()
+        if user.id in ids:
+            return True
+        return len(ids) < self.max_participants
 
     @property
     def voting_is_open(self):

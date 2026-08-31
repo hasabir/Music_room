@@ -58,9 +58,13 @@ class EventListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
+        # A deleted event is excluded here for everyone, host included —
+        # it only remains reachable by direct GET .../<id>/ for a past
+        # guest/member (see can_user_see_event), which is what lets the
+        # event page still show "this event has been deleted".
         return Event.objects.filter(
             Q(visibility="public") | Q(host=user) | Q(guests__guest=user)
-        ).distinct()
+        ).exclude(status=Event.STATUS_DELETED).distinct()
 
     def perform_create(self, serializer):
         event = serializer.save(host=self.request.user)
@@ -122,9 +126,25 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
         serializer.save()
 
     def perform_destroy(self, instance):
+        """
+        Soft delete: the row (and its queue/votes/guests/members) is kept,
+        not removed — see Event.STATUS_DELETED's doc comment. This is what
+        lets a guest/member who already has the event page open learn
+        "this event has been deleted" (via the existing poll picking up
+        the status change) instead of just hitting a 404, and is also why
+        this stays a 204 response like a real delete — the client-visible
+        contract doesn't change.
+        """
         if instance.host_id != self.request.user.id:
             raise PermissionDenied("Only the host can delete this event.")
-        instance.delete()
+        instance.status = Event.STATUS_DELETED
+        instance.deleted_at = timezone.now()
+        instance.save(update_fields=["status", "deleted_at"])
+        log_action(self.request, "event.deleted", user=self.request.user, metadata={
+            "event_id": instance.id,
+            "title": instance.title,
+            "visibility": instance.visibility,
+        })
 
 
 @extend_schema_view(
@@ -202,6 +222,9 @@ class EventQueueView(APIView):
                              status=status.HTTP_403_FORBIDDEN)
         if event.status == Event.STATUS_CANCELED:
             return Response({"detail": "This event has been canceled."},
+                             status=status.HTTP_403_FORBIDDEN)
+        if event.status == Event.STATUS_DELETED:
+            return Response({"detail": "This event has been deleted."},
                              status=status.HTTP_403_FORBIDDEN)
 
         serializer = AddSongToQueueSerializer(data=request.data)

@@ -12,6 +12,7 @@ class EventSerializer(serializers.ModelSerializer):
     current_song = serializers.SerializerMethodField()
     current_position_seconds = serializers.SerializerMethodField()
     is_member = serializers.SerializerMethodField()
+    participant_count = serializers.ReadOnlyField()
 
     class Meta:
         model = Event
@@ -20,12 +21,13 @@ class EventSerializer(serializers.ModelSerializer):
             "time_restriction_enabled", "voting_opens_at", "voting_closes_at",
             "location_restriction_enabled",
             "venue_center_latitude", "venue_center_longitude", "allowed_distance_meters",
+            "max_participants", "participant_count",
             "song_count", "voting_is_open", "is_member",
             "current_song", "current_position_seconds",
             "created_at", "updated_at",
         ]
         read_only_fields = [
-            "id", "host", "song_count", "voting_is_open", "is_member",
+            "id", "host", "song_count", "voting_is_open", "is_member", "participant_count",
             "current_song", "current_position_seconds",
             "created_at", "updated_at",
         ]

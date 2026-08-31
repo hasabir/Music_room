@@ -54,6 +54,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _radiusController = TextEditingController(text: '200');
+  final _maxParticipantsController = TextEditingController(text: '100');
 
   var _visibility = eventVisibilityPublic;
   var _votePermission = eventVotePermissionEveryone;
@@ -83,6 +84,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     _titleController.dispose();
     _descriptionController.dispose();
     _radiusController.dispose();
+    _maxParticipantsController.dispose();
     super.dispose();
   }
 
@@ -211,6 +213,17 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       }
     }
 
+    // There's no "unlimited" option — a blank field (the host cleared the
+    // pre-filled default) falls back to 100, the ceiling itself.
+    final maxParticipantsText = _maxParticipantsController.text.trim();
+    final maxParticipants = maxParticipantsText.isEmpty ? 100 : int.tryParse(maxParticipantsText);
+    if (maxParticipants == null || maxParticipants < 2 || maxParticipants > 100) {
+      setState(
+        () => _error = 'Participant limit must be between 2 and 100.',
+      );
+      return;
+    }
+
     setState(() {
       _isSubmitting = true;
       _error = null;
@@ -230,6 +243,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         allowedDistanceMeters: allowedDistanceMeters,
         votingOpensAt: _timeRestrictionEnabled ? _votingOpensAt : null,
         votingClosesAt: _timeRestrictionEnabled ? _votingClosesAt : null,
+        maxParticipants: maxParticipants,
       );
 
       if (!mounted) return;
@@ -455,6 +469,24 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       label: Text(_venueButtonLabel()),
                     ),
                   ],
+                  const SizedBox(height: 24),
+                  const _FieldLabel('PARTICIPANT LIMIT'),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Cap on combined invited guests + joined members, '
+                    'between 2 and 100. There\'s no "unlimited" option.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _CreateEventColors.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _maxParticipantsController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: _CreateEventColors.body),
+                    decoration: _fieldDecoration('100'),
+                  ),
                   if (_error != null) ...[
                     const SizedBox(height: 16),
                     Text(

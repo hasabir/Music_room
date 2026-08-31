@@ -172,6 +172,13 @@ class EventAccessRequestDecideView(APIView):
         serializer.is_valid(raise_exception=True)
         approve = serializer.validated_data["approve"]
 
+        # Checked before mutating the request at all, so a full event
+        # leaves the request pending (the host can decide again once
+        # there's room) rather than silently marking it decided.
+        if approve and not event.has_room_for(access_request.requester):
+            return Response({"detail": "This event has reached its participant limit."},
+                             status=status.HTTP_400_BAD_REQUEST)
+
         access_request.status = (
             EventAccessRequest.STATUS_APPROVED if approve else EventAccessRequest.STATUS_DENIED
         )

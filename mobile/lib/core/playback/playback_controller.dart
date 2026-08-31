@@ -29,6 +29,10 @@ class PlaybackController {
   final _completedController = StreamController<String>.broadcast();
   final state = ValueNotifier(const PlaybackState());
 
+  /// True while `NowPlayingScreen` is on screen, so the mini player can
+  /// hide itself rather than floating on top of the full player it opens.
+  final isNowPlayingScreenVisible = ValueNotifier(false);
+
   /// The playlist detail route currently visible to the listener, if any.
   /// This prevents the mini player from pushing a duplicate copy of it.
   int? visiblePlaylistId;

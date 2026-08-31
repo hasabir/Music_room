@@ -61,6 +61,7 @@ class EventApi {
     int? allowedDistanceMeters,
     DateTime? votingOpensAt,
     DateTime? votingClosesAt,
+    int? maxParticipants,
   }) async {
     final body = <String, dynamic>{
       'title': title,
@@ -77,6 +78,7 @@ class EventApi {
         'voting_opens_at': votingOpensAt.toUtc().toIso8601String(),
       if (votingClosesAt != null)
         'voting_closes_at': votingClosesAt.toUtc().toIso8601String(),
+      'max_participants': ?maxParticipants,
     };
     final response = await _authorizedPost(ApiConfig.eventsUri(), body: body);
     return Event.fromJson(response);
@@ -106,6 +108,7 @@ class EventApi {
     int? allowedDistanceMeters,
     DateTime? votingOpensAt,
     DateTime? votingClosesAt,
+    int? maxParticipants,
   }) async {
     final body = <String, dynamic>{
       'title': ?title,
@@ -123,6 +126,7 @@ class EventApi {
         'voting_opens_at': votingOpensAt.toUtc().toIso8601String(),
       if (votingClosesAt != null)
         'voting_closes_at': votingClosesAt.toUtc().toIso8601String(),
+      'max_participants': ?maxParticipants,
     };
     final response = await _authorizedPatch(
       ApiConfig.eventDetailUri(eventId),
@@ -131,8 +135,12 @@ class EventApi {
     return Event.fromJson(response);
   }
 
-  /// Deletes an event and its entire queue/votes. Only the host may do
-  /// this.
+  /// Soft-deletes an event (its queue/votes/guests/members are kept, not
+  /// removed — see `Event.STATUS_DELETED` on the backend). Only the host
+  /// may do this. Every guest/member still gets `eventStatusDeleted` back
+  /// from `getEvent`, so their event screen picks it up on its next poll
+  /// and shows a "this event has been deleted" message rather than
+  /// erroring out.
   Future<void> deleteEvent(int eventId) async {
     await _authorizedDelete(ApiConfig.eventDetailUri(eventId));
   }

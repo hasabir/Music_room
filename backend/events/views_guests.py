@@ -90,6 +90,10 @@ class EventGuestListView(APIView):
             return Response({"detail": "Only the host can invite guests."},
                              status=status.HTTP_403_FORBIDDEN)
 
+        if event.status == Event.STATUS_DELETED:
+            return Response({"detail": "This event has been deleted."},
+                             status=status.HTTP_400_BAD_REQUEST)
+
         serializer = InviteGuestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user_id = serializer.validated_data["user_id"]
@@ -102,6 +106,10 @@ class EventGuestListView(APIView):
 
         if EventGuest.objects.filter(event=event, guest=invited_user).exists():
             return Response({"detail": "This user is already invited."},
+                             status=status.HTTP_400_BAD_REQUEST)
+
+        if not event.has_room_for(invited_user):
+            return Response({"detail": "This event has reached its participant limit."},
                              status=status.HTTP_400_BAD_REQUEST)
 
         guest = EventGuest.objects.create(event=event, guest=invited_user)
@@ -242,9 +250,17 @@ class EventJoinView(APIView):
             return Response({"detail": "This event has been canceled."},
                              status=status.HTTP_403_FORBIDDEN)
 
+        if event.status == Event.STATUS_DELETED:
+            return Response({"detail": "This event has been deleted."},
+                             status=status.HTTP_403_FORBIDDEN)
+
         if event.visibility != "public":
             return Response({"detail": "This event is private — you must be invited by the host."},
                              status=status.HTTP_403_FORBIDDEN)
+
+        if not event.has_room_for(request.user):
+            return Response({"detail": "This event has reached its participant limit."},
+                             status=status.HTTP_400_BAD_REQUEST)
 
         membership, created = EventMembership.objects.get_or_create(event=event, member=request.user)
         if not created:

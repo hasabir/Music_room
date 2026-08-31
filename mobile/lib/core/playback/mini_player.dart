@@ -11,6 +11,16 @@ class MiniPlayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final playback = PlaybackController.instance;
+    return ValueListenableBuilder<bool>(
+      valueListenable: playback.isNowPlayingScreenVisible,
+      builder: (context, isNowPlayingScreenVisible, _) {
+        if (isNowPlayingScreenVisible) return const SizedBox.shrink();
+        return _buildForState(playback);
+      },
+    );
+  }
+
+  Widget _buildForState(PlaybackController playback) {
     return ValueListenableBuilder<PlaybackState>(
       valueListenable: playback.state,
       builder: (context, state, _) {
@@ -146,12 +156,42 @@ class MiniPlayer extends StatelessWidget {
   }
 }
 
-class NowPlayingScreen extends StatelessWidget {
+class NowPlayingScreen extends StatefulWidget {
   const NowPlayingScreen({super.key});
 
   @override
+  State<NowPlayingScreen> createState() => _NowPlayingScreenState();
+}
+
+class _NowPlayingScreenState extends State<NowPlayingScreen> {
+  final _playback = PlaybackController.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    // Deferred a frame: setting this during initState (still mid-build for
+    // the route being pushed) trips ValueNotifier's "setState() called
+    // during build" guard, which the framework silently swallows — so the
+    // mini player's listener never fires and it never actually hides.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _playback.isNowPlayingScreenVisible.value = true;
+    });
+  }
+
+  @override
+  void dispose() {
+    // Same reasoning as initState: element unmounting runs while the tree
+    // is locked, so this has to land on the next frame rather than firing
+    // ValueNotifier's listeners synchronously here.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _playback.isNowPlayingScreenVisible.value = false;
+    });
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final playback = PlaybackController.instance;
+    final playback = _playback;
     return Scaffold(
       backgroundColor: const Color(0xFF0E0E15),
       appBar: AppBar(

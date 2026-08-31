@@ -13,13 +13,13 @@ add miniplay like in the playlist
 
 [✓] search by artist name
 [✓] popular music in playlist
-[] remove the miniplayer when entring the music page
+[✓] remove the miniplayer when entring the music page
 [✓] change the ui of the event page
 
 
-[] the owner of the event must be able to delete the event, and when deleting the event all the participants and members must be notified that the event has been deleted, and also show a message in the event page that the event has been deleted.
-[] add limit on how many participants and members can join the event, and show the number of participants and members joined in the event page, and also show the limit of participants and members that can join the event.
-[] when creating the event the host must be able to set the limit of participants and members that can join the event, and also show the limit of participants and members that can join the event in the event page. but he can't exceed 100 participants/members and can't set the limit less than 2 participants/members.
+[✓] the owner of the event must be able to delete the event, and when deleting the event all the participants and members must be notified that the event has been deleted, and also show a message in the event page that the event has been deleted.
+[✓] add limit on how many participants and members can join the event, and show the number of participants and members joined in the event page, and also show the limit of participants and members that can join the event.
+[✓] when creating the event the host must be able to set the limit of participants and members that can join the event, and also show the limit of participants and members that can join the event in the event page. but he can't exceed 100 participants/members and can't set the limit less than 2 participants/members.
 [] people can like the event and the number of likes must be shown in the event page, and also show the number of likes in the event page.
 
 [] in the profile page, instead of number of vote, there should be number of the addition of likes he has received in all of his events.

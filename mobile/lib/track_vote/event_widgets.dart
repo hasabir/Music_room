@@ -18,6 +18,7 @@ class EventBadgeColors {
   static const statusLive = Color(0xFF34D399);
   static const statusClosed = Color(0xFFFBBF24);
   static const statusCanceled = Color(0xFFFFB4AB);
+  static const statusDeleted = Color(0xFFEF4444);
   static const statusGhostTown = Color(0xFF908FA0);
   static const statusRipAttendance = Color(0xFFA78BFA);
   static const statusPartyOfNobody = Color(0xFF6C6FF0);
@@ -71,6 +72,12 @@ class EventStatusBadge extends StatelessWidget {
           label: 'Canceled',
           icon: Icons.block_rounded,
           color: EventBadgeColors.statusCanceled,
+        );
+      case eventStatusDeleted:
+        return const _Badge(
+          label: 'Deleted',
+          icon: Icons.delete_rounded,
+          color: EventBadgeColors.statusDeleted,
         );
       case eventStatusGhostTown:
         return const _Badge(

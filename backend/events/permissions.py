@@ -11,6 +11,11 @@ def can_user_see_event(user, event):
     Canceled -> nobody else at all, regardless of visibility or prior
     EventGuest/EventMembership status — cancelling locks everyone else
     out, even someone who had already joined before the cancellation.
+    Deleted -> the opposite of canceled: only a *past* guest or member
+    can still fetch it (so the client can show "this event has been
+    deleted"), a stranger who never had access gets nothing new — it's
+    already excluded from every listing regardless (see
+    EventListCreateView.get_queryset).
     Otherwise (live or closed): public -> yes for everyone; private ->
     only an invited guest. (Closed events stay just as visible/enterable
     as live ones — see can_user_vote and EventQueueView for the one
@@ -21,6 +26,9 @@ def can_user_see_event(user, event):
 
     if event.status == "canceled":
         return False
+
+    if event.status == "deleted":
+        return event.guests.filter(guest=user).exists() or event.members.filter(member=user).exists()
 
     if event.visibility == "public":
         return True
@@ -45,6 +53,13 @@ def can_user_vote(user, event, user_latitude=None, user_longitude=None):
     # Must be able to see the event at all first
     if not can_user_see_event(user, event):
         return False, "You do not have access to this event."
+
+    # A past participant can still *see* a deleted event (so the client
+    # can show the "deleted" message) but can't act on it anymore —
+    # unlike canceled, which already blocks seeing it for everyone but
+    # the host, so no separate check is needed there.
+    if event.status == "deleted":
+        return False, "This event has been deleted."
 
     # Must have at least 2 songs in the queue before any voting can happen
     if not event.voting_is_open:

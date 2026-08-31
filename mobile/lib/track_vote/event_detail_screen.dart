@@ -629,6 +629,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     const SizedBox(height: 16),
                     _ParticipantsSummaryCard(
                       attendees: _attendees,
+                      participantCount: event.participantCount,
+                      maxParticipants: event.maxParticipants,
                       onTap: _openParticipantsSheet,
                     ),
                     const SizedBox(height: 28),
@@ -682,11 +684,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     // hid this button and showed a false "this event is
                     // closed" message the moment an event went quiet.
                     if (event.status == eventStatusClosed ||
-                        event.status == eventStatusCanceled)
+                        event.status == eventStatusCanceled ||
+                        event.status == eventStatusDeleted)
                       Text(
-                        event.status == eventStatusCanceled
-                            ? 'This event has been canceled.'
-                            : 'This event is closed — no new tracks can be suggested.',
+                        event.status == eventStatusDeleted
+                            ? 'This event has been deleted by the host.'
+                            : event.status == eventStatusCanceled
+                                ? 'This event has been canceled.'
+                                : 'This event is closed — no new tracks can be suggested.',
                         style: const TextStyle(
                           fontSize: 12.5,
                           color: _EventColors.muted,
@@ -827,6 +832,11 @@ class _CoverHeader extends StatelessWidget {
                     label: 'CANCELED',
                     color: EventBadgeColors.statusCanceled,
                   )
+                else if (event.status == eventStatusDeleted)
+                  const EventOverlayStatusBadge(
+                    label: 'DELETED',
+                    color: EventBadgeColors.statusDeleted,
+                  )
                 // The three auto-inactive rungs (see eventStatusIsAutoInactive)
                 // are a label only — voting/joining/suggesting all stay open
                 // exactly as on a live event — but "LIVE" pulsing here would
@@ -950,12 +960,31 @@ class _SectionLabel extends StatelessWidget {
 
 /// The collapsed "Participants" card — a stack of the first few joined
 /// people's avatars + a count, tapping into the full [_ParticipantsSheet]
-/// (Joined/Invited tabs). Shows [EventMembership] ("Joined") avatars
-/// specifically, matching the shared mockup's collapsed state — the
-/// "Invited" list lives one tap away, inside the sheet.
+/// (Joined/Invited tabs). The avatar stack shows [EventMembership]
+/// ("Joined") people specifically, matching the shared mockup's collapsed
+/// state — the "Invited" list lives one tap away, inside the sheet. The
+/// count text always shows the combined guests+members [participantCount]
+/// against [maxParticipants], since that's what the limit is actually
+/// measured against — a "3 joined" reading would be misleading against a
+/// "10" cap that also counts invited guests.
 class _ParticipantsSummaryCard extends StatelessWidget {
-  const _ParticipantsSummaryCard({required this.attendees, required this.onTap});
+  const _ParticipantsSummaryCard({
+    required this.attendees,
+    required this.participantCount,
+    required this.maxParticipants,
+    required this.onTap,
+  });
   final List<EventMembership> attendees;
+
+  /// Combined distinct guests + members (`Event.participantCount`) — what
+  /// [maxParticipants] caps. Shown here instead of `attendees.length`,
+  /// since the limit applies to the combined total, not just self-joined
+  /// members.
+  final int participantCount;
+
+  /// `Event.maxParticipants` — always set (2-100); there's no "unlimited"
+  /// option.
+  final int maxParticipants;
   final VoidCallback onTap;
 
   @override
@@ -963,6 +992,7 @@ class _ParticipantsSummaryCard extends StatelessWidget {
     final names = attendees
         .map((a) => a.memberDisplayName.isNotEmpty ? a.memberDisplayName : a.memberEmail)
         .toList();
+    final isFull = participantCount >= maxParticipants;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
@@ -993,14 +1023,25 @@ class _ParticipantsSummaryCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    attendees.isEmpty ? 'No one has joined yet' : '${attendees.length} joined',
-                    style: const TextStyle(
+                    '$participantCount / $maxParticipants joined',
+                    style: TextStyle(
                       fontFamily: 'Sora',
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
-                      color: _EventColors.body,
+                      color: isFull ? EventBadgeColors.statusCanceled : _EventColors.body,
                     ),
                   ),
+                  if (isFull) ...[
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Full',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: EventBadgeColors.statusCanceled,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

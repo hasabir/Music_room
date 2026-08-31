@@ -34,6 +34,12 @@ const String eventVotePermissionInvitedOnly = 'invited_only';
 ///   before the cancellation (`can_user_see_event` in
 ///   `backend/events/permissions.py`).
 ///
+/// [eventStatusDeleted] is set only by `EventApi.deleteEvent` (host-only
+/// `DELETE /events/<id>/`), never sent via `updateEvent`/settings — the
+/// backend soft-deletes rather than actually removing the row, so a past
+/// guest/member who already has the event open still gets this status
+/// back (instead of a 404) and this screen shows a "deleted" message.
+///
 /// The other three are the opposite: fully automatic, never sent by this
 /// client, never selectable in `EventSettingsScreen` — the backend's
 /// `Event.sync_activity_status()` sets them on its own, purely based on
@@ -46,6 +52,7 @@ const String eventVotePermissionInvitedOnly = 'invited_only';
 const String eventStatusLive = 'live';
 const String eventStatusClosed = 'closed';
 const String eventStatusCanceled = 'canceled';
+const String eventStatusDeleted = 'deleted';
 const String eventStatusGhostTown = 'ghost_town';
 const String eventStatusRipAttendance = 'rip_attendance';
 const String eventStatusPartyOfNobody = 'party_of_nobody';
@@ -184,6 +191,8 @@ class Event {
     required this.allowedDistanceMeters,
     required this.votingOpensAt,
     required this.votingClosesAt,
+    required this.maxParticipants,
+    required this.participantCount,
     required this.songCount,
     required this.votingIsOpen,
     required this.isMember,
@@ -215,6 +224,8 @@ class Event {
     votingClosesAt: json['voting_closes_at'] == null
         ? null
         : DateTime.parse(json['voting_closes_at'] as String),
+    maxParticipants: json['max_participants'] as int? ?? 100,
+    participantCount: json['participant_count'] as int? ?? 0,
     songCount: json['song_count'] as int? ?? 0,
     votingIsOpen: json['voting_is_open'] as bool? ?? false,
     isMember: json['is_member'] as bool? ?? false,
@@ -268,6 +279,16 @@ class Event {
   final int? allowedDistanceMeters;
   final DateTime? votingOpensAt;
   final DateTime? votingClosesAt;
+
+  /// Host-set cap (2-100) on combined invited guests + self-joined
+  /// members (the host doesn't count against their own limit). There is
+  /// no "unlimited" option — this defaults to 100 if the host doesn't
+  /// set a lower value.
+  final int maxParticipants;
+
+  /// How many distinct people (guests + members, deduplicated, excluding
+  /// the host) are currently in this event — what [maxParticipants] caps.
+  final int participantCount;
 
   final int songCount;
 

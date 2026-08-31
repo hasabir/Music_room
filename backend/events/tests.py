@@ -1763,3 +1763,244 @@ class EventActivityStatusTests(APITestCase):
         self.client.post(self.queue_url, {"title": "Song A", "artist": "Artist A"})
         response = self.client.get(self.event_url)
         self.assertEqual(response.data["status"], "live")
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class EventDeletionTests(APITestCase):
+    """
+    DELETE /events/<id>/ — host-only soft delete (Event.STATUS_DELETED).
+    Unlike a real delete, the row (and its guests/members) is kept: a past
+    guest/member can still fetch the event afterwards (so the client can
+    show "this event has been deleted"), but can no longer act on it, and
+    it's dropped from every listing — including for the host.
+    """
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.guest = create_verified_user("guest@test.com")
+        self.member = create_verified_user("member@test.com")
+        self.stranger = create_verified_user("stranger@test.com")
+
+        self.client.force_authenticate(self.host)
+        event_resp = self.client.post("/api/v1/events/", {"title": "Test Party", "visibility": "public"})
+        self.event_id = event_resp.data["id"]
+        self.event_url = f"/api/v1/events/{self.event_id}/"
+        self.queue_url = f"/api/v1/events/{self.event_id}/queue/"
+        self.guests_url = f"/api/v1/events/{self.event_id}/guests/"
+        self.join_url = f"/api/v1/events/{self.event_id}/join/"
+
+        self.client.post(self.guests_url, {"user_id": self.guest.id})
+        self.client.force_authenticate(self.member)
+        self.client.post(self.join_url, {})
+        self.client.force_authenticate(self.host)
+
+    def test_host_can_delete_event(self):
+        response = self.client.delete(self.event_url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_delete_soft_deletes_rather_than_removing_the_row(self):
+        self.client.delete(self.event_url)
+        event = Event.objects.get(id=self.event_id)
+        self.assertEqual(event.status, Event.STATUS_DELETED)
+        self.assertIsNotNone(event.deleted_at)
+
+    def test_deleted_event_still_visible_to_the_host(self):
+        self.client.delete(self.event_url)
+        response = self.client.get(self.event_url)  # still authenticated as host
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "deleted")
+
+    def test_deleted_event_still_visible_to_a_past_guest(self):
+        self.client.delete(self.event_url)
+        self.client.force_authenticate(self.guest)
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "deleted")
+
+    def test_deleted_event_still_visible_to_a_past_member(self):
+        self.client.delete(self.event_url)
+        self.client.force_authenticate(self.member)
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_deleted_event_hidden_from_a_stranger(self):
+        self.client.delete(self.event_url)
+        self.client.force_authenticate(self.stranger)
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_deleted_event_excluded_from_the_list_even_for_the_host(self):
+        self.client.delete(self.event_url)
+        response = self.client.get("/api/v1/events/")
+        ids = [item["id"] for item in response.data["results"]]
+        self.assertNotIn(self.event_id, ids)
+
+    def test_deleted_event_blocks_new_joins(self):
+        self.client.delete(self.event_url)
+        self.client.force_authenticate(self.stranger)
+        response = self.client.post(self.join_url, {})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_deleted_event_blocks_adding_tracks_even_for_the_host(self):
+        self.client.delete(self.event_url)
+        response = self.client.post(self.queue_url, {"title": "Song A", "artist": "Artist A"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_deleted_event_blocks_voting_for_a_past_member(self):
+        add_a = self.client.post(self.queue_url, {"title": "Song A", "artist": "Artist A"})
+        self.client.post(self.queue_url, {"title": "Song B", "artist": "Artist B"})
+        self.client.delete(self.event_url)
+
+        self.client.force_authenticate(self.member)
+        response = self.client.post(f"{self.queue_url}{add_a.data['id']}/vote/", {})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_deleted_event_blocks_further_guest_invites(self):
+        self.client.delete(self.event_url)
+        second_guest = create_verified_user("second_guest@test.com")
+        response = self.client.post(self.guests_url, {"user_id": second_guest.id})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_non_host_cannot_delete_event(self):
+        self.client.force_authenticate(self.stranger)
+        response = self.client.delete(self.event_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        event = Event.objects.get(id=self.event_id)
+        self.assertEqual(event.status, Event.STATUS_LIVE)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class EventParticipantLimitTests(APITestCase):
+    """
+    Event.max_participants — an optional host-set cap on the combined,
+    deduplicated count of invited guests + self-joined members (the host
+    never counts against their own limit). Enforced at every entry point
+    that adds a guest or member: self-join, host invite, and approving an
+    access request.
+    """
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.client.force_authenticate(self.host)
+        event_resp = self.client.post(
+            "/api/v1/events/",
+            {"title": "Tiny Room", "visibility": "public", "max_participants": 2},
+        )
+        self.event_id = event_resp.data["id"]
+        self.event_url = f"/api/v1/events/{self.event_id}/"
+        self.guests_url = f"/api/v1/events/{self.event_id}/guests/"
+        self.join_url = f"/api/v1/events/{self.event_id}/join/"
+
+    def _join_as(self, user):
+        self.client.force_authenticate(user)
+        return self.client.post(self.join_url, {})
+
+    def test_max_participants_is_saved_and_returned(self):
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["max_participants"], 2)
+        self.assertEqual(response.data["participant_count"], 0)
+
+    def test_defaults_to_one_hundred_when_not_set(self):
+        # There is no "unlimited" option — an event the host doesn't set a
+        # limit on is still capped, at the ceiling itself.
+        event_resp = self.client.post("/api/v1/events/", {"title": "Big Room", "visibility": "public"})
+        self.assertEqual(event_resp.data["max_participants"], 100)
+
+    def test_joins_allowed_up_to_the_limit(self):
+        user_a = create_verified_user("a@test.com")
+        user_b = create_verified_user("b@test.com")
+        self.assertEqual(self._join_as(user_a).status_code, status.HTTP_201_CREATED)
+        self.assertEqual(self._join_as(user_b).status_code, status.HTTP_201_CREATED)
+
+    def test_join_blocked_once_the_limit_is_reached(self):
+        user_a = create_verified_user("a@test.com")
+        user_b = create_verified_user("b@test.com")
+        user_c = create_verified_user("c@test.com")
+        self._join_as(user_a)
+        self._join_as(user_b)
+
+        response = self._join_as(user_c)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["detail"], "This event has reached its participant limit.")
+
+    def test_invite_blocked_once_the_limit_is_reached(self):
+        user_a = create_verified_user("a@test.com")
+        user_b = create_verified_user("b@test.com")
+        user_c = create_verified_user("c@test.com")
+        self._join_as(user_a)
+        self._join_as(user_b)
+
+        self.client.force_authenticate(self.host)
+        response = self.client.post(self.guests_url, {"user_id": user_c.id})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["detail"], "This event has reached its participant limit.")
+
+    def test_inviting_an_already_counted_member_as_a_guest_still_works_when_full(self):
+        # user_a is already one of the two counted participants — inviting
+        # them as a guest too must not be blocked by their own presence.
+        user_a = create_verified_user("a@test.com")
+        user_b = create_verified_user("b@test.com")
+        self._join_as(user_a)
+        self._join_as(user_b)
+
+        self.client.force_authenticate(self.host)
+        response = self.client.post(self.guests_url, {"user_id": user_a.id})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_leaving_room_by_removing_a_member_allows_a_new_join(self):
+        user_a = create_verified_user("a@test.com")
+        user_b = create_verified_user("b@test.com")
+        user_c = create_verified_user("c@test.com")
+        self._join_as(user_a)
+        self._join_as(user_b)
+
+        self.client.force_authenticate(self.host)
+        self.client.delete(f"/api/v1/events/{self.event_id}/attendees/{user_a.id}/")
+
+        response = self._join_as(user_c)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_host_can_raise_the_limit(self):
+        self.client.force_authenticate(self.host)
+        response = self.client.patch(self.event_url, {"max_participants": 10})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["max_participants"], 10)
+
+    def test_host_can_reset_the_limit_back_to_the_default(self):
+        self.client.force_authenticate(self.host)
+        response = self.client.patch(self.event_url, {"max_participants": 100})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["max_participants"], 100)
+
+        # Room for far more than the original limit of 2 now.
+        user_a = create_verified_user("a@test.com")
+        user_b = create_verified_user("b@test.com")
+        user_c = create_verified_user("c@test.com")
+        self._join_as(user_a)
+        self._join_as(user_b)
+        self.assertEqual(self._join_as(user_c).status_code, status.HTTP_201_CREATED)
+
+    def test_max_participants_rejects_explicit_null(self):
+        # There is no "unlimited" option any more — the field is
+        # non-nullable, so an explicit JSON null must be rejected rather
+        # than silently accepted as "no limit".
+        self.client.force_authenticate(self.host)
+        # format="json": the test client's default multipart encoding
+        # can't represent an explicit null in the first place.
+        response = self.client.patch(self.event_url, {"max_participants": None}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_max_participants_must_be_at_least_two(self):
+        self.client.force_authenticate(self.host)
+        response = self.client.patch(self.event_url, {"max_participants": 1})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_max_participants_cannot_exceed_one_hundred(self):
+        self.client.force_authenticate(self.host)
+        response = self.client.patch(self.event_url, {"max_participants": 101})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_max_participants_of_one_hundred_is_allowed(self):
+        self.client.force_authenticate(self.host)
+        response = self.client.patch(self.event_url, {"max_participants": 100})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
