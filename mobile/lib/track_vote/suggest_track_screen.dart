@@ -28,13 +28,16 @@ class _SuggestColors {
 /// combining Audius's trending full tracks and Deezer's top chart, same
 /// source priority as search; typing switches to a debounced search
 /// against the query, and clearing the query falls back to the
-/// already-fetched trending list rather than an empty prompt. Unlike the
-/// playlist screen, there's no tap-to-preview audio here: the user opening
-/// this is still inside the event, whose own track is already playing in
-/// the background (see `EventDetailScreen`), so there's no way for them to
-/// actually hear a separate preview clip over it. Adding a song sends it
-/// through `POST /events/<id>/queue/` instead of a playlist's add-song
-/// endpoint.
+/// already-fetched trending list rather than an empty prompt. A
+/// "Track / Artist" toggle mirrors the playlist add-song screen's:
+/// "Track" (default) keyword-matches title/artist/etc, while "Artist"
+/// looks the query up as an artist name and returns that artist's tracks
+/// instead — see [_onSearchModeChanged]. Unlike the playlist screen,
+/// there's no tap-to-preview audio here: the user opening this is still
+/// inside the event, whose own track is already playing in the background
+/// (see `EventDetailScreen`), so there's no way for them to actually hear
+/// a separate preview clip over it. Adding a song sends it through
+/// `POST /events/<id>/queue/` instead of a playlist's add-song endpoint.
 class SuggestTrackScreen extends StatefulWidget {
   const SuggestTrackScreen({super.key, required this.eventId});
   final int eventId;
@@ -59,6 +62,13 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
   final Set<String> _added = <String>{};
   var _isLoading = false;
   String? _error;
+
+  /// `false` searches by title/artist/etc (the default keyword match);
+  /// `true` looks the query up as an artist name instead and returns that
+  /// artist's tracks — see `PlaylistApi.searchTracks`'s `byArtist` param.
+  /// Only affects [_search]; the trending list shown before the user
+  /// types anything is unaffected by this toggle.
+  var _searchByArtist = false;
 
   bool get _isSearching => _controller.text.trim().isNotEmpty;
   List<TrackSearchResult>? get _results =>
@@ -115,9 +125,24 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
     _debounce = Timer(const Duration(milliseconds: 400), () => _search(query));
   }
 
+  /// Switches between title/artist keyword search and an artist-name
+  /// lookup. Re-runs the current query immediately (no debounce — this is
+  /// an explicit user action, not keystroke-driven) if one is active;
+  /// otherwise there's nothing to re-run since the trending list ignores
+  /// this toggle.
+  void _onSearchModeChanged(bool byArtist) {
+    if (byArtist == _searchByArtist) return;
+    setState(() => _searchByArtist = byArtist);
+    if (_isSearching) {
+      _debounce?.cancel();
+      setState(() => _isLoading = true);
+      _search(_controller.text);
+    }
+  }
+
   Future<void> _search(String query) async {
     try {
-      final results = await _trackApi.searchTracks(query);
+      final results = await _trackApi.searchTracks(query, byArtist: _searchByArtist);
       if (!mounted || query != _controller.text) return;
       setState(() {
         _searchResults = results;
@@ -205,7 +230,9 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
                     onChanged: _onQueryChanged,
                     style: const TextStyle(color: _SuggestColors.body),
                     decoration: InputDecoration(
-                      hintText: 'Search for a song to add...',
+                      hintText: _searchByArtist
+                          ? 'Search for an artist...'
+                          : 'Search for a song to add...',
                       hintStyle: const TextStyle(color: _SuggestColors.muted),
                       prefixIcon: const Icon(
                         Icons.search_rounded,
@@ -221,6 +248,17 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: _SearchModeToggle(
+                byArtist: _searchByArtist,
+                onChanged: _onSearchModeChanged,
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -246,9 +284,14 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
     }
     final results = _results ?? const [];
     if (results.isEmpty) {
+      final message = !_isSearching
+          ? 'Nothing trending right now.'
+          : _searchByArtist
+          ? 'No artist found.'
+          : 'No songs found.';
       return Center(
         child: Text(
-          _isSearching ? 'No songs found.' : 'Nothing trending right now.',
+          message,
           style: const TextStyle(color: _SuggestColors.muted),
         ),
       );
@@ -284,6 +327,79 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
           onAdd: () => _addSong(track),
         );
       },
+    );
+  }
+}
+
+/// Two-way pill switch between the default title/artist/etc keyword
+/// search and an artist-name lookup — see
+/// [_SuggestTrackScreenState._searchByArtist]. Mirrors the identical
+/// widget on the playlist add-song screen (`add_song_search_screen.dart`).
+class _SearchModeToggle extends StatelessWidget {
+  const _SearchModeToggle({required this.byArtist, required this.onChanged});
+
+  final bool byArtist;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: _SuggestColors.card,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ModeChip(
+            label: 'Track',
+            isSelected: !byArtist,
+            onTap: () => onChanged(false),
+          ),
+          _ModeChip(
+            label: 'Artist',
+            isSelected: byArtist,
+            onTap: () => onChanged(true),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModeChip extends StatelessWidget {
+  const _ModeChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(13),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? _SuggestColors.border : Colors.transparent,
+          borderRadius: BorderRadius.circular(13),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Sora',
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+            color: isSelected ? _SuggestColors.body : _SuggestColors.muted,
+          ),
+        ),
+      ),
     );
   }
 }

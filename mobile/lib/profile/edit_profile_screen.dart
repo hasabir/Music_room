@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../core/api/api_client.dart';
+import '../track_vote/location_label.dart';
 import 'profile_api.dart';
 import 'profile_avatar.dart';
 import 'profile_models.dart';
@@ -79,6 +81,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   bool _isSaving = false;
   bool _isUploadingPhoto = false;
+  bool _isLocating = false;
   String? _error;
 
   @override
@@ -108,6 +111,58 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _favoriteArtistController.dispose();
     _phoneController.dispose();
     super.dispose();
+  }
+
+  /// Fills [_locationController] from the device's current GPS position,
+  /// reverse-geocoded into a short "City, Country" label — mirroring
+  /// `create_event_screen.dart`'s `_useCurrentLocation` (same permission
+  /// flow, same `reverseGeocodeLabel` call), except there's no separate
+  /// coordinate state to keep here: `Profile.location` only ever stores
+  /// free text, so the resolved label (or, if reverse geocoding fails,
+  /// the raw coordinates) is written straight into the text field the
+  /// user could otherwise have typed into by hand.
+  Future<void> _useCurrentLocationForProfile() async {
+    setState(() {
+      _isLocating = true;
+      _error = null;
+    });
+
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw 'Turn on location services to use this.';
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw 'Location permission was denied.';
+      }
+
+      final position = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
+
+      final label = await reverseGeocodeLabel(
+        position.latitude,
+        position.longitude,
+      );
+      if (!mounted) return;
+      setState(() {
+        _locationController.text =
+            label ??
+            '${position.latitude.toStringAsFixed(4)}, '
+                '${position.longitude.toStringAsFixed(4)}';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _error = error is String ? error : 'Could not get your location.',
+      );
+    } finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
   }
 
   Future<void> _onEditPhoto() async {
@@ -304,6 +359,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         trailing: _VisibilityDropdown(
           value: _visibility['location']!,
           onChanged: onChanged,
+        ),
+        suffixIcon: IconButton(
+          tooltip: 'Use my current location',
+          onPressed: _isLocating ? null : _useCurrentLocationForProfile,
+          icon: _isLocating
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: _EditColors.headline,
+                  ),
+                )
+              : const Icon(
+                  Icons.my_location_rounded,
+                  size: 20,
+                  color: _EditColors.headline,
+                ),
         ),
       ),
       'favorite_artist' => _EditField(
@@ -737,6 +810,7 @@ class _EditField extends StatelessWidget {
     this.maxLines = 1,
     this.keyboardType,
     this.trailing,
+    this.suffixIcon,
   });
 
   final String label;
@@ -745,6 +819,12 @@ class _EditField extends StatelessWidget {
   final int maxLines;
   final TextInputType? keyboardType;
   final Widget? trailing;
+
+  /// Rendered as the text field's `suffixIcon` — an optional action
+  /// button distinct from [trailing] (which sits in the label row, e.g.
+  /// the visibility dropdown). Used by the location field's "use current
+  /// location" GPS button.
+  final Widget? suffixIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -780,6 +860,7 @@ class _EditField extends StatelessWidget {
               child: Icon(icon, size: 18, color: _EditColors.muted),
             ),
             prefixIconConstraints: const BoxConstraints(minWidth: 36),
+            suffixIcon: suffixIcon,
             filled: true,
             fillColor: _EditColors.background,
             contentPadding: const EdgeInsets.symmetric(
