@@ -166,10 +166,27 @@ class Event(models.Model):
 
 
 class EventGuest(models.Model):
-    """One person on the guest list of a private event."""
+    """
+    A "collaborator": one person the host has invited, granting both
+    private-event visibility and invited_only voting rights. Not limited to
+    private events — a public event can also invite guests specifically to
+    hand out invited_only voting rights (public visibility + invite-gated
+    voting), which is exactly what an EventGuest row on a public event
+    represents.
+    """
+
+    RSVP_PENDING = "pending"
+    RSVP_ACCEPTED = "accepted"
+    RSVP_DECLINED = "declined"
+    RSVP_STATUS_CHOICES = [
+        (RSVP_PENDING, "Pending"),
+        (RSVP_ACCEPTED, "Accepted"),
+        (RSVP_DECLINED, "Declined"),
+    ]
 
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="guests")
     guest = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="event_invitations")
+    rsvp_status = models.CharField(max_length=10, choices=RSVP_STATUS_CHOICES, default=RSVP_PENDING)
     invited_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -177,7 +194,7 @@ class EventGuest(models.Model):
         ordering = ["-invited_at"]
 
     def __str__(self):
-        return f"{self.guest.email} invited to {self.event.title}"
+        return f"{self.guest.email} invited to {self.event.title} ({self.rsvp_status})"
 
 
 class EventMembership(models.Model):
@@ -201,6 +218,38 @@ class EventMembership(models.Model):
 
     def __str__(self):
         return f"{self.member.email} joined {self.event.title}"
+
+
+class EventAccessRequest(models.Model):
+    """
+    A request from a non-guest to gain access to a private event — mirrors
+    `playlists.PlaylistAccessRequest`. Approving a request simply creates
+    an `EventGuest`, which already grants both private-event visibility
+    and invited_only voting rights.
+    """
+
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_DENIED = "denied"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_DENIED, "Denied"),
+    ]
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="access_requests")
+    requester = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="event_access_requests"
+    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-requested_at"]
+
+    def __str__(self):
+        return f"{self.requester.email} -> {self.event.title} ({self.status})"
 
 
 class Song(models.Model):

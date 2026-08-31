@@ -130,3 +130,87 @@ separate, larger change than event playback semantics. This work keeps the event
 existing `Timer`-based REST polling and makes sure every refetch simply trusts the backend
 response as ground truth. Wiring the event screen to its existing WebSocket consumer (like
 playlists already do) would be a reasonable, currently-unclaimed follow-up.
+
+## Events brought to parity with Playlists: access requests, vote-retraction, catalog matching
+
+**Decision:** Events (Track Vote) gained three pieces of behavior Playlists already had —
+these were pure parity gaps against Playlists' more defensive implementation, not anything
+particular to Events' model:
+
+1. **`EventAccessRequest`** (`events/models.py`, `events/views_access_requests.py`) — a
+   self-serve "ask the host for guest access" flow for private events, mirroring
+   `PlaylistAccessRequest` field-for-field (`pending`/`approved`/`denied`, `requested_at`,
+   `decided_at`). One pending request per `(event, user)` is enforced at the application
+   level only (no DB constraint) — same as `PlaylistAccessRequest`, for consistency rather
+   than because it's stricter. `POST /events/<id>/access-requests/` 400s for public events
+   (they already have self-serve `POST /join/`) and for the host/an existing guest; it's
+   idempotent on an existing pending request (returns it with `200`, doesn't duplicate).
+   Approving (`POST .../<request_id>/decide/`) creates an `EventGuest` via `get_or_create`
+   (race-safe, same pattern Playlists uses for `PlaylistCollaborator`) — deliberately the
+   *coarse* grant that `EventGuest` already means in this codebase (private-event visibility
+   **and** `invited_only` voting rights bundled together), not a new finer-grained permission.
+   Events' voting model stays intentionally simpler than Playlists' editing model — no
+   per-guest `can_add_songs`/`can_reorder_songs`-equivalent booleans were added here; that
+   asymmetry is intentional, not an oversight.
+2. **`DELETE .../vote/` (retraction) now re-checks `can_user_see_event`** before deleting the
+   vote. Previously it only required `IsAuthenticated`, so a user whose guest access had been
+   revoked after voting (e.g. removed from an `invited_only` event's guest list) could still
+   retract that vote by calling the endpoint directly with a known `event_song_id`, even
+   though `GET` would now 403 them. The fix only requires visibility — **not** the full
+   `can_user_vote` gate (2-songs-minimum, location/time window) — since retracting removes
+   something that already exists and belongs to the caller, it isn't "casting a new vote."
+3. **`EventQueueView.post`'s song-catalog matching is now `external_id`-aware**, mirroring
+   `PlaylistSongListView.post`: matches/creates the catalog `Song` by `external_id` first when
+   the request supplies one, falling back to case-insensitive title/artist matching only when
+   it's blank. Previously Events always matched by title/artist regardless of `external_id`,
+   which meant the same track (by `external_id`) could fork into two different `Song` rows
+   depending on whether it was added to an event or a playlist first. Song revival (re-adding
+   a `played` `EventSong` resets it to `queued`) is unaffected — it keys off whichever `Song`
+   row the (now-consistent) matching step resolves to, not off how that row was found.
+
+**Broadcast payload change (additive):** `broadcast_queue_update` now also sends the event's
+current guest list (`"guests": [...]`) alongside `"queue"` on every broadcast, and is called on
+an access-request approval — mirroring how `broadcast_playlist_update` always includes the
+collaborator list on every playlist broadcast. This is safe to add unconditionally: the mobile
+app has no WebSocket client wired up for events at all yet (see the playback-sync decision
+above — the event screen is REST-polling only), so no existing consumer reads or could break
+on the new key.
+
+## Events terminology: "collaborator" vs. "attendee" — and RSVP status on EventGuest
+
+**Terminology, fixed going forward for Events work:**
+- **"Collaborator"** = an invited-only voter = an `EventGuest` row. This is not a new role —
+  `EventGuest` has always granted both private-event visibility and `invited_only` voting
+  rights, which is exactly what "collaborator" means here. `EventGuest` is **not** limited to
+  private events: a **public** event can also invite guests specifically to hand out
+  `invited_only` voting rights on top of public visibility, and that already worked before this
+  terminology was written down — nothing changed about who can be an `EventGuest`, only the
+  name used to talk about it.
+- **"Attendee"** = anyone who has joined the session = an `EventMembership` row, created only
+  via the existing self-serve `POST /events/<id>/join/`. This stays scoped to **public events
+  only**. Inviting a guest to a private event does **not** create an `EventMembership` — a
+  private-event guest is a collaborator (voting/visibility rights), not automatically recorded
+  as having "joined the session" the way a public-event self-joiner is. This is a deliberate
+  scope boundary carried forward from the original `EventMembership` design (see
+  `EventMembership`'s docstring in `events/models.py`: kept deliberately separate from
+  `EventGuest` so inviting/joining never cross-grants the other's semantics) — not an oversight
+  of this RSVP work. Worth revisiting if a private event ever needs its own "who's actually
+  shown up" concept distinct from "who's a collaborator," but that's out of scope here.
+
+**Decision — RSVP status on `EventGuest`:** added `rsvp_status`
+(`pending`/`accepted`/`declined`, default `pending`) directly on `EventGuest`, plus
+`POST /events/<event_id>/guests/respond/` for the invited user to set their own status
+(`request.user`-scoped — never a path-parameterized `user_id`, so a host cannot respond on a
+guest's behalf). Changing an existing response (e.g. `accepted` → `declined` later) is allowed,
+not just a one-time first response — a collaborator should be able to change their mind.
+
+**Why on `EventGuest` and not a new model:** the response cycle is inherently 1:1 with a single
+invitation, and `EventGuest` already has the right identity (`(event, guest)`, unique) and
+lifecycle (created on invite, deleted on remove) — a status field on the existing row is the
+whole feature, no new table/FK needed. Mirrors how `PlaylistAccessRequest.status` lives directly
+on the request row rather than as a separate response object.
+
+**Scope note — foundational, not final:** this task is intentionally narrow: the field exists,
+and the invitee can set it. No list-filtering-by-status endpoints (invited/accepted/declined/
+pending/attendees) and no changes to guest-removal logic were built here — later work builds on
+top of this field for that. See `docs/EVENTS_PLAYLISTS_API_DOCS.md` for the endpoint reference.

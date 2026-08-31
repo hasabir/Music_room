@@ -116,5 +116,8 @@ flutter-run:
 		exit 1; \
 	fi
 
+frun:
+	@cd mobile && flutter run
+
 # Development workflow
 dev: up logs

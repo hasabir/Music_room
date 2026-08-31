@@ -188,19 +188,33 @@ class EventQueueView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        song, _ = Song.objects.get_or_create(
-            title__iexact=data["title"],
-            artist__iexact=data["artist"],
-            defaults={
-                "title": data["title"],
-                "artist": data["artist"],
-                "duration_seconds": data.get("duration_seconds"),
-                "external_id": data.get("external_id", ""),
-                "album_art_url": data.get("album_art_url", ""),
-                "preview_url": data.get("preview_url", ""),
-                "playback_type": data.get("playback_type", "preview"),
-            },
-        )
+        song_defaults = {
+            "title": data["title"],
+            "artist": data["artist"],
+            "duration_seconds": data.get("duration_seconds"),
+            "external_id": data.get("external_id", ""),
+            "album_art_url": data.get("album_art_url", ""),
+            "preview_url": data.get("preview_url", ""),
+            "playback_type": data.get("playback_type", "preview"),
+        }
+        external_id = data.get("external_id", "")
+        if external_id:
+            # A title/artist can exist at multiple providers. Keep the
+            # provider-specific entry so an Audius full stream never gets
+            # replaced by a same-named Deezer preview — mirrors playlists'
+            # add-song matching (playlists/views.py) so the same track
+            # doesn't fork into two different Song rows depending on
+            # whether it's added to an event or a playlist first.
+            song, _ = Song.objects.get_or_create(
+                external_id=external_id,
+                defaults=song_defaults,
+            )
+        else:
+            song, _ = Song.objects.get_or_create(
+                title__iexact=data["title"],
+                artist__iexact=data["artist"],
+                defaults=song_defaults,
+            )
 
         # Catch the event up to now first — otherwise a song whose real
         # playtime already elapsed could still read as stale `playing`
@@ -333,6 +347,16 @@ class VoteView(APIView):
     def delete(self, request, event_id, event_song_id):
         """Retract a previously cast vote."""
         event_song = get_object_or_404(EventSong, id=event_song_id, event_id=event_id)
+
+        # Retracting isn't "casting a new vote" — the full can_user_vote
+        # gate (2-song minimum, location/time window) doesn't apply. But
+        # access can be revoked after a vote was cast (e.g. removed as a
+        # guest on an invited_only event), so visibility is still required:
+        # you shouldn't be able to touch an event you can no longer see.
+        if not can_user_see_event(request.user, event_song.event):
+            return Response({"detail": "You do not have access to this event."},
+                             status=status.HTTP_403_FORBIDDEN)
+
         deleted, _ = Vote.objects.filter(event_song=event_song, voter=request.user).delete()
 
         if not deleted:

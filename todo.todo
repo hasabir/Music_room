@@ -1,6 +1,4 @@
-[✓] add option to cancel request to befreind someone
 [] add avatars
-[✓] change password -> link with backend
 
 add miniplay like in the playlist
 
@@ -13,4 +11,31 @@ add miniplay like in the playlist
 
 
 
-when voting if there are two musics with the same amount of votes, the oldest one stays on top
+[] search by artist name
+[] popular music in playlist
+[] remove the miniplayer when entring the music page
+[] change the ui of the event page
+
+
+
+[] in events the owner can add collaborators to the event
+[] anyone can see the invited collaborators of the event
+[] separate time restriction with the geolocalisation restriction for events the user can choose to have both or only one of them
+[] add in the event page the ability to see the list of attendees
+[] add in the event page the ability to see the list of invited users
+[] add in the event page the ability to see the list of users who have accepted the invitation
+[] add in the event page the ability to see the list of users who have declined the invitation
+[] add in the event page the ability to see the list of users who have not responded to the invitation
+
+[] the owner of the event can remove collaborators from the event
+[] the owner of the event can remove attendees from the event
+[] the owner of the event can remove invited users from the event
+[] the owner of the event can remove users who have accepted the invitation from the event
+[] the owner of the event can remove users who have declined the invitation from the event
+[] the owner of the event can remove users who have not responded to the invitation from the event
+
+
+[] the owner of the event can change the time restriction of the event any time
+[] the owner of the event can change the geolocalisation restriction of the event any time
+[] the owner of the event can change both the time and geolocalisation restriction of the event any time
+

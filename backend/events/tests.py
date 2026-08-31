@@ -11,7 +11,7 @@ from rest_framework.test import APITestCase
 from rest_framework import status
 
 from user.models import User
-from .models import Event, Song, EventSong, Vote, EventGuest
+from .models import Event, Song, EventSong, Vote, EventGuest, EventAccessRequest
 
 
 def create_verified_user(email, password="TestPass123"):
@@ -135,6 +135,26 @@ class QueueAndVotingTests(APITestCase):
         response = self._add_song("blinding lights", "the weeknd")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(Song.objects.count(), 1)  # only one Song row created, not two
+
+    def test_add_song_with_external_id_is_matched_by_external_id_not_title(self):
+        # Mirrors AddSongToPlaylistSerializer matching in playlists/views.py
+        # — a title/artist that exists at multiple providers must not
+        # collapse into one Song row keyed off title/artist alone.
+        first = self.client.post(self.queue_url, {
+            "title": "Song X", "artist": "Artist X", "external_id": "audius:abc123"
+        })
+        song_id = first.data["song"]["id"]
+        self.assertEqual(Song.objects.filter(external_id="audius:abc123").count(), 1)
+
+        second_event = self.client.post("/api/v1/events/", {"title": "Second Party"})
+        second_queue_url = f"/api/v1/events/{second_event.data['id']}/queue/"
+        # Different title casing, same external_id — should resolve to the
+        # exact same catalog Song, not fork a duplicate.
+        second = self.client.post(second_queue_url, {
+            "title": "song x", "artist": "artist x", "external_id": "audius:abc123"
+        })
+        self.assertEqual(second.data["song"]["id"], song_id)
+        self.assertEqual(Song.objects.filter(external_id="audius:abc123").count(), 1)
 
     def test_add_song_requires_access(self):
         stranger = create_verified_user("stranger@test.com")
@@ -426,6 +446,25 @@ class PlaybackSyncTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_played_song_can_be_revived_via_external_id_match(self):
+        add_a = self._add_song("Song A", "Artist A", external_id="deezer:555")
+        self._add_song("Song B", "Artist B")
+
+        self.client.post(f"{self.queue_url}{add_a.data['id']}/vote/", {})
+        self._backdate_current_song(31)
+
+        # Re-add with different title/artist casing but the same
+        # external_id — external_id-aware matching (Task 3) must still
+        # resolve to the same catalog Song, so this revives the same
+        # EventSong row rather than creating a stray duplicate.
+        response = self._add_song("song a", "artist a", external_id="deezer:555")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["id"], add_a.data["id"])  # same row, revived
+        self.assertEqual(response.data["vote_count"], 0)
+        self.assertEqual(response.data["status"], "queued")
+        self.assertEqual(Song.objects.filter(external_id="deezer:555").count(), 1)
+
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class VotePermissionModeTests(APITestCase):
@@ -510,3 +549,420 @@ class EventGuestTests(APITestCase):
         self.client.force_authenticate(self.guest)
         response = self.client.get(f"/api/v1/events/{self.event_id}/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class VoteRetractionAccessTests(APITestCase):
+    """
+    Task 2: DELETE .../vote/ must re-check event visibility before
+    allowing a retraction — but not the full can_user_vote gate (2-song
+    minimum, location/time window don't apply to removing an existing
+    vote). Uses a private + invited_only event so removing the guest
+    also removes visibility, which is the only thing that should now
+    block a retraction.
+    """
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.guest = create_verified_user("guest@test.com")
+
+        self.client.force_authenticate(self.host)
+        event_resp = self.client.post("/api/v1/events/", {
+            "title": "Private Invite Only",
+            "visibility": "private",
+            "vote_permission": "invited_only",
+        })
+        self.event_id = event_resp.data["id"]
+        self.queue_url = f"/api/v1/events/{self.event_id}/queue/"
+        self.guests_url = f"/api/v1/events/{self.event_id}/guests/"
+
+        self.client.post(self.guests_url, {"user_id": self.guest.id})
+        self.client.post(self.queue_url, {"title": "Song A", "artist": "Artist A"})
+        add_b = self.client.post(self.queue_url, {"title": "Song B", "artist": "Artist B"})
+        self.event_song_id = add_b.data["id"]
+
+        self.client.force_authenticate(self.guest)
+        self.client.post(f"{self.queue_url}{self.event_song_id}/vote/", {})
+
+    def test_retract_own_vote_while_still_visible_succeeds(self):
+        # Legitimate case, unaffected by the fix: the guest can still see
+        # the event, so retraction proceeds normally.
+        response = self.client.delete(f"{self.queue_url}{self.event_song_id}/vote/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["vote_count"], 0)
+
+    def test_retract_vote_after_guest_access_revoked_is_forbidden(self):
+        self.client.force_authenticate(self.host)
+        self.client.delete(f"{self.guests_url}{self.guest.id}/")
+
+        self.client.force_authenticate(self.guest)
+        response = self.client.delete(f"{self.queue_url}{self.event_song_id}/vote/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["detail"], "You do not have access to this event.")
+        # The vote itself is untouched — it wasn't retracted, just blocked.
+        self.assertEqual(Vote.objects.filter(event_song_id=self.event_song_id).count(), 1)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class EventAccessRequestTests(APITestCase):
+    """Task 1: mirrors playlists' PlaylistAccessRequest flow, adapted to
+    Events' host/guest model."""
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.requester = create_verified_user("requester@test.com")
+        self.existing_guest = create_verified_user("existingguest@test.com")
+
+        self.client.force_authenticate(self.host)
+        private_resp = self.client.post("/api/v1/events/", {"title": "Private Party", "visibility": "private"})
+        self.event_id = private_resp.data["id"]
+        self.access_requests_url = f"/api/v1/events/{self.event_id}/access-requests/"
+        self.mine_url = f"{self.access_requests_url}mine/"
+
+        self.client.post(f"/api/v1/events/{self.event_id}/guests/", {"user_id": self.existing_guest.id})
+
+        public_resp = self.client.post("/api/v1/events/", {"title": "Public Party", "visibility": "public"})
+        self.public_event_id = public_resp.data["id"]
+
+    def _decide_url(self, request_id):
+        return f"{self.access_requests_url}{request_id}/decide/"
+
+    # ---------- CREATE ----------
+
+    def test_requester_can_request_access_to_private_event(self):
+        self.client.force_authenticate(self.requester)
+        response = self.client.post(self.access_requests_url, {})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], "pending")
+
+    def test_host_cannot_request_access_to_own_event(self):
+        self.client.force_authenticate(self.host)
+        response = self.client.post(self.access_requests_url, {})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["detail"], "You already own this event.")
+
+    def test_existing_guest_cannot_request_access(self):
+        self.client.force_authenticate(self.existing_guest)
+        response = self.client.post(self.access_requests_url, {})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["detail"], "You already have access to this event.")
+
+    def test_duplicate_pending_request_is_idempotent(self):
+        self.client.force_authenticate(self.requester)
+        first = self.client.post(self.access_requests_url, {})
+        second = self.client.post(self.access_requests_url, {})
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.data["id"], first.data["id"])
+        self.assertEqual(EventAccessRequest.objects.count(), 1)
+
+    def test_cannot_request_access_to_a_public_event(self):
+        self.client.force_authenticate(self.requester)
+        response = self.client.post(f"/api/v1/events/{self.public_event_id}/access-requests/", {})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("public", response.data["detail"])
+
+    # ---------- LIST ----------
+
+    def test_only_host_can_list_access_requests(self):
+        self.client.force_authenticate(self.requester)
+        self.client.post(self.access_requests_url, {})
+
+        response = self.client.get(self.access_requests_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.force_authenticate(self.host)
+        response = self.client.get(self.access_requests_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+    # ---------- MINE ----------
+
+    def test_mine_returns_404_when_no_request_exists(self):
+        self.client.force_authenticate(self.requester)
+        response = self.client.get(self.mine_url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_mine_returns_most_recent_request(self):
+        self.client.force_authenticate(self.requester)
+        self.client.post(self.access_requests_url, {})
+        response = self.client.get(self.mine_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "pending")
+
+    def test_cancel_pending_request(self):
+        self.client.force_authenticate(self.requester)
+        self.client.post(self.access_requests_url, {})
+        response = self.client.delete(self.mine_url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(EventAccessRequest.objects.count(), 0)
+
+    def test_cancel_with_no_pending_request_fails(self):
+        self.client.force_authenticate(self.requester)
+        response = self.client.delete(self.mine_url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    # ---------- DECIDE ----------
+
+    def test_non_host_cannot_decide(self):
+        self.client.force_authenticate(self.requester)
+        create_resp = self.client.post(self.access_requests_url, {})
+
+        response = self.client.post(self._decide_url(create_resp.data["id"]), {"approve": True})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_approve_creates_guest_and_grants_visibility(self):
+        self.client.force_authenticate(self.requester)
+        create_resp = self.client.post(self.access_requests_url, {})
+
+        self.client.force_authenticate(self.host)
+        response = self.client.post(self._decide_url(create_resp.data["id"]), {"approve": True})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "approved")
+        self.assertTrue(EventGuest.objects.filter(event_id=self.event_id, guest=self.requester).exists())
+
+        self.client.force_authenticate(self.requester)
+        response = self.client.get(f"/api/v1/events/{self.event_id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_deny_does_not_create_guest(self):
+        self.client.force_authenticate(self.requester)
+        create_resp = self.client.post(self.access_requests_url, {})
+
+        self.client.force_authenticate(self.host)
+        response = self.client.post(self._decide_url(create_resp.data["id"]), {"approve": False})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "denied")
+        self.assertFalse(EventGuest.objects.filter(event_id=self.event_id, guest=self.requester).exists())
+
+        self.client.force_authenticate(self.requester)
+        response = self.client.get(f"/api/v1/events/{self.event_id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_deciding_an_already_decided_request_fails(self):
+        self.client.force_authenticate(self.requester)
+        create_resp = self.client.post(self.access_requests_url, {})
+
+        self.client.force_authenticate(self.host)
+        self.client.post(self._decide_url(create_resp.data["id"]), {"approve": True})
+        response = self.client.post(self._decide_url(create_resp.data["id"]), {"approve": True})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_denied_request_can_be_re_requested(self):
+        self.client.force_authenticate(self.requester)
+        create_resp = self.client.post(self.access_requests_url, {})
+
+        self.client.force_authenticate(self.host)
+        self.client.post(self._decide_url(create_resp.data["id"]), {"approve": False})
+
+        self.client.force_authenticate(self.requester)
+        response = self.client.post(self.access_requests_url, {})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertNotEqual(response.data["id"], create_resp.data["id"])
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class EventGuestRsvpTests(APITestCase):
+    """RSVP status on EventGuest — POST /events/<event_id>/guests/respond/."""
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.guest = create_verified_user("guest@test.com")
+        self.stranger = create_verified_user("stranger@test.com")
+
+        self.client.force_authenticate(self.host)
+        event_resp = self.client.post("/api/v1/events/", {"title": "Private Party", "visibility": "private"})
+        self.event_id = event_resp.data["id"]
+        self.guests_url = f"/api/v1/events/{self.event_id}/guests/"
+        self.respond_url = f"/api/v1/events/{self.event_id}/guests/respond/"
+
+    def test_fresh_invite_defaults_to_pending(self):
+        response = self.client.post(self.guests_url, {"user_id": self.guest.id})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["rsvp_status"], "pending")
+
+    def test_guest_can_accept_invitation(self):
+        self.client.post(self.guests_url, {"user_id": self.guest.id})
+
+        self.client.force_authenticate(self.guest)
+        response = self.client.post(self.respond_url, {"response": "accepted"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["rsvp_status"], "accepted")
+        self.assertEqual(
+            EventGuest.objects.get(event_id=self.event_id, guest=self.guest).rsvp_status,
+            "accepted",
+        )
+
+    def test_guest_can_decline_invitation(self):
+        self.client.post(self.guests_url, {"user_id": self.guest.id})
+
+        self.client.force_authenticate(self.guest)
+        response = self.client.post(self.respond_url, {"response": "declined"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["rsvp_status"], "declined")
+
+    def test_guest_can_change_an_existing_response(self):
+        self.client.post(self.guests_url, {"user_id": self.guest.id})
+
+        self.client.force_authenticate(self.guest)
+        self.client.post(self.respond_url, {"response": "accepted"})
+        response = self.client.post(self.respond_url, {"response": "declined"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["rsvp_status"], "declined")
+        self.assertEqual(
+            EventGuest.objects.get(event_id=self.event_id, guest=self.guest).rsvp_status,
+            "declined",
+        )
+
+    def test_responding_without_an_invitation_fails(self):
+        self.client.force_authenticate(self.stranger)
+        response = self.client.post(self.respond_url, {"response": "accepted"})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data["detail"], "You have not been invited to this event.")
+
+    def test_invalid_response_value_fails(self):
+        self.client.post(self.guests_url, {"user_id": self.guest.id})
+
+        self.client.force_authenticate(self.guest)
+        response = self.client.post(self.respond_url, {"response": "maybe"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["detail"], "Response must be 'accepted' or 'declined'.")
+        # Unaffected by the bad request — still pending.
+        self.assertEqual(
+            EventGuest.objects.get(event_id=self.event_id, guest=self.guest).rsvp_status,
+            "pending",
+        )
+
+    def test_host_cannot_respond_on_behalf_of_another_guest(self):
+        # There's no user_id in the request — respond/ always targets the
+        # caller's own invitation via request.user, so the host responding
+        # here is answered against their own (nonexistent) invitation, not
+        # the actual guest's.
+        self.client.post(self.guests_url, {"user_id": self.guest.id})
+
+        self.client.force_authenticate(self.host)
+        response = self.client.post(self.respond_url, {"response": "accepted"})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(
+            EventGuest.objects.get(event_id=self.event_id, guest=self.guest).rsvp_status,
+            "pending",
+        )
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class EventGuestListFilterTests(APITestCase):
+    """GET /events/<event_id>/guests/?status=... — read-only filtering by
+    rsvp_status, on top of the existing (unchanged) visibility rule."""
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.accepted_guest = create_verified_user("accepted@test.com")
+        self.declined_guest = create_verified_user("declined@test.com")
+        self.pending_guest = create_verified_user("pending@test.com")
+        self.stranger = create_verified_user("stranger@test.com")
+
+        self.client.force_authenticate(self.host)
+        event_resp = self.client.post("/api/v1/events/", {"title": "Private Party", "visibility": "private"})
+        self.event_id = event_resp.data["id"]
+        self.guests_url = f"/api/v1/events/{self.event_id}/guests/"
+        self.respond_url = f"/api/v1/events/{self.event_id}/guests/respond/"
+
+        self.client.post(self.guests_url, {"user_id": self.accepted_guest.id})
+        self.client.post(self.guests_url, {"user_id": self.declined_guest.id})
+        self.client.post(self.guests_url, {"user_id": self.pending_guest.id})
+
+        self.client.force_authenticate(self.accepted_guest)
+        self.client.post(self.respond_url, {"response": "accepted"})
+
+        self.client.force_authenticate(self.declined_guest)
+        self.client.post(self.respond_url, {"response": "declined"})
+        # pending_guest never responds — stays "pending".
+
+        self.client.force_authenticate(self.host)
+
+    def test_unfiltered_list_returns_all_guests_regardless_of_status(self):
+        response = self.client.get(self.guests_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 3)
+
+    def test_filter_by_accepted(self):
+        response = self.client.get(f"{self.guests_url}?status=accepted")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["guest_email"], "accepted@test.com")
+
+    def test_filter_by_declined(self):
+        response = self.client.get(f"{self.guests_url}?status=declined")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["guest_email"], "declined@test.com")
+
+    def test_filter_by_pending(self):
+        response = self.client.get(f"{self.guests_url}?status=pending")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["guest_email"], "pending@test.com")
+
+    def test_invalid_status_filter_fails(self):
+        response = self.client.get(f"{self.guests_url}?status=maybe")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["detail"], "Invalid status filter.")
+
+    def test_guest_list_visibility_unchanged_for_stranger_on_private_event(self):
+        self.client.force_authenticate(self.stranger)
+        response = self.client.get(self.guests_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class EventAttendeeListTests(APITestCase):
+    """GET /events/<event_id>/attendees/ — the EventMembership list."""
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.member1 = create_verified_user("member1@test.com")
+        self.member2 = create_verified_user("member2@test.com")
+        self.stranger = create_verified_user("stranger@test.com")
+
+        self.client.force_authenticate(self.host)
+        public_resp = self.client.post("/api/v1/events/", {"title": "Public Party", "visibility": "public"})
+        self.public_event_id = public_resp.data["id"]
+        self.public_attendees_url = f"/api/v1/events/{self.public_event_id}/attendees/"
+
+        private_resp = self.client.post("/api/v1/events/", {"title": "Private Party", "visibility": "private"})
+        self.private_event_id = private_resp.data["id"]
+        self.private_attendees_url = f"/api/v1/events/{self.private_event_id}/attendees/"
+
+        self.client.force_authenticate(self.member1)
+        self.client.post(f"/api/v1/events/{self.public_event_id}/join/", {})
+
+        self.client.force_authenticate(self.member2)
+        self.client.post(f"/api/v1/events/{self.public_event_id}/join/", {})
+
+    def test_attendee_list_for_public_event_with_joined_members(self):
+        self.client.force_authenticate(self.host)
+        response = self.client.get(self.public_attendees_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+        emails = {row["member_email"] for row in response.data}
+        self.assertEqual(emails, {"member1@test.com", "member2@test.com"})
+        self.assertIn("joined_at", response.data[0])
+        self.assertIn("member", response.data[0])
+
+    def test_attendee_list_for_private_event_is_empty_not_error(self):
+        # Private-event guests never get an EventMembership row (that's
+        # public-events-only, by design) — so this must return an empty
+        # list, not a 403 or a special error, for someone who CAN see it.
+        self.client.force_authenticate(self.host)
+        response = self.client.get(self.private_attendees_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_attendee_list_visibility_enforced_for_private_event(self):
+        self.client.force_authenticate(self.stranger)
+        response = self.client.get(self.private_attendees_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_attendee_list_visible_to_anyone_for_public_event(self):
+        self.client.force_authenticate(self.stranger)
+        response = self.client.get(self.public_attendees_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

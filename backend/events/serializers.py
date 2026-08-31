@@ -1,7 +1,7 @@
 # events/serializers.py
 from django.utils import timezone
 from rest_framework import serializers
-from .models import Event, EventGuest, EventMembership, Song, EventSong, Vote
+from .models import Event, EventGuest, EventMembership, Song, EventSong, Vote, EventAccessRequest
 
 
 class EventSerializer(serializers.ModelSerializer):
@@ -72,8 +72,8 @@ class EventGuestSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EventGuest
-        fields = ["id", "event", "guest", "guest_email", "invited_at"]
-        read_only_fields = ["id", "invited_at", "guest_email"]
+        fields = ["id", "event", "guest", "guest_email", "rsvp_status", "invited_at"]
+        read_only_fields = ["id", "invited_at", "guest_email", "rsvp_status"]
 
 
 class SongSerializer(serializers.ModelSerializer):
@@ -125,7 +125,23 @@ class InviteGuestSerializer(serializers.Serializer):
 
 
 class EventMembershipSerializer(serializers.ModelSerializer):
+    member_email = serializers.EmailField(source="member.email", read_only=True)
+
     class Meta:
         model = EventMembership
-        fields = ["id", "event", "member", "joined_at"]
+        fields = ["id", "event", "member", "member_email", "joined_at"]
         read_only_fields = fields
+
+
+class EventAccessRequestSerializer(serializers.ModelSerializer):
+    requester_email = serializers.EmailField(source="requester.email", read_only=True)
+
+    class Meta:
+        model = EventAccessRequest
+        fields = ["id", "event", "requester", "requester_email", "status", "requested_at", "decided_at"]
+        read_only_fields = fields
+
+
+class DecideAccessRequestSerializer(serializers.Serializer):
+    """Used for POSTing a host's decision on an access request."""
+    approve = serializers.BooleanField()

@@ -383,7 +383,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       event.host,
       ..._queue.map((entry) => entry.addedByEmail).whereType<String>(),
     }.toList();
-    final isHost = _authUser?.email == event.host;
+    // event.host renders server-side as str(user) (StringRelatedField),
+    // which is the user's `username`, not their `email` — see the same
+    // note on `_isMine` in events_landing_screen.dart.
+    final isHost = _authUser?.username == event.host;
     final isVotingRestricted = _voteRestrictionReason != null;
 
     return Column(

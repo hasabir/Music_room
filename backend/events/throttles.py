@@ -18,3 +18,7 @@ class AddSongRateThrottle(UserRateThrottle):
 
 class CreateEventRateThrottle(UserRateThrottle):
     scope = "create_event"
+
+
+class AccessRequestRateThrottle(UserRateThrottle):
+    scope = "event_access_request"

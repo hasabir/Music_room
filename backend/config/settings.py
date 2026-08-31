@@ -109,7 +109,8 @@ REST_FRAMEWORK = {
         "vote": "30000/min",          # generous enough for real use, blocks vote-spam scripts
         "add_song": "20000/min",
         "create_event": "10000/hour",
- 
+        "event_access_request": "3000/hour",
+
         # NEW — playlists
         "add_playlist_song": "20000/min",
         "move_song": "60000/min",     # reordering can happen fast during active editing (drag-and-drop)

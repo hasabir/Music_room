@@ -9,7 +9,7 @@ from channels.layers import get_channel_layer
 
 
 def broadcast_queue_update(event):
-    from .serializers import EventSongSerializer
+    from .serializers import EventSongSerializer, EventGuestSerializer
 
     channel_layer = get_channel_layer()
     room_group_name = f"event_queue_{event.id}"
@@ -20,6 +20,7 @@ def broadcast_queue_update(event):
     # The client should rely on its own local vote state for that flag, or
     # the REST GET /queue/ endpoint for the fully accurate per-user view.
     serialized = EventSongSerializer(queue, many=True).data
+    guests = EventGuestSerializer(event.guests.select_related("guest").all(), many=True).data
 
     async_to_sync(channel_layer.group_send)(
         room_group_name,
@@ -28,6 +29,7 @@ def broadcast_queue_update(event):
             "data": {
                 "event_id": event.id,
                 "queue": serialized,
+                "guests": guests,
             },
         }
     )

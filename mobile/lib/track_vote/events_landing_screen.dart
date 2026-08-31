@@ -32,8 +32,10 @@ class _EventColors {
 /// Loads `GET /api/v1/events/` (which already returns public + hosted +
 /// invited-private, deduped — same shape as the playlists list endpoint)
 /// and splits it into the two tabs client-side by comparing each event's
-/// `host` against the signed-in user's email, since the backend has no
-/// separate "discover" endpoint or "is mine" flag.
+/// `host` against the signed-in user's username (`host` renders as
+/// `str(user)` server-side, which is `username`, not `email` — see
+/// `_isMine` below), since the backend has no separate "discover" endpoint
+/// or "is mine" flag.
 ///
 /// TODO(events): the backend also has no `is_member`-style flag for a
 /// *public* event the user has already joined via `POST .../join/`
@@ -174,12 +176,12 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
                   }
 
                   final data = snapshot.data!;
-                  final email = data.authUser?.email ?? '';
+                  final username = data.authUser?.username ?? '';
                   final visible = data.events
                       .where(
                         (e) => _tab == _EventTab.mine
-                            ? _isMine(e, email)
-                            : !_isMine(e, email),
+                            ? _isMine(e, username)
+                            : !_isMine(e, username),
                       )
                       .toList();
 
@@ -236,8 +238,15 @@ enum _EventTab { mine, discover }
 /// host or an invited guest, so either way it's not something to
 /// "discover"). See the TODO on [EventsLandingScreen] for the one case
 /// this can't detect: a public event the user has already joined.
-bool _isMine(Event event, String currentUserEmail) =>
-    event.host == currentUserEmail ||
+///
+/// `event.host` is a `StringRelatedField` on the backend (`EventSerializer`),
+/// which renders `str(user)` — and `User.__str__` returns `username`, not
+/// `email` (see `backend/user/models.py`). This must compare against the
+/// signed-in user's *username*, not their email — matching how
+/// `playlist_list_screen.dart`'s equivalent `_isMine` already compares
+/// `playlist.owner` (same `StringRelatedField` pattern) against `username`.
+bool _isMine(Event event, String currentUsername) =>
+    event.host == currentUsername ||
     event.visibility == eventVisibilityPrivate;
 
 class _ListData {
