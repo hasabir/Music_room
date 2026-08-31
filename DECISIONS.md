@@ -280,9 +280,11 @@ five files it touched (`event_models.dart`, `event_api.dart`, `event_widgets.dar
 `CreateEventScreen` has a 2-option "WHO CAN VOTE" segmented choice plus two independent
 `_RestrictionToggle` switches (time window, venue location), each revealing only its own
 fields, validated independently client-side the same way the backend validates them
-server-side; `EventDetailScreen._positionFor` now fetches GPS only when
-`locationRestrictionEnabled` (not tied to `votePermission` at all anymore); and the event
-card / detail-screen badge rows gained `EventTimeRestrictionBadge`/
+server-side; `EventDetailScreen` now resolves a voter's coordinates only when
+`locationRestrictionEnabled` (not tied to `votePermission` at all anymore — see the later
+"Location-restricted voting: sourced from profile location, not live GPS" entry for how that
+resolution itself changed since); and the event card / detail-screen badge rows gained
+`EventTimeRestrictionBadge`/
 `EventLocationRestrictionBadge` alongside the existing `EventLicenseBadge`, each shown
 independently. The `_VotingRestrictedCard` on a failed vote also stopped overriding the
 backend's specific error message with a generic combined one — now that the two restrictions
@@ -378,3 +380,46 @@ bumps `added_at` to now, so that counts as fresh activity too, same as any other
 **Never touches a host-controlled event:** `sync_activity_status` is a no-op unless
 `status in Event.AUTO_STATUSES` (live + the three ghost-town rungs) — a `closed` or `canceled`
 event is the host's explicit call and this automatic ladder never overrides or fights with it.
+
+## Location-restricted voting: sourced from profile location, not live GPS
+
+**Decision:** `EventDetailScreen` used to resolve the coordinates it sends with a vote (when
+`event.locationRestrictionEnabled`) via `Geolocator.getCurrentPosition()` — a live GPS fix,
+requesting OS location permission on the spot. That's replaced with
+`_EventDetailScreenState._voterCoordinates`: it reads the signed-in user's own
+`UserProfile.location` (the free-text profile field, e.g. "Paris, France", edited in Edit
+Profile — `backend/profiles/models.py`'s `Profile.location`), forward-geocodes it client-side
+via the `geocoding` package (`mobile/lib/track_vote/location_label.dart`'s
+`forwardGeocodeCoordinates`), and sends *those* coordinates as the vote's `latitude`/
+`longitude` — exactly the same request shape as before, so `VoteView`/`can_user_vote`
+(`backend/events/permissions.py`) needed **no backend changes at all**; the distance math was
+always agnostic about where its input coordinates came from.
+
+**Why the profile field over live GPS:** requested directly — checking "does this user even
+have a location set" and blocking with a clear reason otherwise reads as a *setting*
+precondition, not a request for a live sensor reading. It also drops the runtime location-
+permission prompt from the voting flow entirely (the old GPS-based `_positionFor` — now
+removed — required `Geolocator.isLocationServiceEnabled()`/`checkPermission()`/
+`requestPermission()` before every first vote). The trade-off is real and accepted: a profile
+location is self-reported and static, not proof of physical presence the way a fresh GPS fix
+is — this is a deliberately weaker but simpler and friendlier check.
+`CreateEventScreen._useCurrentLocation` (the *host* pinpointing the venue itself when creating
+an event) is untouched and still uses live GPS — this decision only changes how a *voter's*
+location is sourced, not the venue's.
+
+**Blocks before the user even taps vote, not just reactively:** `_checkLocationRestrictionUpfront`
+runs once, right after `_loadAll` (not on every 5-second poll tick — that would mean repeated
+geocoding calls in the background), and proactively sets `_voteRestrictionReason` — the same
+field the existing `VotingRestrictedCard`/"Check Requirements" flow already reads — if the
+profile has no location set, or if the location can't be resolved to real coordinates at all.
+It only ever *sets* that reason, never clears it, since a reason already showing might be for
+an unrelated restriction (time window, invited-only) this check has no way to re-verify without
+an actual vote attempt.
+
+**"Too far" stays a real distance check, computed twice on purpose:** `location_label.dart`'s
+`distanceInMeters` is a client-side Haversine formula, deliberately kept in exact lockstep with
+the backend's `_distance_in_meters` (`events/permissions.py`) — used only for the *proactive*
+upfront pre-check (so "too far" can show immediately on open, without firing a real vote just
+to find out). The actual vote submission still goes through the backend's own distance check
+as the authoritative decision; the client-side copy exists purely for a faster/friendlier
+message and is never trusted on its own to allow a vote through.

@@ -446,6 +446,39 @@ class _EventHeroCard extends StatelessWidget {
                       color: EventBadgeColors.statusCanceled,
                     ),
                   )
+                // The three auto-inactive rungs (see eventStatusIsAutoInactive)
+                // restrict nothing — voting/joining/suggesting all stay open
+                // exactly as on a live event — but "LIVE" pulsing here would
+                // actively contradict what the badge row below already says,
+                // so this cover spot goes to whichever's currently true
+                // instead.
+                else if (event.status == eventStatusGhostTown)
+                  const Positioned(
+                    top: 12,
+                    left: 12,
+                    child: EventOverlayStatusBadge(
+                      label: 'GHOST TOWN 👻',
+                      color: EventBadgeColors.statusGhostTown,
+                    ),
+                  )
+                else if (event.status == eventStatusRipAttendance)
+                  const Positioned(
+                    top: 12,
+                    left: 12,
+                    child: EventOverlayStatusBadge(
+                      label: 'RIP ATTENDANCE',
+                      color: EventBadgeColors.statusRipAttendance,
+                    ),
+                  )
+                else if (event.status == eventStatusPartyOfNobody)
+                  const Positioned(
+                    top: 12,
+                    left: 12,
+                    child: EventOverlayStatusBadge(
+                      label: 'PARTY OF NOBODY',
+                      color: EventBadgeColors.statusPartyOfNobody,
+                    ),
+                  )
                 else if (event.votingIsOpen)
                   const Positioned(top: 12, left: 12, child: LiveBadge()),
                 Positioned(

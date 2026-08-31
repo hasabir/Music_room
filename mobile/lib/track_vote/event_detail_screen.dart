@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 
 import '../auth/auth_api.dart';
 import '../auth/auth_models.dart';
@@ -10,11 +9,14 @@ import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
 import '../core/playback/playback_controller.dart';
 import '../playlists/playlist_api.dart';
+import '../profile/profile_api.dart';
+import '../profile/profile_models.dart';
 import 'event_api.dart';
 import 'event_models.dart';
 import 'event_widgets.dart';
 import 'event_guests_screen.dart';
 import 'event_settings_screen.dart';
+import 'location_label.dart';
 import 'suggest_track_screen.dart';
 
 class _EventColors {
@@ -42,6 +44,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   final _eventApi = EventApi();
   final _authApi = AuthApi();
+  final _profileApi = ProfileApi();
   final _tokenStorage = TokenStorage();
   final _playback = PlaybackController.instance;
   final _trackApi = PlaylistApi();
@@ -66,6 +69,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   /// Everyone who's self-joined the event — the "Joined" tab. Same
   /// visibility gate as [_guests]; see `GET .../attendees/`.
   List<EventMembership> _attendees = const [];
+
+  /// The signed-in user's own profile — specifically [UserProfile.location]
+  /// (a free-text field like "Paris, France", set in Edit Profile), which
+  /// is what a location-restricted event's voting check is resolved
+  /// against instead of a live GPS fix; see [_voterCoordinates].
+  UserProfile? _myProfile;
 
   /// A song this screen already tried to auto-play and found unplayable
   /// (no preview URL) — guards against retrying it on every poll tick
@@ -129,17 +138,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         _authApi.getCurrentUser(),
         _eventApi.listGuests(widget.eventId),
         _eventApi.listAttendees(widget.eventId),
+        _profileApi.getMyProfile(),
       ]);
       if (!mounted) return;
+      final event = results[0] as Event;
       setState(() {
-        _event = results[0] as Event;
+        _event = event;
         _queue = results[1] as List<EventSong>;
         _authUser = results[2] as AuthUser;
         _guests = results[3] as List<EventGuest>;
         _attendees = results[4] as List<EventMembership>;
+        _myProfile = results[5] as UserProfile;
         _isLoading = false;
       });
       _syncAutoPlay();
+      unawaited(_checkLocationRestrictionUpfront(event));
     } on SessionExpiredException {
       await _signOutAndReturnToWelcome();
     } on ApiException catch (error) {
@@ -229,22 +242,67 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     return Duration(milliseconds: (wrapped * 1000).round());
   }
 
-  Future<Position?> _positionFor(Event event) async {
-    if (!event.locationRestrictionEnabled) {
-      return null;
+  /// Resolves the coordinates to submit with a vote when [event] is
+  /// location-restricted — sourced from the signed-in user's *profile*
+  /// location (`Profile.location`, a free-text field like "Paris, France",
+  /// set in Edit Profile), not a live GPS fix — see DECISIONS.md. Throws a
+  /// [String] with a user-facing reason (surfaced via
+  /// [VoteNotPermittedException]'s handling, same as any other rejection)
+  /// if the profile has no location set, or if it can't be resolved to
+  /// real-world coordinates at all. Whether those coordinates end up
+  /// *close enough* to the venue is left to the backend's existing
+  /// `can_user_vote` distance check — this only ever resolves and hands
+  /// off a coordinate, it doesn't itself decide "too far".
+  Future<({double latitude, double longitude})?> _voterCoordinates(Event event) async {
+    if (!event.locationRestrictionEnabled) return null;
+
+    final location = _myProfile?.location.trim() ?? '';
+    if (location.isEmpty) {
+      throw 'Set your location in your profile to vote in this event.';
     }
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      throw 'Turn on location services to vote in this event.';
+
+    final coordinates = await forwardGeocodeCoordinates(location);
+    if (coordinates == null) {
+      throw 'We couldn\'t find "$location" — check your location in your profile.';
     }
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+    return coordinates;
+  }
+
+  /// Proactive counterpart to [_voterCoordinates] — run once after
+  /// [_loadAll] (not on every poll tick) so a location-restricted event
+  /// that's clearly unvotable shows the "Voting Restricted" card
+  /// immediately, rather than only after the user taps vote and hits a
+  /// 403. Only ever *sets* [_voteRestrictionReason]; it never clears one,
+  /// since a reason already showing might be for an unrelated restriction
+  /// (time, invited-only) that this check has no way to re-verify without
+  /// an actual vote attempt.
+  Future<void> _checkLocationRestrictionUpfront(Event event) async {
+    if (!event.locationRestrictionEnabled) return;
+
+    String? reason;
+    try {
+      final coordinates = await _voterCoordinates(event);
+      final venueLatitude = event.venueCenterLatitude;
+      final venueLongitude = event.venueCenterLongitude;
+      final allowedDistance = event.allowedDistanceMeters;
+      if (coordinates != null &&
+          venueLatitude != null &&
+          venueLongitude != null &&
+          allowedDistance != null) {
+        final distance = distanceInMeters(
+          venueLatitude,
+          venueLongitude,
+          coordinates.latitude,
+          coordinates.longitude,
+        );
+        if (distance > allowedDistance) {
+          reason = 'Your profile location is too far from the venue to vote on this event.';
+        }
+      }
+    } on String catch (message) {
+      reason = message;
     }
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      throw 'Location permission is required to vote in this event.';
-    }
-    return Geolocator.getCurrentPosition();
+    if (mounted && reason != null) setState(() => _voteRestrictionReason = reason);
   }
 
   String _playbackKey(int? songId) => 'event:${widget.eventId}:$songId';
@@ -302,12 +360,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       if (entry.hasVoted) {
         await _eventApi.retractVote(widget.eventId, entry.id);
       } else {
-        final position = await _positionFor(event);
+        final coordinates = await _voterCoordinates(event);
         await _eventApi.vote(
           widget.eventId,
           entry.id,
-          latitude: position?.latitude,
-          longitude: position?.longitude,
+          latitude: coordinates?.latitude,
+          longitude: coordinates?.longitude,
         );
       }
       await _refetchState();
@@ -768,6 +826,27 @@ class _CoverHeader extends StatelessWidget {
                   const EventOverlayStatusBadge(
                     label: 'CANCELED',
                     color: EventBadgeColors.statusCanceled,
+                  )
+                // The three auto-inactive rungs (see eventStatusIsAutoInactive)
+                // are a label only — voting/joining/suggesting all stay open
+                // exactly as on a live event — but "LIVE" pulsing here would
+                // actively contradict what the event card / status badge
+                // elsewhere already say, so this overlay spot goes to
+                // whichever's currently true instead.
+                else if (event.status == eventStatusGhostTown)
+                  const EventOverlayStatusBadge(
+                    label: 'GHOST TOWN 👻',
+                    color: EventBadgeColors.statusGhostTown,
+                  )
+                else if (event.status == eventStatusRipAttendance)
+                  const EventOverlayStatusBadge(
+                    label: 'RIP ATTENDANCE',
+                    color: EventBadgeColors.statusRipAttendance,
+                  )
+                else if (event.status == eventStatusPartyOfNobody)
+                  const EventOverlayStatusBadge(
+                    label: 'PARTY OF NOBODY',
+                    color: EventBadgeColors.statusPartyOfNobody,
                   )
                 else if (event.votingIsOpen)
                   const LiveBadge(),
@@ -1783,7 +1862,7 @@ class _VotingRestrictedCard extends StatelessWidget {
   );
 }
 
-class _VotingRequirementsSheet extends StatelessWidget {
+class _VotingRequirementsSheet extends StatefulWidget {
   const _VotingRequirementsSheet({
     required this.event,
     required this.onTryAgain,
@@ -1793,63 +1872,101 @@ class _VotingRequirementsSheet extends StatelessWidget {
   final VoidCallback onTryAgain;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Voting requirements',
-          style: TextStyle(
-            fontFamily: 'Sora',
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            color: _EventColors.body,
+  State<_VotingRequirementsSheet> createState() => _VotingRequirementsSheetState();
+}
+
+class _VotingRequirementsSheetState extends State<_VotingRequirementsSheet> {
+  /// Reverse-geocoded ("Neighborhood, City, Country") label for the venue —
+  /// see [reverseGeocodeLabel]. `null` while resolving or if the lookup
+  /// failed/found nothing, in which case [_venueValue] falls back to the
+  /// raw coordinates.
+  String? _venueLabel;
+  var _isResolvingVenue = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final latitude = widget.event.venueCenterLatitude;
+    final longitude = widget.event.venueCenterLongitude;
+    if (widget.event.locationRestrictionEnabled && latitude != null && longitude != null) {
+      _isResolvingVenue = true;
+      unawaited(_resolveVenueLabel(latitude, longitude));
+    }
+  }
+
+  Future<void> _resolveVenueLabel(double latitude, double longitude) async {
+    final label = await reverseGeocodeLabel(latitude, longitude);
+    if (!mounted) return;
+    setState(() {
+      _venueLabel = label;
+      _isResolvingVenue = false;
+    });
+  }
+
+  String _venueValue() {
+    final event = widget.event;
+    if (_venueLabel != null) return _venueLabel!;
+    if (_isResolvingVenue) return 'Locating…';
+    final latitude = event.venueCenterLatitude;
+    final longitude = event.venueCenterLongitude;
+    if (latitude == null || longitude == null) return 'Not set';
+    return '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final event = widget.event;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Voting requirements',
+            style: TextStyle(
+              fontFamily: 'Sora',
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: _EventColors.body,
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        _RequirementRow(
-          label: 'License',
-          value: _licenseText(event.votePermission),
-        ),
-        // Time and location are independent restrictions — each shown
-        // only when its own toggle is on, not gated by the other or by
-        // `votePermission` (see Event.timeRestrictionEnabled /
-        // Event.locationRestrictionEnabled).
-        if (event.timeRestrictionEnabled) ...[
+          const SizedBox(height: 16),
           _RequirementRow(
-            label: 'voting_opens_at',
-            value: _dateTime(event.votingOpensAt),
+            label: 'License',
+            value: _licenseText(event.votePermission),
           ),
-          _RequirementRow(
-            label: 'voting_closes_at',
-            value: _dateTime(event.votingClosesAt),
+          // Time and location are independent restrictions — each shown
+          // only when its own toggle is on, not gated by the other or by
+          // `votePermission` (see Event.timeRestrictionEnabled /
+          // Event.locationRestrictionEnabled).
+          if (event.timeRestrictionEnabled) ...[
+            _RequirementRow(
+              label: 'voting_opens_at',
+              value: _dateTime(event.votingOpensAt),
+            ),
+            _RequirementRow(
+              label: 'voting_closes_at',
+              value: _dateTime(event.votingClosesAt),
+            ),
+          ],
+          if (event.locationRestrictionEnabled) ...[
+            _RequirementRow(
+              label: 'allowed_distance_meters',
+              value: event.allowedDistanceMeters?.toString() ?? 'Not set',
+            ),
+            _RequirementRow(label: 'venue_location', value: _venueValue()),
+          ],
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: widget.onTryAgain,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Try voting again'),
           ),
         ],
-        if (event.locationRestrictionEnabled) ...[
-          _RequirementRow(
-            label: 'allowed_distance_meters',
-            value: event.allowedDistanceMeters?.toString() ?? 'Not set',
-          ),
-          _RequirementRow(
-            label: 'venue_center_latitude',
-            value: event.venueCenterLatitude?.toStringAsFixed(5) ?? 'Not set',
-          ),
-          _RequirementRow(
-            label: 'venue_center_longitude',
-            value: event.venueCenterLongitude?.toStringAsFixed(5) ?? 'Not set',
-          ),
-        ],
-        const SizedBox(height: 12),
-        TextButton.icon(
-          onPressed: onTryAgain,
-          icon: const Icon(Icons.refresh_rounded),
-          label: const Text('Try voting again'),
-        ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 
   static String _licenseText(String permission) => switch (permission) {
     eventVotePermissionInvitedOnly => 'Invited guests only',

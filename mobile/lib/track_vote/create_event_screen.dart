@@ -5,6 +5,7 @@ import '../core/api/api_client.dart';
 import 'event_api.dart';
 import 'event_detail_screen.dart';
 import 'event_models.dart';
+import 'location_label.dart';
 
 class _CreateEventColors {
   static const background = Color(0xFF0E0E15);
@@ -65,6 +66,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   DateTime? _votingClosesAt;
   double? _venueCenterLatitude;
   double? _venueCenterLongitude;
+
+  /// Human-readable ("Neighborhood, City, Country") reverse-geocoded label
+  /// for [_venueCenterLatitude]/[_venueCenterLongitude], shown on the
+  /// locate button instead of raw coordinates — see [reverseGeocodeLabel].
+  /// `null` while resolving, or if reverse geocoding failed/found nothing,
+  /// in which case the raw coordinates are shown as a fallback.
+  String? _venueLabel;
   var _isLocating = false;
 
   var _isSubmitting = false;
@@ -138,7 +146,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       setState(() {
         _venueCenterLatitude = position.latitude;
         _venueCenterLongitude = position.longitude;
+        _venueLabel = null;
       });
+      // Best-effort — a failed/empty reverse geocode just leaves the raw
+      // coordinates shown (see the label's fallback below); it never
+      // blocks using the location that was already captured.
+      final label = await reverseGeocodeLabel(position.latitude, position.longitude);
+      if (mounted) setState(() => _venueLabel = label);
     } catch (error) {
       if (!mounted) return;
       setState(
@@ -147,6 +161,17 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     } finally {
       if (mounted) setState(() => _isLocating = false);
     }
+  }
+
+  /// While resolving, shows "Locating…"; once a coordinate is captured,
+  /// prefers the reverse-geocoded [_venueLabel] and only falls back to raw
+  /// coordinates if that lookup failed or found nothing.
+  String _venueButtonLabel() {
+    if (_venueCenterLatitude == null) return 'Use my current location';
+    if (_venueLabel != null) return _venueLabel!;
+    if (_isLocating) return 'Locating…';
+    return '${_venueCenterLatitude!.toStringAsFixed(4)}, '
+        '${_venueCenterLongitude!.toStringAsFixed(4)}';
   }
 
   Future<void> _submit() async {
@@ -427,12 +452,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                               ),
                             )
                           : const Icon(Icons.my_location_rounded, size: 18),
-                      label: Text(
-                        _venueCenterLatitude != null
-                            ? '${_venueCenterLatitude!.toStringAsFixed(4)}, '
-                                  '${_venueCenterLongitude!.toStringAsFixed(4)}'
-                            : 'Use my current location',
-                      ),
+                      label: Text(_venueButtonLabel()),
                     ),
                   ],
                   if (_error != null) ...[
