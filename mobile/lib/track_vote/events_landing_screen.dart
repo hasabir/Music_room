@@ -25,25 +25,25 @@ class _EventColors {
   static const gradientEnd = Color(0xFF494BD6);
 }
 
-/// The "Track Vote" tab — public events plus the ones the signed-in user
-/// hosts or is privately invited to ("My Events"), and public events they
-/// aren't part of yet ("Discover"). Reachable from the bottom nav.
+/// The "Track Vote" tab — split three ways: events the signed-in user
+/// hosts ("My Events"), events they've joined or been invited to without
+/// hosting ("Joined"), and public events they aren't part of yet
+/// ("Discover"). Reachable from the bottom nav.
 ///
 /// Loads `GET /api/v1/events/` (which already returns public + hosted +
 /// invited-private, deduped — same shape as the playlists list endpoint)
-/// and splits it into the two tabs client-side by comparing each event's
-/// `host` against the signed-in user's username (`host` renders as
-/// `str(user)` server-side, which is `username`, not `email` — see
-/// `_isMine` below), since the backend has no separate "discover" endpoint
-/// or "is mine" flag.
-///
-/// TODO(events): the backend also has no `is_member`-style flag for a
-/// *public* event the user has already joined via `POST .../join/`
-/// (`EventMembership` isn't reflected on the `Event` object at all) — so a
-/// public event the user already joined still shows up under "Discover"
-/// here, with a "Join Event" button that will 400 as "already joined".
-/// Fix once there's either a dedicated discover endpoint or a membership
-/// flag on the list response.
+/// and splits it into the three tabs client-side, since the backend has
+/// no separate "discover" endpoint. The split relies on two signals per
+/// event:
+/// - `host` compared against the signed-in user's username (`host`
+///   renders as `str(user)` server-side, which is `username`, not
+///   `email` — see `_isMine` below).
+/// - `is_member` (`EventSerializer.get_is_member`), `true` once the user
+///   has self-joined a public event via `POST .../join/`. A private
+///   event never sets this (self-join is public-only), but the list
+///   endpoint only ever returns a private event to its host or an
+///   invited guest in the first place, so any private, non-hosted event
+///   here already means "joined" via invite — see `_isJoined` below.
 class EventsLandingScreen extends StatefulWidget {
   const EventsLandingScreen({super.key});
 
@@ -184,13 +184,14 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
 
                   final data = snapshot.data!;
                   final username = data.authUser?.username ?? '';
-                  final visible = data.events
-                      .where(
-                        (e) => _tab == _EventTab.mine
-                            ? _isMine(e, username)
-                            : !_isMine(e, username),
-                      )
-                      .toList();
+                  final visible = data.events.where((e) {
+                    final mine = _isMine(e, username);
+                    return switch (_tab) {
+                      _EventTab.mine => mine,
+                      _EventTab.joined => !mine && _isJoined(e),
+                      _EventTab.discover => !mine && !_isJoined(e),
+                    };
+                  }).toList();
 
                   return RefreshIndicator(
                     onRefresh: _refresh,
@@ -238,13 +239,11 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
   }
 }
 
-enum _EventTab { mine, discover }
+enum _EventTab { mine, joined, discover }
 
-/// An event counts as "mine" if the signed-in user hosts it, or if it's
-/// private (the list endpoint only ever returns a private event to its
-/// host or an invited guest, so either way it's not something to
-/// "discover"). See the TODO on [EventsLandingScreen] for the one case
-/// this can't detect: a public event the user has already joined.
+/// An event counts as "mine" if the signed-in user hosts it — hosting
+/// always wins over joined/invited status, even though a host is
+/// technically also a "member" of their own event in spirit.
 ///
 /// `event.host` is a `StringRelatedField` on the backend (`EventSerializer`),
 /// which renders `str(user)` — and `User.__str__` returns `username`, not
@@ -253,8 +252,16 @@ enum _EventTab { mine, discover }
 /// `playlist_list_screen.dart`'s equivalent `_isMine` already compares
 /// `playlist.owner` (same `StringRelatedField` pattern) against `username`.
 bool _isMine(Event event, String currentUsername) =>
-    event.host == currentUsername ||
-    event.visibility == eventVisibilityPrivate;
+    event.host == currentUsername;
+
+/// An event counts as "joined" (once [_isMine] has already ruled out
+/// hosting) if the user self-joined it (`Event.isMember`, a public-event
+/// -only flag set by `POST .../join/`) or if it's private — the list
+/// endpoint only ever returns a private event to its host or an invited
+/// guest, and self-join doesn't apply to private events at all, so a
+/// private, non-hosted event here can only mean "invited".
+bool _isJoined(Event event) =>
+    event.isMember || event.visibility == eventVisibilityPrivate;
 
 class _ListData {
   const _ListData({required this.events, required this.authUser});
@@ -320,6 +327,13 @@ class _TabSwitcher extends StatelessWidget {
               label: 'My Events',
               isSelected: tab == _EventTab.mine,
               onTap: () => onChanged(_EventTab.mine),
+            ),
+          ),
+          Expanded(
+            child: _TabButton(
+              label: 'Joined',
+              isSelected: tab == _EventTab.joined,
+              onTap: () => onChanged(_EventTab.joined),
             ),
           ),
           Expanded(
@@ -683,9 +697,11 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final message = tab == _EventTab.mine
-        ? "You don't have any events yet."
-        : 'Nothing public to discover right now.';
+    final message = switch (tab) {
+      _EventTab.mine => "You don't have any events yet.",
+      _EventTab.joined => "You haven't joined any events yet.",
+      _EventTab.discover => 'Nothing public to discover right now.',
+    };
 
     return Column(
       children: [

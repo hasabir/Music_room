@@ -241,3 +241,54 @@ class PlaylistCollaboratorTests(APITestCase):
         self.client.force_authenticate(self.collaborator)
         response = self.client.get(f"/api/v1/playlists/{self.playlist_id}/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class PlaylistIsCollaboratorFieldTests(APITestCase):
+    """`is_collaborator` on PlaylistSerializer — lets the client tell a
+    public playlist the user already collaborates on apart from one
+    they've merely discovered (no self-serve "join" exists for playlists,
+    unlike events)."""
+
+    def setUp(self):
+        self.owner = create_verified_user("owner@test.com")
+        self.collaborator = create_verified_user("collab@test.com")
+        self.stranger = create_verified_user("stranger@test.com")
+
+        self.client.force_authenticate(self.owner)
+        create_resp = self.client.post(
+            "/api/v1/playlists/", {"title": "Public Mix", "visibility": "public"}
+        )
+        self.playlist_id = create_resp.data["id"]
+        self.detail_url = f"/api/v1/playlists/{self.playlist_id}/"
+
+        self.client.post(
+            f"/api/v1/playlists/{self.playlist_id}/collaborators/",
+            {"user_id": self.collaborator.id},
+        )
+
+    def test_is_collaborator_true_for_invited_collaborator(self):
+        self.client.force_authenticate(self.collaborator)
+        response = self.client.get(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["is_collaborator"])
+
+    def test_is_collaborator_false_for_stranger(self):
+        self.client.force_authenticate(self.stranger)
+        response = self.client.get(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["is_collaborator"])
+
+    def test_is_collaborator_false_for_owner(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["is_collaborator"])
+
+    def test_is_collaborator_reflected_in_list_endpoint(self):
+        self.client.force_authenticate(self.collaborator)
+        response = self.client.get("/api/v1/playlists/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        playlist = next(
+            p for p in response.data["results"] if p["id"] == self.playlist_id
+        )
+        self.assertTrue(playlist["is_collaborator"])

@@ -7,19 +7,34 @@ class PlaylistSerializer(serializers.ModelSerializer):
     owner = serializers.StringRelatedField(read_only=True)
     song_count = serializers.ReadOnlyField()
     cover_image_url = serializers.SerializerMethodField()
+    is_collaborator = serializers.SerializerMethodField()
 
     class Meta:
         model = Playlist
         fields = [
             "id", "owner", "title", "description", "visibility", "edit_permission",
             "cover_image", "cover_preset", "cover_image_url",
-            "song_count", "created_at", "updated_at",
+            "song_count", "is_collaborator", "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "owner", "song_count", "cover_image_url", "created_at", "updated_at"]
+        read_only_fields = [
+            "id", "owner", "song_count", "cover_image_url", "is_collaborator", "created_at", "updated_at",
+        ]
         extra_kwargs = {"cover_image": {"write_only": True}}
 
     def get_cover_image_url(self, obj):
         return obj.cover_image.url if obj.cover_image else None
+
+    def get_is_collaborator(self, obj):
+        """Whether the signed-in user is an invited `PlaylistCollaborator`
+        on this playlist — distinct from owning it. Unlike events, there's
+        no self-serve "join" for playlists; collaborator access always
+        comes from an owner invite or an approved access request. Lets the
+        client tell a public playlist the user already collaborates on
+        apart from one they've merely discovered."""
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        return obj.collaborators.filter(collaborator=request.user).exists()
 
     def validate(self, attrs):
         # A playlist shows at most one cover. Uploading an image (this is

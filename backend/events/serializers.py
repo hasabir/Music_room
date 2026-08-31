@@ -11,6 +11,7 @@ class EventSerializer(serializers.ModelSerializer):
     voting_is_open = serializers.ReadOnlyField()
     current_song = serializers.SerializerMethodField()
     current_position_seconds = serializers.SerializerMethodField()
+    is_member = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -19,15 +20,25 @@ class EventSerializer(serializers.ModelSerializer):
             "time_restriction_enabled", "voting_opens_at", "voting_closes_at",
             "location_restriction_enabled",
             "venue_center_latitude", "venue_center_longitude", "allowed_distance_meters",
-            "song_count", "voting_is_open",
+            "song_count", "voting_is_open", "is_member",
             "current_song", "current_position_seconds",
             "created_at", "updated_at",
         ]
         read_only_fields = [
-            "id", "host", "song_count", "voting_is_open",
+            "id", "host", "song_count", "voting_is_open", "is_member",
             "current_song", "current_position_seconds",
             "created_at", "updated_at",
         ]
+
+    def get_is_member(self, obj):
+        """Whether the signed-in user has self-joined this event via
+        `POST .../join/` (an `EventMembership` row) — distinct from being
+        the host or an invited guest. Lets the client tell a public event
+        it's already joined apart from one it hasn't discovered yet."""
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        return obj.members.filter(member=request.user).exists()
 
     def get_current_song(self, obj):
         if obj.current_song_id is None:

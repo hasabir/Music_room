@@ -23,14 +23,25 @@ class _PlaylistColors {
   static const tertiary = Color(0xFF2FD9F4);
 }
 
-/// The "Playlist Editor" tab — the signed-in user's own/collaborated
-/// playlists ("My Playlists") plus public playlists made by others
-/// ("Discover"). Reachable from the bottom nav.
+/// The "Playlist Editor" tab — split three ways: playlists the signed-in
+/// user owns ("My Playlists"), playlists they collaborate on or were
+/// invited to without owning ("Joined"), and public playlists they aren't
+/// part of yet ("Discover"). Reachable from the bottom nav.
 ///
 /// Loads `GET /api/v1/playlists/` (which already returns public + owned +
-/// collaborated, deduped) and splits it into the two tabs client-side by
-/// comparing each playlist's `owner` against the signed-in user's email —
-/// the backend has no separate "discover" endpoint or "is mine" flag.
+/// collaborated, deduped) and splits it into the three tabs client-side,
+/// since the backend has no separate "discover" endpoint. The split relies
+/// on two signals per playlist:
+/// - `owner` compared against the signed-in user's username (`owner`
+///   renders as `str(user)` server-side, which is `username`, not
+///   `email` — see `_isMine` below).
+/// - `is_collaborator` (`PlaylistSerializer.get_is_collaborator`), `true`
+///   once the user has been added as a `PlaylistCollaborator` — via an
+///   owner invite or an approved access request. Unlike events, there's
+///   no self-serve "join" for playlists. A private playlist never needs
+///   this flag: the list endpoint only ever returns a private playlist to
+///   its owner or an invited collaborator, so any private, non-owned
+///   playlist here already means "collaborating" — see `_isJoined` below.
 class PlaylistListScreen extends StatefulWidget {
   const PlaylistListScreen({super.key});
 
@@ -218,13 +229,14 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
 
                   final data = snapshot.data!;
                   final username = data.authUser?.username ?? '';
-                  final visible = data.playlists
-                      .where(
-                        (p) => _tab == _PlaylistTab.mine
-                            ? _isMine(p, username)
-                            : !_isMine(p, username),
-                      )
-                      .toList();
+                  final visible = data.playlists.where((p) {
+                    final mine = _isMine(p, username);
+                    return switch (_tab) {
+                      _PlaylistTab.mine => mine,
+                      _PlaylistTab.joined => !mine && _isJoined(p),
+                      _PlaylistTab.discover => !mine && !_isJoined(p),
+                    };
+                  }).toList();
 
                   return RefreshIndicator(
                     onRefresh: _refresh,
@@ -272,15 +284,25 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   }
 }
 
-enum _PlaylistTab { mine, discover }
+enum _PlaylistTab { mine, joined, discover }
 
-/// A playlist counts as "mine" if the signed-in user owns it, or if it's
-/// private (the list endpoint only ever returns a private playlist to its
-/// owner or an invited collaborator, so either way it's not something to
-/// "discover").
+/// A playlist counts as "mine" if the signed-in user owns it — owning
+/// always wins over joined/collaborating status.
+///
+/// `playlist.owner` is a `StringRelatedField` on the backend
+/// (`PlaylistSerializer`), which renders `str(user)` — and `User.__str__`
+/// returns `username`, not `email` (see `backend/user/models.py`).
 bool _isMine(Playlist playlist, String currentUsername) =>
-    playlist.owner == currentUsername ||
-    playlist.visibility == playlistVisibilityPrivate;
+    playlist.owner == currentUsername;
+
+/// A playlist counts as "joined" (once [_isMine] has already ruled out
+/// owning) if the user is an invited collaborator (`Playlist.isCollaborator`)
+/// or if it's private — the list endpoint only ever returns a private
+/// playlist to its owner or an invited collaborator, and there's no
+/// self-serve "join" for playlists at all, so a private, non-owned
+/// playlist here can only mean "invited to collaborate".
+bool _isJoined(Playlist playlist) =>
+    playlist.isCollaborator || playlist.visibility == playlistVisibilityPrivate;
 
 class _ListData {
   const _ListData({required this.playlists, required this.authUser});
@@ -346,6 +368,13 @@ class _TabSwitcher extends StatelessWidget {
               label: 'My Playlists',
               isSelected: tab == _PlaylistTab.mine,
               onTap: () => onChanged(_PlaylistTab.mine),
+            ),
+          ),
+          Expanded(
+            child: _TabButton(
+              label: 'Joined',
+              isSelected: tab == _PlaylistTab.joined,
+              onTap: () => onChanged(_PlaylistTab.joined),
             ),
           ),
           Expanded(
@@ -521,9 +550,11 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final message = tab == _PlaylistTab.mine
-        ? "You don't have any playlists yet."
-        : 'No public playlists to discover yet.';
+    final message = switch (tab) {
+      _PlaylistTab.mine => "You don't have any playlists yet.",
+      _PlaylistTab.joined => "You haven't joined any playlists yet.",
+      _PlaylistTab.discover => 'No public playlists to discover yet.',
+    };
 
     return Column(
       children: [

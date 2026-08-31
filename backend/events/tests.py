@@ -1064,6 +1064,53 @@ class EventAttendeeListTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
+class EventIsMemberFieldTests(APITestCase):
+    """`is_member` on EventSerializer — lets the client tell a public event
+    the user already joined apart from one they haven't discovered yet."""
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.joiner = create_verified_user("joiner@test.com")
+        self.stranger = create_verified_user("stranger@test.com")
+
+        self.client.force_authenticate(self.host)
+        create_resp = self.client.post(
+            "/api/v1/events/", {"title": "Public Party", "visibility": "public"}
+        )
+        self.event_id = create_resp.data["id"]
+        self.detail_url = f"/api/v1/events/{self.event_id}/"
+
+        self.client.force_authenticate(self.joiner)
+        self.client.post(f"/api/v1/events/{self.event_id}/join/", {})
+
+    def test_is_member_true_after_joining(self):
+        self.client.force_authenticate(self.joiner)
+        response = self.client.get(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["is_member"])
+
+    def test_is_member_false_for_stranger_who_has_not_joined(self):
+        self.client.force_authenticate(self.stranger)
+        response = self.client.get(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["is_member"])
+
+    def test_is_member_false_for_host(self):
+        # The host can't self-join their own event (EventJoinView rejects
+        # it), so this should read false rather than ever being true.
+        self.client.force_authenticate(self.host)
+        response = self.client.get(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["is_member"])
+
+    def test_is_member_reflected_in_list_endpoint(self):
+        self.client.force_authenticate(self.joiner)
+        response = self.client.get("/api/v1/events/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        event = next(e for e in response.data["results"] if e["id"] == self.event_id)
+        self.assertTrue(event["is_member"])
+
+
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class EventAttendeeRemovalTests(APITestCase):
     """DELETE /events/<event_id>/attendees/<user_id>/ — host-only removal

@@ -110,13 +110,13 @@ class EventCoverPreset {
   static const afterDark = EventCoverPreset._(
     'after_dark',
     'After dark',
-    'assets/images/event_covers/pexels-baskincreativeco.jpg',
+    'assets/images/event_covers/after_dark.jpg',
     Color(0xFFA78BFA),
   );
   static const vibes = EventCoverPreset._(
     'vibes',
     'Vibes',
-    'assets/images/event_covers/image.jpg',
+    'assets/images/event_covers/vibes.jpg',
     Color(0xFFF472B6),
   );
 
@@ -186,6 +186,7 @@ class Event {
     required this.votingClosesAt,
     required this.songCount,
     required this.votingIsOpen,
+    required this.isMember,
     required this.currentSong,
     required this.currentPositionSeconds,
     required this.createdAt,
@@ -216,6 +217,7 @@ class Event {
         : DateTime.parse(json['voting_closes_at'] as String),
     songCount: json['song_count'] as int? ?? 0,
     votingIsOpen: json['voting_is_open'] as bool? ?? false,
+    isMember: json['is_member'] as bool? ?? false,
     currentSong: json['current_song'] == null
         ? null
         : EventSong.fromJson(json['current_song'] as Map<String, dynamic>),
@@ -274,6 +276,12 @@ class Event {
   /// [votePermission] rules (invite/location/time), which are checked
   /// per-request by the vote endpoint (see [VoteNotPermittedException]).
   final bool votingIsOpen;
+
+  /// Whether the signed-in user has self-joined this event via
+  /// `POST .../join/` (an `EventMembership` row). Always `false` for a
+  /// host or an invited-only guest who hasn't separately self-joined —
+  /// this only tracks the self-serve join flow, not general access.
+  final bool isMember;
 
   /// The backend's authoritative "on air" song right now — see
   /// DECISIONS.md. `null` once every song has been played, or the queue
