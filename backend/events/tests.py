@@ -2004,3 +2004,148 @@ class EventParticipantLimitTests(APITestCase):
         self.client.force_authenticate(self.host)
         response = self.client.patch(self.event_url, {"max_participants": 100})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class EventLikeTests(APITestCase):
+    """
+    POST/DELETE /events/<id>/like/ — a lightweight, permission-free (beyond
+    visibility) like/unlike toggle. Anyone who can see the event can like
+    it, one like per person, reflected in Event.like_count/has_liked.
+    """
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.stranger = create_verified_user("stranger@test.com")
+
+        self.client.force_authenticate(self.host)
+        event_resp = self.client.post("/api/v1/events/", {"title": "Test Party", "visibility": "public"})
+        self.event_id = event_resp.data["id"]
+        self.event_url = f"/api/v1/events/{self.event_id}/"
+        self.like_url = f"/api/v1/events/{self.event_id}/like/"
+
+    def test_like_count_and_has_liked_default_to_zero_and_false(self):
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["like_count"], 0)
+        self.assertFalse(response.data["has_liked"])
+
+    def test_user_can_like_an_event(self):
+        self.client.force_authenticate(self.stranger)
+        response = self.client.post(self.like_url, {})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["like_count"], 1)
+
+    def test_like_reflected_on_event_detail(self):
+        self.client.force_authenticate(self.stranger)
+        self.client.post(self.like_url, {})
+        response = self.client.get(self.event_url)
+        self.assertEqual(response.data["like_count"], 1)
+        self.assertTrue(response.data["has_liked"])
+
+    def test_liking_twice_is_rejected(self):
+        self.client.force_authenticate(self.stranger)
+        self.client.post(self.like_url, {})
+        response = self.client.post(self.like_url, {})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_like_count_is_shared_across_users(self):
+        self.client.force_authenticate(self.stranger)
+        self.client.post(self.like_url, {})
+
+        second_user = create_verified_user("second@test.com")
+        self.client.force_authenticate(second_user)
+        response = self.client.post(self.like_url, {})
+        self.assertEqual(response.data["like_count"], 2)
+
+    def test_user_can_unlike_an_event(self):
+        self.client.force_authenticate(self.stranger)
+        self.client.post(self.like_url, {})
+        response = self.client.delete(self.like_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["like_count"], 0)
+
+    def test_unliking_without_a_prior_like_is_rejected(self):
+        self.client.force_authenticate(self.stranger)
+        response = self.client.delete(self.like_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_host_can_like_their_own_event(self):
+        response = self.client.post(self.like_url, {})  # still authenticated as host
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_a_stranger_to_a_private_event_cannot_like_it(self):
+        self.client.force_authenticate(self.host)
+        private_resp = self.client.post("/api/v1/events/", {"title": "Secret", "visibility": "private"})
+        private_like_url = f"/api/v1/events/{private_resp.data['id']}/like/"
+
+        self.client.force_authenticate(self.stranger)
+        response = self.client.post(private_like_url, {})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_deleted_event_cannot_be_liked(self):
+        self.client.force_authenticate(self.host)
+        self.client.delete(self.event_url)
+
+        response = self.client.post(self.like_url, {})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class ParticipantAvatarFieldTests(APITestCase):
+    """
+    EventGuestSerializer/EventMembershipSerializer expose `guest_avatar`/
+    `guest_avatar_type` and `member_avatar`/`member_avatar_type` — sourced
+    from the guest/member's own Profile (see `events.serializers._actor_avatar`),
+    not gated by any visibility tier (avatar is public info, same as on
+    `ProfileSerializer`).
+    """
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.guest = create_verified_user("guest@test.com")
+        self.member = create_verified_user("member@test.com")
+
+        self.client.force_authenticate(self.host)
+        event_resp = self.client.post("/api/v1/events/", {"title": "Test Party", "visibility": "public"})
+        self.event_id = event_resp.data["id"]
+        self.guests_url = f"/api/v1/events/{self.event_id}/guests/"
+        self.attendees_url = f"/api/v1/events/{self.event_id}/attendees/"
+
+        self.client.post(self.guests_url, {"user_id": self.guest.id})
+        self.client.force_authenticate(self.member)
+        self.client.post(f"/api/v1/events/{self.event_id}/join/", {})
+        self.client.force_authenticate(self.host)
+
+    def test_guest_with_no_profile_row_gets_a_safe_default(self):
+        # create_verified_user bypasses the real verification flow, which
+        # is the only place a Profile row gets created — so this guest
+        # genuinely has none yet.
+        response = self.client.get(self.guests_url)
+        row = response.data[0]
+        self.assertIsNone(row["guest_avatar"])
+        self.assertEqual(row["guest_avatar_type"], "preset")
+
+    def test_guest_avatar_reflects_their_profile(self):
+        from profiles.services import create_profile_for_user
+
+        profile = create_profile_for_user(self.guest)
+        profile.avatar_type = "external_url"
+        profile.avatar_external_url = "https://example.test/guest.jpg"
+        profile.save(update_fields=["avatar_type", "avatar_external_url"])
+
+        response = self.client.get(self.guests_url)
+        row = response.data[0]
+        self.assertEqual(row["guest_avatar"], "https://example.test/guest.jpg")
+        self.assertEqual(row["guest_avatar_type"], "external_url")
+
+    def test_member_avatar_reflects_their_profile(self):
+        from profiles.services import create_profile_for_user
+
+        profile = create_profile_for_user(self.member)
+        profile.avatar_preset_id = "3"
+        profile.save(update_fields=["avatar_preset_id"])
+
+        response = self.client.get(self.attendees_url)
+        row = response.data[0]
+        self.assertEqual(row["member_avatar"], "3")
+        self.assertEqual(row["member_avatar_type"], "preset")

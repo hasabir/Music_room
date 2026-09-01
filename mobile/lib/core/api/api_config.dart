@@ -136,8 +136,12 @@ class ApiConfig {
       Uri.parse('$baseUrl$eventsEndpoint$eventId/queue/');
   static Uri eventVoteUri(int eventId, int eventSongId) =>
       Uri.parse('$baseUrl$eventsEndpoint$eventId/queue/$eventSongId/vote/');
+  static Uri eventLikeUri(int eventId) =>
+      Uri.parse('$baseUrl$eventsEndpoint$eventId/like/');
   static Uri eventGuestsUri(int eventId) =>
       Uri.parse('$baseUrl$eventsEndpoint$eventId/guests/');
+  static Uri eventGuestRespondUri(int eventId) =>
+      Uri.parse('$baseUrl$eventsEndpoint$eventId/guests/respond/');
   static Uri eventGuestDetailUri(int eventId, int userId) =>
       Uri.parse('$baseUrl$eventsEndpoint$eventId/guests/$userId/');
   static Uri eventJoinUri(int eventId) =>

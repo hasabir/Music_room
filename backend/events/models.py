@@ -176,6 +176,11 @@ class Event(models.Model):
         """How many songs are currently in this event's queue."""
         return self.queue.count()
 
+    @property
+    def like_count(self):
+        """How many people have liked this event."""
+        return self.likes.count()
+
     def participant_ids(self):
         """
         Distinct user ids counted against `max_participants`: the union of
@@ -433,6 +438,26 @@ class EventAccessRequest(models.Model):
 
     def __str__(self):
         return f"{self.requester.email} -> {self.event.title} ({self.status})"
+
+
+class EventLike(models.Model):
+    """
+    One person's "like" on an event — a lightweight signal of interest,
+    independent of hosting, joining, or being invited. Anyone who can see
+    the event (`can_user_see_event`) can like it; a like carries no
+    permission implications of its own, unlike `EventGuest`/`EventMembership`.
+    """
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="likes")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="event_likes")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("event", "user")  # one like per person per event
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.email} likes {self.event.title}"
 
 
 class Song(models.Model):

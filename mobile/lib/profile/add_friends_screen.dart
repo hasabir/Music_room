@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../auth/auth_api.dart';
 import '../core/api/api_client.dart';
 import 'profile_api.dart';
+import 'profile_avatar.dart';
 import 'profile_models.dart';
-import 'view_profile_screen.dart';
+import 'profile_preview_sheet.dart';
 
 class _AddFriendsColors {
   static const background = Color(0xFF0E0E15);
@@ -31,12 +33,22 @@ class AddFriendsScreen extends StatefulWidget {
 
 class _AddFriendsScreenState extends State<AddFriendsScreen> {
   final _profileApi = ProfileApi();
+  final _authApi = AuthApi();
   final _controller = TextEditingController();
   Timer? _debounce;
 
   List<SearchUser>? _results;
   var _isLoading = false;
   String? _error;
+  int? _currentUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    _authApi.getCurrentUser().then((user) {
+      if (mounted) setState(() => _currentUserId = user.id);
+    });
+  }
 
   @override
   void dispose() {
@@ -122,15 +134,14 @@ class _AddFriendsScreenState extends State<AddFriendsScreen> {
   }
 
   Future<void> _onViewProfile(SearchUser user) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ViewProfileScreen(
-          userId: user.id,
-          initialFullName: user.fullName,
-          relationshipStatus: user.relationshipStatus,
-          friendshipId: user.friendshipId,
-        ),
-      ),
+    await showProfilePreview(
+      context,
+      userId: user.id,
+      currentUserId: _currentUserId,
+      initialName: user.fullName,
+      initialUsername: user.username,
+      initialAvatar: user.avatar,
+      initialAvatarType: user.avatarType,
     );
     final query = _controller.text;
     if (query.trim().isNotEmpty) _search(query);
@@ -259,17 +270,7 @@ class _SearchResultRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 22,
-                    backgroundColor: _AddFriendsColors.border,
-                    child: Text(
-                      user.firstName.isNotEmpty ? user.firstName[0].toUpperCase() : '?',
-                      style: const TextStyle(
-                        color: _AddFriendsColors.headline,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
+                  _SearchResultAvatar(user: user),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Text(
@@ -327,6 +328,34 @@ class _SearchResultRow extends StatelessWidget {
       ),
     };
   }
+}
+
+class _SearchResultAvatar extends StatelessWidget {
+  const _SearchResultAvatar({required this.user});
+  final SearchUser user;
+
+  @override
+  Widget build(BuildContext context) => ClipOval(
+    child: SizedBox(
+      width: 44,
+      height: 44,
+      child: ProfileAvatarImage(
+        avatar: user.avatar,
+        avatarType: user.avatarType,
+        fallback: CircleAvatar(
+          radius: 22,
+          backgroundColor: _AddFriendsColors.border,
+          child: Text(
+            user.firstName.isNotEmpty ? user.firstName[0].toUpperCase() : '?',
+            style: const TextStyle(
+              color: _AddFriendsColors.headline,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _OutlinedPill extends StatelessWidget {

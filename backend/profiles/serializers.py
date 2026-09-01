@@ -2,20 +2,37 @@ from django.db.models import Q
 from rest_framework import serializers
 
 from user.models import User, ActionLog
-from events.models import Vote
+from events.models import EventLike
 from playlists.models import Playlist
 from .models import Friendship , Profile
+from .services import avatar_for_user, resolve_avatar
 
 
 class FriendSerializer(serializers.ModelSerializer):
+    """A `User`, as nested into `FriendshipSerializer`'s `sender`/
+    `receiver` and returned directly by `FriendListView` — `username`/
+    `avatar`/`avatar_type` are public info, same tier as on
+    `ProfileSerializer`."""
+
+    avatar = serializers.SerializerMethodField()
+    avatar_type = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             "id",
+            "username",
             "first_name",
             "last_name",
+            "avatar",
+            "avatar_type",
         ]
+
+    def get_avatar(self, obj):
+        return avatar_for_user(obj)[0]
+
+    def get_avatar_type(self, obj):
+        return avatar_for_user(obj)[1]
 
 
 class FriendshipSerializer(serializers.ModelSerializer):
@@ -53,7 +70,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         allow_empty=True,
     )
 
-    votes_count = serializers.SerializerMethodField()
+    likes_received_count = serializers.SerializerMethodField()
     playlists_count = serializers.SerializerMethodField()
 
     # Whichever of `profile_image` / `avatar_external_url` /
@@ -79,7 +96,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "avatar_preset_id",
             "favorite_genres",
             "field_visibility",
-            "votes_count",
+            "likes_received_count",
             "playlists_count",
             "created_at",
             "updated_at",
@@ -94,14 +111,16 @@ class ProfileSerializer(serializers.ModelSerializer):
             # only ever assigned server-side at social-sign-in account
             # creation (see `profiles.services.create_profile_for_user`).
             "avatar_type",
-            "votes_count",
+            "likes_received_count",
             "playlists_count",
             "created_at",
             "updated_at",
         ]
 
-    def get_votes_count(self, obj):
-        return obj.user.votes_cast.count()
+    def get_likes_received_count(self, obj):
+        """Total likes across every event this user hosts — not likes
+        they've given (see EventLike, `events/models.py`)."""
+        return EventLike.objects.filter(event__host=obj.user).count()
 
     def get_playlists_count(self, obj):
         return Playlist.objects.filter(
@@ -109,11 +128,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         ).distinct().count()
 
     def get_avatar(self, obj):
-        if obj.avatar_type == "custom":
-            return obj.profile_image.url if obj.profile_image else None
-        if obj.avatar_type == "external_url":
-            return obj.avatar_external_url or None
-        return obj.avatar_preset_id or None
+        return resolve_avatar(obj)
 
     def validate_field_visibility(self, value):
         if not isinstance(value, dict):

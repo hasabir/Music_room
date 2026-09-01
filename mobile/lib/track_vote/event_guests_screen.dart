@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../auth/auth_api.dart';
 import '../core/api/api_client.dart';
 import '../profile/profile_api.dart';
+import '../profile/profile_avatar.dart';
 import '../profile/profile_models.dart';
+import '../profile/profile_preview_sheet.dart';
 import 'event_api.dart';
 import 'event_models.dart';
 
@@ -30,6 +33,7 @@ class EventGuestsScreen extends StatefulWidget {
 class _EventGuestsScreenState extends State<EventGuestsScreen> {
   final _eventApi = EventApi();
   final _profileApi = ProfileApi();
+  final _authApi = AuthApi();
   final _searchController = TextEditingController();
   Timer? _debounce;
   List<EventGuest> _guests = const [];
@@ -37,12 +41,16 @@ class _EventGuestsScreenState extends State<EventGuestsScreen> {
   var _isLoading = true;
   var _isSearching = false;
   int? _changingUserId;
+  int? _currentUserId;
   String? _error;
 
   @override
   void initState() {
     super.initState();
     _loadGuests();
+    _authApi.getCurrentUser().then((user) {
+      if (mounted) setState(() => _currentUserId = user.id);
+    });
   }
 
   @override
@@ -221,12 +229,14 @@ class _EventGuestsScreenState extends State<EventGuestsScreen> {
         results: results,
         guestIds: _guests.map((guest) => guest.guest).toSet(),
         changingUserId: _changingUserId,
+        currentUserId: _currentUserId,
         onInvite: _invite,
       );
     }
     return _GuestList(
       guests: _guests,
       changingUserId: _changingUserId,
+      currentUserId: _currentUserId,
       onRemove: _remove,
     );
   }
@@ -236,10 +246,12 @@ class _GuestList extends StatelessWidget {
   const _GuestList({
     required this.guests,
     required this.changingUserId,
+    required this.currentUserId,
     required this.onRemove,
   });
   final List<EventGuest> guests;
   final int? changingUserId;
+  final int? currentUserId;
   final ValueChanged<EventGuest> onRemove;
 
   @override
@@ -267,8 +279,16 @@ class _GuestList extends StatelessWidget {
         );
       }
       final guest = guests[index - 1];
+      final name = guest.guestDisplayName.isNotEmpty
+          ? guest.guestDisplayName
+          : guest.guestEmail;
       return _GuestCard(
-        email: guest.guestEmail,
+        userId: guest.guest,
+        currentUserId: currentUserId,
+        name: name,
+        username: guest.guestUsername,
+        avatar: guest.guestAvatar,
+        avatarType: guest.guestAvatarType,
         trailing: IconButton(
           onPressed: changingUserId == guest.guest
               ? null
@@ -289,11 +309,13 @@ class _SearchResults extends StatelessWidget {
     required this.results,
     required this.guestIds,
     required this.changingUserId,
+    required this.currentUserId,
     required this.onInvite,
   });
   final List<SearchUser> results;
   final Set<int> guestIds;
   final int? changingUserId;
+  final int? currentUserId;
   final ValueChanged<SearchUser> onInvite;
 
   @override
@@ -314,7 +336,12 @@ class _SearchResults extends StatelessWidget {
         final user = results[index];
         final invited = guestIds.contains(user.id);
         return _GuestCard(
-          email: user.fullName,
+          userId: user.id,
+          currentUserId: currentUserId,
+          name: user.fullName,
+          username: user.username,
+          avatar: user.avatar,
+          avatarType: user.avatarType,
           trailing: invited
               ? const Text(
                   'INVITED',
@@ -351,8 +378,21 @@ class _SearchResults extends StatelessWidget {
 }
 
 class _GuestCard extends StatelessWidget {
-  const _GuestCard({required this.email, required this.trailing});
-  final String email;
+  const _GuestCard({
+    required this.userId,
+    required this.currentUserId,
+    required this.name,
+    required this.username,
+    required this.avatar,
+    required this.avatarType,
+    required this.trailing,
+  });
+  final int userId;
+  final int? currentUserId;
+  final String name;
+  final String username;
+  final String? avatar;
+  final String avatarType;
   final Widget trailing;
 
   @override
@@ -365,26 +405,54 @@ class _GuestCard extends StatelessWidget {
     ),
     child: Row(
       children: [
-        CircleAvatar(
-          backgroundColor: _GuestColors.border,
-          child: Text(
-            email.isEmpty ? '?' : email[0].toUpperCase(),
-            style: const TextStyle(
-              color: _GuestColors.tertiary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
         Expanded(
-          child: Text(
-            email,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: 'Sora',
-              fontWeight: FontWeight.w700,
-              color: _GuestColors.body,
+          child: InkWell(
+            onTap: () => showProfilePreview(
+              context,
+              userId: userId,
+              currentUserId: currentUserId,
+              initialName: name,
+              initialUsername: username,
+              initialAvatar: avatar,
+              initialAvatarType: avatarType,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            child: Row(
+              children: [
+                ClipOval(
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: ProfileAvatarImage(
+                      avatar: avatar,
+                      avatarType: avatarType,
+                      fallback: CircleAvatar(
+                        backgroundColor: _GuestColors.border,
+                        child: Text(
+                          name.isEmpty ? '?' : name[0].toUpperCase(),
+                          style: const TextStyle(
+                            color: _GuestColors.tertiary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Sora',
+                      fontWeight: FontWeight.w700,
+                      color: _GuestColors.body,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

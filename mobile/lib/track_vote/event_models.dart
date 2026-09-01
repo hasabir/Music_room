@@ -196,6 +196,8 @@ class Event {
     required this.songCount,
     required this.votingIsOpen,
     required this.isMember,
+    required this.likeCount,
+    required this.hasLiked,
     required this.currentSong,
     required this.currentPositionSeconds,
     required this.createdAt,
@@ -229,6 +231,8 @@ class Event {
     songCount: json['song_count'] as int? ?? 0,
     votingIsOpen: json['voting_is_open'] as bool? ?? false,
     isMember: json['is_member'] as bool? ?? false,
+    likeCount: json['like_count'] as int? ?? 0,
+    hasLiked: json['has_liked'] as bool? ?? false,
     currentSong: json['current_song'] == null
         ? null
         : EventSong.fromJson(json['current_song'] as Map<String, dynamic>),
@@ -303,6 +307,13 @@ class Event {
   /// host or an invited-only guest who hasn't separately self-joined —
   /// this only tracks the self-serve join flow, not general access.
   final bool isMember;
+
+  /// How many people have liked this event (`POST .../like/`) — anyone
+  /// who can see the event can like it, independent of hosting/joining.
+  final int likeCount;
+
+  /// Whether the signed-in user has liked this event.
+  final bool hasLiked;
 
   /// The backend's authoritative "on air" song right now — see
   /// DECISIONS.md. `null` once every song has been played, or the queue
@@ -421,6 +432,13 @@ class EventSong {
   final DateTime addedAt;
 }
 
+/// Allowed values for `EventGuest.rsvp_status`
+/// (`backend/events/models.py`: `EventGuest.RSVP_STATUS_CHOICES`). Set via
+/// `POST /events/<event_id>/guests/respond/` — see [EventApi.respondToInvite].
+const String eventGuestRsvpPending = 'pending';
+const String eventGuestRsvpAccepted = 'accepted';
+const String eventGuestRsvpDeclined = 'declined';
+
 /// One person invited to an event, as returned by
 /// `GET/POST /api/v1/events/<event_id>/guests/`
 /// (`EventGuestSerializer`).
@@ -432,6 +450,9 @@ class EventGuest {
     required this.guestEmail,
     required this.guestUsername,
     required this.guestDisplayName,
+    required this.guestAvatar,
+    required this.guestAvatarType,
+    required this.rsvpStatus,
     required this.invitedAt,
   });
 
@@ -442,6 +463,11 @@ class EventGuest {
     guestEmail: json['guest_email'] as String? ?? '',
     guestUsername: json['guest_username'] as String? ?? '',
     guestDisplayName: json['guest_display_name'] as String? ?? '',
+    guestAvatar: json['guest_avatar'] as String?,
+    // 'preset' mirrors `profileAvatarTypePreset` in profile_models.dart —
+    // not imported here to keep this file's model layer self-contained.
+    guestAvatarType: json['guest_avatar_type'] as String? ?? 'preset',
+    rsvpStatus: json['rsvp_status'] as String? ?? eventGuestRsvpPending,
     invitedAt: DateTime.parse(json['invited_at'] as String),
   );
 
@@ -453,6 +479,16 @@ class EventGuest {
   final String guestEmail;
   final String guestUsername;
   final String guestDisplayName;
+
+  /// See [UserProfile.avatar] — always present, avatar is public info.
+  final String? guestAvatar;
+
+  /// See [UserProfile.avatarType].
+  final String guestAvatarType;
+
+  /// One of [eventGuestRsvpPending] / [eventGuestRsvpAccepted] /
+  /// [eventGuestRsvpDeclined].
+  final String rsvpStatus;
   final DateTime invitedAt;
 }
 
@@ -467,6 +503,8 @@ class EventMembership {
     required this.memberEmail,
     required this.memberUsername,
     required this.memberDisplayName,
+    required this.memberAvatar,
+    required this.memberAvatarType,
     required this.joinedAt,
   });
 
@@ -477,6 +515,10 @@ class EventMembership {
     memberEmail: json['member_email'] as String? ?? '',
     memberUsername: json['member_username'] as String? ?? '',
     memberDisplayName: json['member_display_name'] as String? ?? '',
+    memberAvatar: json['member_avatar'] as String?,
+    // 'preset' mirrors `profileAvatarTypePreset` in profile_models.dart —
+    // see the same note on EventGuest.guestAvatarType above.
+    memberAvatarType: json['member_avatar_type'] as String? ?? 'preset',
     joinedAt: DateTime.parse(json['joined_at'] as String),
   );
 
@@ -488,6 +530,12 @@ class EventMembership {
   final String memberEmail;
   final String memberUsername;
   final String memberDisplayName;
+
+  /// See [EventGuest.guestAvatar].
+  final String? memberAvatar;
+
+  /// See [EventGuest.guestAvatarType].
+  final String memberAvatarType;
   final DateTime joinedAt;
 }
 
@@ -503,4 +551,18 @@ class VoteResult {
 
   final String detail;
   final int voteCount;
+}
+
+/// Response shape shared by both `POST` (like) and `DELETE` (unlike) on
+/// `/api/v1/events/<event_id>/like/`.
+class LikeResult {
+  const LikeResult({required this.detail, required this.likeCount});
+
+  factory LikeResult.fromJson(Map<String, dynamic> json) => LikeResult(
+    detail: json['detail'] as String? ?? '',
+    likeCount: json['like_count'] as int? ?? 0,
+  );
+
+  final String detail;
+  final int likeCount;
 }

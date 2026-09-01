@@ -22,10 +22,11 @@ class _ViewProfileColors {
 /// `GET /api/v1/profile/profile/<user_id>/` (filtered by visibility rules
 /// server-side) plus the friend-request actions already used elsewhere.
 ///
-/// Votes and Playlists counts both come straight from the backend
-/// (`votes_count`/`playlists_count` on the profile response — both are
-/// always returned regardless of the visibility filtering applied to the
-/// rest of the profile, per `UserProfileView` on the backend). Bio and
+/// Likes-received and Playlists counts both come straight from the
+/// backend (`likes_received_count`/`playlists_count` on the profile
+/// response — both are always returned regardless of the visibility
+/// filtering applied to the rest of the profile, per `UserProfileView` on
+/// the backend). Bio and
 /// birthday render inline on [_ProfileCard]; `location`/`favorite_artist`/
 /// `phone_number` — each present only when this viewer clears the
 /// target's visibility tier for it — render as their own "DETAILS" card
@@ -169,7 +170,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
                         onDecline: _onDecline,
                       ),
                       const SizedBox(height: 16),
-                      _StatsRow(votes: profile.votesCount, playlists: profile.playlistsCount),
+                      _StatsRow(likes: profile.likesReceivedCount, playlists: profile.playlistsCount),
                       if (hasDetails) ...[
                         const SizedBox(height: 16),
                         const _DetailsLabel(),
@@ -297,7 +298,7 @@ class _ProfileCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          _RelationshipAction(
+          RelationshipActionRow(
             status: relationshipStatus,
             isActing: isActing,
             onAdd: onAdd,
@@ -339,8 +340,13 @@ class _ProfileCard extends StatelessWidget {
   }
 }
 
-class _RelationshipAction extends StatelessWidget {
-  const _RelationshipAction({
+/// The friend-request action for [status] — Add/Remove/Requested+Cancel/
+/// Accept+Decline. Public (not file-private) so [ProfilePreviewSheet]
+/// (`profile_preview_sheet.dart`) can reuse the exact same buttons rather
+/// than duplicating this switch.
+class RelationshipActionRow extends StatelessWidget {
+  const RelationshipActionRow({
+    super.key,
     required this.status,
     required this.isActing,
     required this.onAdd,
@@ -482,16 +488,16 @@ class _Chip extends StatelessWidget {
 }
 
 class _StatsRow extends StatelessWidget {
-  const _StatsRow({required this.votes, required this.playlists});
+  const _StatsRow({required this.likes, required this.playlists});
 
-  final int votes;
+  final int likes;
   final int playlists;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _StatTile(value: '$votes', label: 'VOTES')),
+        Expanded(child: _StatTile(value: '$likes', label: 'LIKES')),
         const SizedBox(width: 12),
         Expanded(child: _StatTile(value: '$playlists', label: 'PLAYLISTS')),
       ],

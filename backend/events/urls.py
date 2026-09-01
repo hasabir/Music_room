@@ -1,6 +1,6 @@
 # events/urls.py
 from django.urls import path
-from .views import EventListCreateView, EventDetailView, EventQueueView, VoteView
+from .views import EventListCreateView, EventDetailView, EventQueueView, VoteView, EventLikeView
 from .views_guests import (
     EventGuestListView, EventGuestRemoveView, EventGuestRespondView, EventJoinView,
     EventAttendeeListView, EventAttendeeRemoveView,
@@ -14,6 +14,7 @@ urlpatterns = [
     path('<int:pk>/', EventDetailView.as_view(), name='event_detail'),
     path('<int:event_id>/queue/', EventQueueView.as_view(), name='event_queue'),
     path('<int:event_id>/queue/<int:event_song_id>/vote/', VoteView.as_view(), name='event_song_vote'),
+    path('<int:event_id>/like/', EventLikeView.as_view(), name='event_like'),
     path('<int:event_id>/guests/', EventGuestListView.as_view(), name='event_guest_list'),
     path('<int:event_id>/guests/respond/', EventGuestRespondView.as_view(), name='event_guest_respond'),
     path('<int:event_id>/guests/<int:user_id>/', EventGuestRemoveView.as_view(), name='event_guest_remove'),

@@ -220,6 +220,9 @@ class PlaylistCollaborator {
     required this.playlist,
     required this.collaborator,
     required this.collaboratorUsername,
+    required this.collaboratorDisplayName,
+    required this.collaboratorAvatar,
+    required this.collaboratorAvatarType,
     required this.invitedAt,
     required this.canAddSongs,
     required this.canReorderSongs,
@@ -232,6 +235,10 @@ class PlaylistCollaborator {
         playlist: json['playlist'] as int,
         collaborator: json['collaborator'] as int,
         collaboratorUsername: json['collaborator_username'] as String? ?? '',
+        collaboratorDisplayName: json['collaborator_display_name'] as String? ?? '',
+        collaboratorAvatar: json['collaborator_avatar'] as String?,
+        collaboratorAvatarType:
+            json['collaborator_avatar_type'] as String? ?? 'preset',
         invitedAt: DateTime.parse(json['invited_at'] as String),
         canAddSongs: json['can_add_songs'] as bool? ?? true,
         canReorderSongs: json['can_reorder_songs'] as bool? ?? true,
@@ -245,6 +252,14 @@ class PlaylistCollaborator {
   /// The invited user's id.
   final int collaborator;
   final String collaboratorUsername;
+  final String collaboratorDisplayName;
+
+  /// See `UserProfile.avatar` (`profile_models.dart`) — always present,
+  /// avatar is public info.
+  final String? collaboratorAvatar;
+
+  /// See `UserProfile.avatarType`.
+  final String collaboratorAvatarType;
   final DateTime invitedAt;
   final bool canAddSongs;
   final bool canReorderSongs;
@@ -268,6 +283,9 @@ class PlaylistAccessRequest {
     required this.playlist,
     required this.requester,
     required this.requesterUsername,
+    required this.requesterDisplayName,
+    required this.requesterAvatar,
+    required this.requesterAvatarType,
     required this.status,
     required this.requestedAt,
     required this.decidedAt,
@@ -279,6 +297,9 @@ class PlaylistAccessRequest {
         playlist: json['playlist'] as int,
         requester: json['requester'] as int,
         requesterUsername: json['requester_username'] as String? ?? '',
+        requesterDisplayName: json['requester_display_name'] as String? ?? '',
+        requesterAvatar: json['requester_avatar'] as String?,
+        requesterAvatarType: json['requester_avatar_type'] as String? ?? 'preset',
         status: json['status'] as String? ?? playlistAccessRequestPending,
         requestedAt: DateTime.parse(json['requested_at'] as String),
         decidedAt: json['decided_at'] == null
@@ -290,6 +311,14 @@ class PlaylistAccessRequest {
   final int playlist;
   final int requester;
   final String requesterUsername;
+  final String requesterDisplayName;
+
+  /// See `UserProfile.avatar` (`profile_models.dart`) — always present,
+  /// avatar is public info.
+  final String? requesterAvatar;
+
+  /// See `UserProfile.avatarType`.
+  final String requesterAvatarType;
 
   /// One of [playlistAccessRequestPending] / [playlistAccessRequestApproved]
   /// / [playlistAccessRequestDenied].

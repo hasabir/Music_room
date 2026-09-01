@@ -4,6 +4,8 @@ import '../auth/auth_api.dart';
 import '../auth/welcome_screen.dart';
 import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
+import '../profile/profile_avatar.dart';
+import '../profile/profile_preview_sheet.dart';
 import 'add_collaborators_screen.dart';
 import 'playlist_api.dart';
 import 'playlist_models.dart';
@@ -44,6 +46,7 @@ class PlaylistCollaboratorsScreen extends StatefulWidget {
 class _PlaylistCollaboratorsScreenState
     extends State<PlaylistCollaboratorsScreen> {
   final _playlistApi = PlaylistApi();
+  final _authApi = AuthApi();
   final _tokenStorage = TokenStorage();
 
   var _isLoading = true;
@@ -52,11 +55,15 @@ class _PlaylistCollaboratorsScreenState
   List<PlaylistAccessRequest> _pendingRequests = const [];
   final _decidingRequestIds = <int>{};
   final _savingCollaboratorIds = <int>{};
+  int? _currentUserId;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _authApi.getCurrentUser().then((user) {
+      if (mounted) setState(() => _currentUserId = user.id);
+    });
   }
 
   Future<void> _load() async {
@@ -285,6 +292,7 @@ class _PlaylistCollaboratorsScreenState
             for (final request in _pendingRequests) ...[
               _AccessRequestRow(
                 request: request,
+                currentUserId: _currentUserId,
                 isDeciding: _decidingRequestIds.contains(request.id),
                 onApprove: () => _onDecideRequest(request, approve: true),
                 onDeny: () => _onDecideRequest(request, approve: false),
@@ -307,6 +315,7 @@ class _PlaylistCollaboratorsScreenState
             for (final collaborator in _collaborators) ...[
               _CollaboratorRow(
                 collaborator: collaborator,
+                currentUserId: _currentUserId,
                 isSaving: _savingCollaboratorIds.contains(collaborator.id),
                 onRemove: () => _onRemove(collaborator),
                 onAddSongsChanged: (value) =>
@@ -410,18 +419,23 @@ class _SectionLabel extends StatelessWidget {
 class _AccessRequestRow extends StatelessWidget {
   const _AccessRequestRow({
     required this.request,
+    required this.currentUserId,
     required this.isDeciding,
     required this.onApprove,
     required this.onDeny,
   });
 
   final PlaylistAccessRequest request;
+  final int? currentUserId;
   final bool isDeciding;
   final VoidCallback onApprove;
   final VoidCallback onDeny;
 
   @override
   Widget build(BuildContext context) {
+    final name = request.requesterDisplayName.isNotEmpty
+        ? request.requesterDisplayName
+        : request.requesterUsername;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -433,32 +447,43 @@ class _AccessRequestRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: _CollaboratorsColors.border,
-            child: Text(
-              request.requesterUsername.isNotEmpty
-                  ? request.requesterUsername[0].toUpperCase()
-                  : '?',
-              style: const TextStyle(
-                color: _CollaboratorsColors.headline,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
           Expanded(
-            child: Text(
-              '@${request.requesterUsername}',
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: 'Sora',
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: _CollaboratorsColors.body,
+            child: InkWell(
+              onTap: () => showProfilePreview(
+                context,
+                userId: request.requester,
+                currentUserId: currentUserId,
+                initialName: name,
+                initialUsername: request.requesterUsername,
+                initialAvatar: request.requesterAvatar,
+                initialAvatarType: request.requesterAvatarType,
+              ),
+              borderRadius: BorderRadius.circular(14),
+              child: Row(
+                children: [
+                  _CollaboratorAvatar(
+                    username: request.requesterUsername,
+                    avatar: request.requesterAvatar,
+                    avatarType: request.requesterAvatarType,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      '@${request.requesterUsername}',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Sora',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: _CollaboratorsColors.body,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
+          const SizedBox(width: 8),
           if (isDeciding)
             const SizedBox(
               width: 18,
@@ -495,6 +520,7 @@ class _AccessRequestRow extends StatelessWidget {
 class _CollaboratorRow extends StatelessWidget {
   const _CollaboratorRow({
     required this.collaborator,
+    required this.currentUserId,
     required this.isSaving,
     required this.onRemove,
     required this.onAddSongsChanged,
@@ -503,6 +529,7 @@ class _CollaboratorRow extends StatelessWidget {
   });
 
   final PlaylistCollaborator collaborator;
+  final int? currentUserId;
   final bool isSaving;
   final VoidCallback onRemove;
   final ValueChanged<bool> onAddSongsChanged;
@@ -511,6 +538,9 @@ class _CollaboratorRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final name = collaborator.collaboratorDisplayName.isNotEmpty
+        ? collaborator.collaboratorDisplayName
+        : collaborator.collaboratorUsername;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -522,29 +552,39 @@ class _CollaboratorRow extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: _CollaboratorsColors.border,
-                child: Text(
-                  collaborator.collaboratorUsername.isNotEmpty
-                      ? collaborator.collaboratorUsername[0].toUpperCase()
-                      : '?',
-                  style: const TextStyle(
-                    color: _CollaboratorsColors.headline,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
               Expanded(
-                child: Text(
-                  '@${collaborator.collaboratorUsername}',
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'Sora',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _CollaboratorsColors.body,
+                child: InkWell(
+                  onTap: () => showProfilePreview(
+                    context,
+                    userId: collaborator.collaborator,
+                    currentUserId: currentUserId,
+                    initialName: name,
+                    initialUsername: collaborator.collaboratorUsername,
+                    initialAvatar: collaborator.collaboratorAvatar,
+                    initialAvatarType: collaborator.collaboratorAvatarType,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Row(
+                    children: [
+                      _CollaboratorAvatar(
+                        username: collaborator.collaboratorUsername,
+                        avatar: collaborator.collaboratorAvatar,
+                        avatarType: collaborator.collaboratorAvatarType,
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          '@${collaborator.collaboratorUsername}',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Sora',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: _CollaboratorsColors.body,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -609,6 +649,43 @@ class _CollaboratorRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Shared by [_CollaboratorRow] and [_AccessRequestRow] — the real photo
+/// when [avatar] is set, falling back to an initial otherwise.
+class _CollaboratorAvatar extends StatelessWidget {
+  const _CollaboratorAvatar({
+    required this.username,
+    required this.avatar,
+    required this.avatarType,
+  });
+
+  final String username;
+  final String? avatar;
+  final String avatarType;
+
+  @override
+  Widget build(BuildContext context) => ClipOval(
+    child: SizedBox(
+      width: 40,
+      height: 40,
+      child: ProfileAvatarImage(
+        avatar: avatar,
+        avatarType: avatarType,
+        fallback: CircleAvatar(
+          radius: 20,
+          backgroundColor: _CollaboratorsColors.border,
+          child: Text(
+            username.isNotEmpty ? username[0].toUpperCase() : '?',
+            style: const TextStyle(
+              color: _CollaboratorsColors.headline,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _PermissionSwitch extends StatelessWidget {

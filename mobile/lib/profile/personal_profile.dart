@@ -39,7 +39,7 @@ class _ProfileColors {
 /// The signed-in user's own Profile screen.
 ///
 /// Loads the real profile (`GET /api/v1/profile/me/`, which includes
-/// `votes_count`/`playlists_count`/`birthday`/`field_visibility`) and
+/// `likes_received_count`/`playlists_count`/`birthday`/`field_visibility`) and
 /// friends list (`GET /api/v1/profile/friends/`) from the backend. Handle,
 /// instruments/gear, and events hosted are local placeholder data — see
 /// `profile_mock_data.dart` for why, and to swap them for real data later.
@@ -205,7 +205,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                         ),
                         const SizedBox(height: 16),
                         _StatsRow(
-                          votes: data.profile.votesCount,
+                          likes: data.profile.likesReceivedCount,
                           playlists: data.profile.playlistsCount,
                         ),
                         const SizedBox(height: 24),
@@ -268,7 +268,7 @@ class _ProfileData {
       avatarType: profileAvatarTypePreset,
       avatarPresetId: '',
       favoriteGenres: [],
-      votesCount: 0,
+      likesReceivedCount: 0,
       playlistsCount: 0,
       fieldVisibility: defaultFieldVisibility,
     ),
@@ -579,9 +579,9 @@ class _FriendsCard extends StatelessWidget {
 }
 
 class _StatsRow extends StatelessWidget {
-  const _StatsRow({required this.votes, required this.playlists});
+  const _StatsRow({required this.likes, required this.playlists});
 
-  final int votes;
+  final int likes;
   final int playlists;
 
   @override
@@ -589,7 +589,7 @@ class _StatsRow extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: _StatTile(value: '$votes', label: 'VOTES'),
+          child: _StatTile(value: '$likes', label: 'LIKES'),
         ),
         const SizedBox(width: 12),
         Expanded(

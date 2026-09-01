@@ -10,7 +10,9 @@ import '../core/auth/token_storage.dart';
 import '../core/playback/playback_controller.dart';
 import '../playlists/playlist_api.dart';
 import '../profile/profile_api.dart';
+import '../profile/profile_avatar.dart';
 import '../profile/profile_models.dart';
+import '../profile/profile_preview_sheet.dart';
 import 'event_api.dart';
 import 'event_models.dart';
 import 'event_widgets.dart';
@@ -49,6 +51,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   final _playback = PlaybackController.instance;
   final _trackApi = PlaylistApi();
   final Set<int> _changingVotes = <int>{};
+  var _isTogglingLike = false;
   Timer? _pollTimer;
   StreamSubscription<String>? _previewCompleteSub;
   var _isLoading = true;
@@ -382,6 +385,30 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
+  /// Likes/unlikes the event itself (`Event.hasLiked`/`likeCount`) — not
+  /// tied to hosting, joining, or voting; anyone who can see the event
+  /// can toggle this. Always refetches afterward rather than updating
+  /// [_event] locally, same as [_toggleVote].
+  Future<void> _toggleLike() async {
+    final event = _event;
+    if (event == null || _isTogglingLike) return;
+    setState(() => _isTogglingLike = true);
+    try {
+      if (event.hasLiked) {
+        await _eventApi.unlikeEvent(widget.eventId);
+      } else {
+        await _eventApi.likeEvent(widget.eventId);
+      }
+      await _refetchState();
+    } on SessionExpiredException {
+      await _signOutAndReturnToWelcome();
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } finally {
+      if (mounted) setState(() => _isTogglingLike = false);
+    }
+  }
+
   Future<void> _signOutAndReturnToWelcome() async {
     _pollTimer?.cancel();
     await _tokenStorage.clear();
@@ -467,6 +494,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         attendees: _attendees,
         guests: _guests,
         isHost: _isHost,
+        currentUserId: _authUser?.id,
         onInviteMore: () {
           Navigator.pop(sheetContext);
           _openGuestManagement();
@@ -593,14 +621,27 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 18),
-                    Text(
-                      event.title,
-                      style: const TextStyle(
-                        fontFamily: 'Sora',
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: _EventColors.headline,
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            event.title,
+                            style: const TextStyle(
+                              fontFamily: 'Sora',
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              color: _EventColors.headline,
+                            ),
+                          ),
+                        ),
+                        _LikeButton(
+                          hasLiked: event.hasLiked,
+                          likeCount: event.likeCount,
+                          isBusy: _isTogglingLike,
+                          onTap: _toggleLike,
+                        ),
+                      ],
                     ),
                     if (event.description.isNotEmpty) ...[
                       const SizedBox(height: 6),
@@ -958,6 +999,53 @@ class _SectionLabel extends StatelessWidget {
   );
 }
 
+/// Heart icon + like count, sat next to the event title. Tapping toggles
+/// [Event.hasLiked] via [_EventDetailScreenState._toggleLike] — anyone who
+/// can see the event can like it, independent of hosting/joining/voting.
+class _LikeButton extends StatelessWidget {
+  const _LikeButton({
+    required this.hasLiked,
+    required this.likeCount,
+    required this.isBusy,
+    required this.onTap,
+  });
+
+  final bool hasLiked;
+  final int likeCount;
+  final bool isBusy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: isBusy ? null : onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Column(
+          children: [
+            Icon(
+              hasLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              color: hasLiked ? EventBadgeColors.statusCanceled : _EventColors.muted,
+              size: 24,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '$likeCount',
+              style: TextStyle(
+                fontFamily: 'Sora',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: hasLiked ? EventBadgeColors.statusCanceled : _EventColors.muted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// The collapsed "Participants" card — a stack of the first few joined
 /// people's avatars + a count, tapping into the full [_ParticipantsSheet]
 /// (Joined/Invited tabs). The avatar stack shows [EventMembership]
@@ -1135,6 +1223,7 @@ class _ParticipantsSheet extends StatefulWidget {
     required this.attendees,
     required this.guests,
     required this.isHost,
+    required this.currentUserId,
     required this.onInviteMore,
     required this.onRemoveAttendee,
     required this.onRemoveGuest,
@@ -1143,6 +1232,11 @@ class _ParticipantsSheet extends StatefulWidget {
   final List<EventMembership> attendees;
   final List<EventGuest> guests;
   final bool isHost;
+
+  /// The signed-in user's own id — threaded through to [showProfilePreview]
+  /// so tapping your own row (you can be a plain member/guest of an event
+  /// you don't host) is a no-op instead of previewing yourself.
+  final int? currentUserId;
   final VoidCallback onInviteMore;
   final Future<void> Function(EventMembership) onRemoveAttendee;
   final Future<void> Function(EventGuest) onRemoveGuest;
@@ -1226,6 +1320,17 @@ class _ParticipantsSheetState extends State<_ParticipantsSheet> {
                               return _ParticipantRow(
                                 name: name,
                                 username: entry.memberUsername,
+                                avatar: entry.memberAvatar,
+                                avatarType: entry.memberAvatarType,
+                                onTap: () => showProfilePreview(
+                                  context,
+                                  userId: entry.member,
+                                  currentUserId: widget.currentUserId,
+                                  initialName: name,
+                                  initialUsername: entry.memberUsername,
+                                  initialAvatar: entry.memberAvatar,
+                                  initialAvatarType: entry.memberAvatarType,
+                                ),
                                 onRemove: widget.isHost
                                     ? () => _confirmAndRemoveAttendee(entry)
                                     : null,
@@ -1245,6 +1350,17 @@ class _ParticipantsSheetState extends State<_ParticipantsSheet> {
                               return _ParticipantRow(
                                 name: name,
                                 username: entry.guestUsername,
+                                avatar: entry.guestAvatar,
+                                avatarType: entry.guestAvatarType,
+                                onTap: () => showProfilePreview(
+                                  context,
+                                  userId: entry.guest,
+                                  currentUserId: widget.currentUserId,
+                                  initialName: name,
+                                  initialUsername: entry.guestUsername,
+                                  initialAvatar: entry.guestAvatar,
+                                  initialAvatarType: entry.guestAvatarType,
+                                ),
                                 onRemove:
                                     widget.isHost ? () => _confirmAndRemoveGuest(entry) : null,
                               );
@@ -1420,53 +1536,95 @@ class _ParticipantsTabButton extends StatelessWidget {
 /// (see [_confirmRemoveFromEvent]). [onRemove] is only ever non-null when
 /// the signed-in user is the host — a non-host gets no trailing icon here
 /// at all, not a disabled one.
+/// One row in [_ParticipantsSheet]'s Joined/Invited list. The whole row
+/// (avatar included) opens [showProfilePreview] on tap — a separate
+/// tap target from the trailing "..." remove button, which stays
+/// host-only and independent of it.
 class _ParticipantRow extends StatelessWidget {
-  const _ParticipantRow({required this.name, required this.username, required this.onRemove});
+  const _ParticipantRow({
+    required this.name,
+    required this.username,
+    required this.avatar,
+    required this.avatarType,
+    required this.onTap,
+    required this.onRemove,
+  });
   final String name;
   final String username;
+  final String? avatar;
+  final String avatarType;
+  final VoidCallback onTap;
   final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     decoration: BoxDecoration(
       color: _EventColors.background,
       borderRadius: BorderRadius.circular(16),
       border: Border.all(color: _EventColors.cardBorder),
     ),
-    child: Row(
-      children: [
-        _Avatar(name),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name.isEmpty ? 'Unknown' : name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700, color: _EventColors.body),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            _ParticipantAvatar(name: name, avatar: avatar, avatarType: avatarType),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name.isEmpty ? 'Unknown' : name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700, color: _EventColors.body),
+                  ),
+                  if (username.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '@$username',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: _EventColors.muted),
+                    ),
+                  ],
+                ],
               ),
-              if (username.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(
-                  '@$username',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: _EventColors.muted),
-                ),
-              ],
-            ],
-          ),
+            ),
+            if (onRemove != null)
+              IconButton(
+                onPressed: onRemove,
+                icon: const Icon(Icons.more_vert_rounded, color: _EventColors.muted, size: 20),
+                tooltip: 'Remove from event',
+              ),
+          ],
         ),
-        if (onRemove != null)
-          IconButton(
-            onPressed: onRemove,
-            icon: const Icon(Icons.more_vert_rounded, color: _EventColors.muted, size: 20),
-            tooltip: 'Remove from event',
-          ),
-      ],
+      ),
+    ),
+  );
+}
+
+/// The real profile photo when [avatar] is set, falling back to the
+/// initials-based [_Avatar] otherwise — same 30x30 footprint either way.
+class _ParticipantAvatar extends StatelessWidget {
+  const _ParticipantAvatar({required this.name, required this.avatar, required this.avatarType});
+  final String name;
+  final String? avatar;
+  final String avatarType;
+
+  @override
+  Widget build(BuildContext context) => ClipOval(
+    child: SizedBox(
+      width: 30,
+      height: 30,
+      child: ProfileAvatarImage(
+        avatar: avatar,
+        avatarType: avatarType,
+        fallback: _Avatar(name),
+      ),
     ),
   );
 }

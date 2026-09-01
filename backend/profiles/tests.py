@@ -3,6 +3,7 @@ from rest_framework.test import APITestCase
 from rest_framework import status
 
 from user.models import User
+from events.models import Event, EventLike
 from .models import AVATAR_PRESET_IDS, Friendship, Profile
 from .services import create_profile_for_user
 
@@ -211,3 +212,142 @@ class FavoriteGenresVisibilityTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["field_visibility"]["favorite_genres"], "private")
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class LikesReceivedCountTests(APITestCase):
+    """
+    ProfileSerializer.likes_received_count — total likes across every
+    event the profile's user *hosts*, not likes they've given elsewhere.
+    Replaces the old votes_count field (see todo.todo).
+    """
+
+    def setUp(self):
+        self.host = create_verified_user("host@test.com")
+        self.other_user = create_verified_user("other@test.com")
+        self.client.force_authenticate(self.host)
+
+    def test_defaults_to_zero_with_no_events(self):
+        response = self.client.get("/api/v1/profile/me/")
+        self.assertEqual(response.data["likes_received_count"], 0)
+
+    def test_counts_likes_across_all_hosted_events(self):
+        event_a = Event.objects.create(host=self.host, title="Party A")
+        event_b = Event.objects.create(host=self.host, title="Party B")
+        liker_one = create_verified_user("liker1@test.com")
+        liker_two = create_verified_user("liker2@test.com")
+        EventLike.objects.create(event=event_a, user=liker_one)
+        EventLike.objects.create(event=event_a, user=liker_two)
+        EventLike.objects.create(event=event_b, user=liker_one)
+
+        response = self.client.get("/api/v1/profile/me/")
+        self.assertEqual(response.data["likes_received_count"], 3)
+
+    def test_does_not_count_likes_the_user_gave_on_someone_elses_event(self):
+        others_event = Event.objects.create(host=self.other_user, title="Not Mine")
+        EventLike.objects.create(event=others_event, user=self.host)
+
+        response = self.client.get("/api/v1/profile/me/")
+        self.assertEqual(response.data["likes_received_count"], 0)
+
+    def test_visible_on_another_user_s_public_profile(self):
+        event = Event.objects.create(host=self.host, title="Party")
+        EventLike.objects.create(event=event, user=self.other_user)
+
+        self.client.force_authenticate(self.other_user)
+        response = self.client.get(f"/api/v1/profile/profile/{self.host.id}/")
+        self.assertEqual(response.data["likes_received_count"], 1)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class UserProfileRelationshipFieldTests(APITestCase):
+    """
+    UserProfileView (GET /profile/profile/<user_id>/) — the `username`,
+    `relationship_status`, and `friendship_id` fields added alongside
+    `likes_received_count`/`playlists_count`, so a viewer can render a
+    friend-request action without a separate lookup. Mirrors the same
+    states `UserSearchView` already reports, computed here via the shared
+    `profiles.services.relationship_status` helper.
+    """
+
+    def setUp(self):
+        self.viewer = create_verified_user("viewer@test.com")
+        self.target = create_verified_user("target@test.com")
+        self.client.force_authenticate(self.viewer)
+
+    def _profile_url(self, user):
+        return f"/api/v1/profile/profile/{user.id}/"
+
+    def test_username_is_always_returned(self):
+        response = self.client.get(self._profile_url(self.target))
+        self.assertEqual(response.data["username"], self.target.username)
+
+    def test_relationship_status_defaults_to_none(self):
+        response = self.client.get(self._profile_url(self.target))
+        self.assertEqual(response.data["relationship_status"], "none")
+        self.assertIsNone(response.data["friendship_id"])
+
+    def test_relationship_status_reflects_a_pending_sent_request(self):
+        friendship = Friendship.objects.create(sender=self.viewer, receiver=self.target, status="pending")
+        response = self.client.get(self._profile_url(self.target))
+        self.assertEqual(response.data["relationship_status"], "pending_sent")
+        self.assertEqual(response.data["friendship_id"], friendship.id)
+
+    def test_relationship_status_reflects_a_pending_received_request(self):
+        friendship = Friendship.objects.create(sender=self.target, receiver=self.viewer, status="pending")
+        response = self.client.get(self._profile_url(self.target))
+        self.assertEqual(response.data["relationship_status"], "pending_received")
+        self.assertEqual(response.data["friendship_id"], friendship.id)
+
+    def test_relationship_status_reflects_accepted_friends(self):
+        friendship = Friendship.objects.create(sender=self.viewer, receiver=self.target, status="accepted")
+        response = self.client.get(self._profile_url(self.target))
+        self.assertEqual(response.data["relationship_status"], "friends")
+        self.assertEqual(response.data["friendship_id"], friendship.id)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class SearchAndFriendAvatarFieldTests(APITestCase):
+    """
+    UserSearchView and FriendSerializer (used by FriendListView, and
+    nested in FriendshipSerializer for the received/sent requests lists)
+    expose avatar/avatar_type — same pattern used everywhere else a
+    user's avatar is shown (see events.tests.ParticipantAvatarFieldTests,
+    playlists.tests.PlaylistParticipantAvatarFieldTests).
+    """
+
+    def setUp(self):
+        self.viewer = create_verified_user("viewer@test.com")
+        self.other = create_verified_user("other_person@test.com")
+        self.client.force_authenticate(self.viewer)
+
+    def test_search_result_avatar_defaults_when_no_profile(self):
+        response = self.client.get("/api/v1/profile/search/?q=other_person")
+        result = next(r for r in response.data if r["id"] == self.other.id)
+        self.assertIsNone(result["avatar"])
+        self.assertEqual(result["avatar_type"], "preset")
+
+    def test_search_result_avatar_reflects_their_profile(self):
+        from profiles.services import create_profile_for_user
+
+        profile = create_profile_for_user(self.other)
+        profile.avatar_preset_id = "7"
+        profile.save(update_fields=["avatar_preset_id"])
+
+        response = self.client.get("/api/v1/profile/search/?q=other_person")
+        result = next(r for r in response.data if r["id"] == self.other.id)
+        self.assertEqual(result["avatar"], "7")
+        self.assertEqual(result["avatar_type"], "preset")
+
+    def test_friend_list_includes_avatar_and_username(self):
+        from profiles.services import create_profile_for_user
+
+        profile = create_profile_for_user(self.other)
+        profile.avatar_preset_id = "2"
+        profile.save(update_fields=["avatar_preset_id"])
+        Friendship.objects.create(sender=self.viewer, receiver=self.other, status="accepted")
+
+        response = self.client.get("/api/v1/profile/friends/")
+        friend = response.data["results"][0]
+        self.assertEqual(friend["avatar"], "2")
+        self.assertEqual(friend["username"], self.other.username)

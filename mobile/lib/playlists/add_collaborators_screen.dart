@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../auth/auth_api.dart';
 import '../core/api/api_client.dart';
 import '../profile/profile_api.dart';
+import '../profile/profile_avatar.dart';
 import '../profile/profile_models.dart';
+import '../profile/profile_preview_sheet.dart';
 import 'playlist_api.dart';
 
 class _AddCollaboratorsColors {
@@ -45,6 +48,7 @@ class AddCollaboratorsScreen extends StatefulWidget {
 class _AddCollaboratorsScreenState extends State<AddCollaboratorsScreen> {
   final _profileApi = ProfileApi();
   final _playlistApi = PlaylistApi();
+  final _authApi = AuthApi();
   final _controller = TextEditingController();
   Timer? _debounce;
 
@@ -52,11 +56,15 @@ class _AddCollaboratorsScreenState extends State<AddCollaboratorsScreen> {
   var _isLoading = false;
   String? _error;
   late Set<int> _invitedIds;
+  int? _currentUserId;
 
   @override
   void initState() {
     super.initState();
     _invitedIds = {...widget.existingCollaboratorIds};
+    _authApi.getCurrentUser().then((user) {
+      if (mounted) setState(() => _currentUserId = user.id);
+    });
   }
 
   @override
@@ -219,6 +227,7 @@ class _AddCollaboratorsScreenState extends State<AddCollaboratorsScreen> {
         final user = results[index];
         return _SearchResultRow(
           user: user,
+          currentUserId: _currentUserId,
           isInvited: _invitedIds.contains(user.id),
           onInvite: () => _onInvite(user),
         );
@@ -230,11 +239,13 @@ class _AddCollaboratorsScreenState extends State<AddCollaboratorsScreen> {
 class _SearchResultRow extends StatelessWidget {
   const _SearchResultRow({
     required this.user,
+    required this.currentUserId,
     required this.isInvited,
     required this.onInvite,
   });
 
   final SearchUser user;
+  final int? currentUserId;
   final bool isInvited;
   final VoidCallback onInvite;
 
@@ -249,28 +260,56 @@ class _SearchResultRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: _AddCollaboratorsColors.border,
-            child: Text(
-              user.username.isNotEmpty ? user.username[0].toUpperCase() : '?',
-              style: const TextStyle(
-                color: _AddCollaboratorsColors.headline,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
           Expanded(
-            child: Text(
-              user.publicName,
-              style: const TextStyle(
-                fontFamily: 'Sora',
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: _AddCollaboratorsColors.body,
+            child: InkWell(
+              onTap: () => showProfilePreview(
+                context,
+                userId: user.id,
+                currentUserId: currentUserId,
+                initialName: user.fullName,
+                initialUsername: user.username,
+                initialAvatar: user.avatar,
+                initialAvatarType: user.avatarType,
               ),
-              overflow: TextOverflow.ellipsis,
+              borderRadius: BorderRadius.circular(14),
+              child: Row(
+                children: [
+                  ClipOval(
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: ProfileAvatarImage(
+                        avatar: user.avatar,
+                        avatarType: user.avatarType,
+                        fallback: CircleAvatar(
+                          radius: 22,
+                          backgroundColor: _AddCollaboratorsColors.border,
+                          child: Text(
+                            user.username.isNotEmpty ? user.username[0].toUpperCase() : '?',
+                            style: const TextStyle(
+                              color: _AddCollaboratorsColors.headline,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      user.publicName,
+                      style: const TextStyle(
+                        fontFamily: 'Sora',
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: _AddCollaboratorsColors.body,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 8),

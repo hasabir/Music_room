@@ -133,7 +133,7 @@ class UserProfile {
     required this.avatarType,
     required this.avatarPresetId,
     required this.favoriteGenres,
-    required this.votesCount,
+    required this.likesReceivedCount,
     required this.playlistsCount,
     required this.fieldVisibility,
   });
@@ -158,7 +158,7 @@ class UserProfile {
             ?.map((genre) => genre as String)
             .toList() ??
         const [],
-    votesCount: json['votes_count'] as int? ?? 0,
+    likesReceivedCount: json['likes_received_count'] as int? ?? 0,
     playlistsCount: json['playlists_count'] as int? ?? 0,
     fieldVisibility: {
       ...defaultFieldVisibility,
@@ -195,7 +195,10 @@ class UserProfile {
   final String avatarPresetId;
 
   final List<String> favoriteGenres;
-  final int votesCount;
+
+  /// Total likes received across every event this user hosts — not likes
+  /// they've given elsewhere (`EventLike`, `backend/events/models.py`).
+  final int likesReceivedCount;
   final int playlistsCount;
 
   /// Per-field visibility tier ('public'/'friends'/'private'), keyed by
@@ -211,19 +214,32 @@ class UserProfile {
 class Friend {
   const Friend({
     required this.id,
+    required this.username,
     required this.firstName,
     required this.lastName,
+    required this.avatar,
+    required this.avatarType,
   });
 
   factory Friend.fromJson(Map<String, dynamic> json) => Friend(
     id: json['id'] as int,
+    username: json['username'] as String? ?? '',
     firstName: json['first_name'] as String? ?? '',
     lastName: json['last_name'] as String? ?? '',
+    avatar: json['avatar'] as String?,
+    avatarType: json['avatar_type'] as String? ?? profileAvatarTypePreset,
   );
 
   final int id;
+  final String username;
   final String firstName;
   final String lastName;
+
+  /// See [UserProfile.avatar] — always present, avatar is public info.
+  final String? avatar;
+
+  /// See [UserProfile.avatarType].
+  final String avatarType;
 
   String get fullName {
     final name = '$firstName $lastName'.trim();
@@ -241,8 +257,11 @@ class FriendRequest {
   const FriendRequest({
     required this.id,
     required this.otherUserId,
+    required this.otherUserUsername,
     required this.otherUserFirstName,
     required this.otherUserLastName,
+    required this.otherUserAvatar,
+    required this.otherUserAvatarType,
   });
 
   factory FriendRequest.fromReceivedJson(Map<String, dynamic> json) =>
@@ -259,15 +278,25 @@ class FriendRequest {
     return FriendRequest(
       id: json['id'] as int,
       otherUserId: other['id'] as int,
+      otherUserUsername: other['username'] as String? ?? '',
       otherUserFirstName: other['first_name'] as String? ?? '',
       otherUserLastName: other['last_name'] as String? ?? '',
+      otherUserAvatar: other['avatar'] as String?,
+      otherUserAvatarType: other['avatar_type'] as String? ?? profileAvatarTypePreset,
     );
   }
 
   final int id;
   final int otherUserId;
+  final String otherUserUsername;
   final String otherUserFirstName;
   final String otherUserLastName;
+
+  /// See [UserProfile.avatar] — always present, avatar is public info.
+  final String? otherUserAvatar;
+
+  /// See [UserProfile.avatarType].
+  final String otherUserAvatarType;
 
   String get otherUserFullName {
     final name = '$otherUserFirstName $otherUserLastName'.trim();
@@ -299,6 +328,8 @@ class SearchUser {
     required this.firstName,
     required this.lastName,
     required this.email,
+    required this.avatar,
+    required this.avatarType,
     required this.relationshipStatus,
     required this.friendshipId,
   });
@@ -309,6 +340,8 @@ class SearchUser {
     firstName: json['first_name'] as String? ?? '',
     lastName: json['last_name'] as String? ?? '',
     email: json['email'] as String? ?? '',
+    avatar: json['avatar'] as String?,
+    avatarType: json['avatar_type'] as String? ?? profileAvatarTypePreset,
     relationshipStatus: RelationshipStatus.fromJson(
       json['relationship_status'] as String? ?? 'none',
     ),
@@ -320,6 +353,12 @@ class SearchUser {
   final String firstName;
   final String lastName;
   final String email;
+
+  /// See [UserProfile.avatar] — always present, avatar is public info.
+  final String? avatar;
+
+  /// See [UserProfile.avatarType].
+  final String avatarType;
   final RelationshipStatus relationshipStatus;
   final int? friendshipId;
 
@@ -341,6 +380,8 @@ class SearchUser {
     firstName: firstName,
     lastName: lastName,
     email: email,
+    avatar: avatar,
+    avatarType: avatarType,
     relationshipStatus: relationshipStatus ?? this.relationshipStatus,
     friendshipId: friendshipId ?? this.friendshipId,
   );
@@ -354,6 +395,7 @@ class SearchUser {
 /// `UserProfileView` on the backend.
 class OtherUserProfile {
   const OtherUserProfile({
+    required this.username,
     required this.displayName,
     required this.bio,
     required this.profileImageUrl,
@@ -364,12 +406,15 @@ class OtherUserProfile {
     required this.favoriteArtist,
     required this.phoneNumber,
     required this.birthday,
-    required this.votesCount,
+    required this.likesReceivedCount,
     required this.playlistsCount,
+    required this.relationshipStatus,
+    required this.friendshipId,
   });
 
   factory OtherUserProfile.fromJson(Map<String, dynamic> json) =>
       OtherUserProfile(
+        username: json['username'] as String? ?? '',
         displayName: json['display_name'] as String? ?? '',
         bio: json['bio'] as String? ?? '',
         profileImageUrl: json['profile_image'] as String?,
@@ -386,10 +431,15 @@ class OtherUserProfile {
         birthday: json['birthday'] != null
             ? DateTime.parse(json['birthday'] as String)
             : null,
-        votesCount: json['votes_count'] as int? ?? 0,
+        likesReceivedCount: json['likes_received_count'] as int? ?? 0,
         playlistsCount: json['playlists_count'] as int? ?? 0,
+        relationshipStatus: RelationshipStatus.fromJson(
+          json['relationship_status'] as String? ?? 'none',
+        ),
+        friendshipId: json['friendship_id'] as int?,
       );
 
+  final String username;
   final String displayName;
   final String bio;
   final String? profileImageUrl;
@@ -406,7 +456,23 @@ class OtherUserProfile {
   final String? favoriteArtist;
   final String? phoneNumber;
   final DateTime? birthday;
-  final int votesCount;
+
+  /// Total likes received across every event this user hosts — see
+  /// [UserProfile.likesReceivedCount]. Always present regardless of
+  /// visibility filtering, same as [playlistsCount].
+  final int likesReceivedCount;
+
+  /// The signed-in user's relationship with this profile's owner —
+  /// always present, same as [likesReceivedCount]/[playlistsCount]. Note
+  /// this endpoint never returns [RelationshipStatus.none] for viewing
+  /// your own profile in practice (`UserProfileView` takes an early,
+  /// differently-shaped return path for that case instead) — this field
+  /// is only meaningful when viewing someone else's.
+  final RelationshipStatus relationshipStatus;
+
+  /// The `Friendship` row backing [relationshipStatus], when one exists
+  /// (`pending_sent`/`pending_received`/`friends`) — `null` for `none`.
+  final int? friendshipId;
 
   /// Always present regardless of visibility filtering — see
   /// `backend/profiles/views.py`'s `UserProfileView` docstring.

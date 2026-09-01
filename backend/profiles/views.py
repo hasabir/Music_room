@@ -18,6 +18,7 @@ from .serializers import (
     ProfileSerializer,
     ActivityLogSerializer,
 )
+from .services import relationship_status, resolve_avatar
 
 
 def _are_friends(user_a, user_b):
@@ -391,6 +392,9 @@ class UserSearchView(generics.GenericAPIView):
             f.sender_id: f
             for f in Friendship.objects.filter(receiver=request.user, sender__in=users)
         }
+        # Batched (one query for all results), same reasoning as sent/
+        # received above — avoids an N+1 avatar lookup per result.
+        profiles_by_user_id = {p.user_id: p for p in Profile.objects.filter(user__in=users)}
 
         results = []
         for user in users:
@@ -408,11 +412,15 @@ class UserSearchView(generics.GenericAPIView):
             else:
                 relationship, friendship_id = "none", None
 
+            profile = profiles_by_user_id.get(user.id)
+
             results.append({
                 "id": user.id,
                 "username": user.username,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
+                "avatar": resolve_avatar(profile) if profile else None,
+                "avatar_type": profile.avatar_type if profile else "preset",
                 "relationship_status": relationship,
                 "friendship_id": friendship_id,
             })
@@ -458,9 +466,11 @@ class MyProfileView(generics.RetrieveUpdateAPIView):
     description=(
         "Returns another user's profile, filtered by visibility tier:\n\n"
         "- If you are viewing your own profile, all fields are returned.\n"
-        "- `display_name`, `profile_image`, `avatar`, `avatar_type`, "
-        "`votes_count`, and `playlists_count` are always returned — "
-        "avatar is public information.\n"
+        "- `username`, `display_name`, `profile_image`, `avatar`, "
+        "`avatar_type`, `likes_received_count`, `playlists_count`, "
+        "`relationship_status` (`self`/`friends`/`pending_sent`/"
+        "`pending_received`/`none`), and `friendship_id` are always "
+        "returned — avatar is public information.\n"
         "- `bio`, `location`, `favorite_artist`, `phone_number`, "
         "`birthday`, and `favorite_genres` are each returned only if "
         "their tier in `field_visibility` is "
@@ -484,16 +494,20 @@ class UserProfileView(generics.GenericAPIView):
             return Response(ProfileSerializer(profile).data)
 
         is_friend = _are_friends(request.user, target_user)
+        status_value, friendship_id = relationship_status(request.user, target_user)
 
         serialized = ProfileSerializer(profile).data
 
         data = {
+            "username": target_user.username,
             "display_name": profile.display_name,
             "profile_image": profile.profile_image.url if profile.profile_image else None,
             "avatar": serialized["avatar"],
             "avatar_type": serialized["avatar_type"],
-            "votes_count": serialized["votes_count"],
+            "likes_received_count": serialized["likes_received_count"],
             "playlists_count": serialized["playlists_count"],
+            "relationship_status": status_value,
+            "friendship_id": friendship_id,
         }
 
         defaults = _default_field_visibility()

@@ -12,7 +12,7 @@ from .throttles import VoteRateThrottle, AddSongRateThrottle, CreateEventRateThr
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 from authentication.utils import log_action
 
-from .models import Event, Song, EventSong, Vote
+from .models import Event, Song, EventSong, Vote, EventLike
 from .serializers import (
     EventSerializer, AddSongToQueueSerializer, EventSongSerializer
 )
@@ -429,5 +429,82 @@ class VoteView(APIView):
         broadcast_queue_update(event_song.event)
         return Response(
             {"detail": "Vote retracted.", "vote_count": event_song.vote_count},
+            status=status.HTTP_200_OK
+        )
+
+
+@extend_schema_view(
+    post=extend_schema(
+        summary="Like an event",
+        description=(
+            "Likes this event — a lightweight signal of interest, "
+            "independent of hosting, joining, or being invited. Anyone "
+            "who can see the event can like it."
+        ),
+        responses={
+            201: OpenApiResponse(description="Liked. Returns detail message and updated like_count."),
+            400: OpenApiResponse(description="Already liked, or the event has been deleted."),
+            403: OpenApiResponse(description="You do not have access to this event."),
+        },
+        tags=["events"],
+    ),
+    delete=extend_schema(
+        summary="Unlike an event",
+        description="Removes the signed-in user's like from this event, if any.",
+        responses={
+            200: OpenApiResponse(description="Unliked. Returns detail message and updated like_count."),
+            400: OpenApiResponse(description="You have not liked this event."),
+        },
+        tags=["events"],
+    ),
+)
+class EventLikeView(APIView):
+    """POST -> like the event. DELETE -> remove the signed-in user's like."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, event_id):
+        event = get_object_or_404(Event, id=event_id)
+        if not can_user_see_event(request.user, event):
+            return Response({"detail": "You do not have access to this event."},
+                             status=status.HTTP_403_FORBIDDEN)
+        if event.status == Event.STATUS_DELETED:
+            return Response({"detail": "This event has been deleted."},
+                             status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                EventLike.objects.create(event=event, user=request.user)
+        except IntegrityError:
+            return Response({"detail": "You have already liked this event."},
+                             status=status.HTTP_400_BAD_REQUEST)
+
+        log_action(request, "event.liked", user=request.user, metadata={
+            "event_id": event.id,
+            "event_title": event.title,
+            "visibility": event.visibility,
+        })
+        return Response(
+            {"detail": "Event liked.", "like_count": event.like_count},
+            status=status.HTTP_201_CREATED
+        )
+
+    def delete(self, request, event_id):
+        event = get_object_or_404(Event, id=event_id)
+        if not can_user_see_event(request.user, event):
+            return Response({"detail": "You do not have access to this event."},
+                             status=status.HTTP_403_FORBIDDEN)
+
+        deleted, _ = EventLike.objects.filter(event=event, user=request.user).delete()
+        if not deleted:
+            return Response({"detail": "You have not liked this event."},
+                             status=status.HTTP_400_BAD_REQUEST)
+
+        log_action(request, "event.unliked", user=request.user, metadata={
+            "event_id": event.id,
+            "event_title": event.title,
+            "visibility": event.visibility,
+        })
+        return Response(
+            {"detail": "Event unliked.", "like_count": event.like_count},
             status=status.HTTP_200_OK
         )

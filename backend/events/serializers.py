@@ -2,8 +2,8 @@
 from django.utils import timezone
 from rest_framework import serializers
 from profiles.serializers import _actor_display_name
+from profiles.services import avatar_for_user
 from .models import Event, EventGuest, EventMembership, Song, EventSong, Vote, EventAccessRequest
-
 
 class EventSerializer(serializers.ModelSerializer):
     host = serializers.StringRelatedField(read_only=True)
@@ -13,6 +13,8 @@ class EventSerializer(serializers.ModelSerializer):
     current_position_seconds = serializers.SerializerMethodField()
     is_member = serializers.SerializerMethodField()
     participant_count = serializers.ReadOnlyField()
+    like_count = serializers.ReadOnlyField()
+    has_liked = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -23,11 +25,13 @@ class EventSerializer(serializers.ModelSerializer):
             "venue_center_latitude", "venue_center_longitude", "allowed_distance_meters",
             "max_participants", "participant_count",
             "song_count", "voting_is_open", "is_member",
+            "like_count", "has_liked",
             "current_song", "current_position_seconds",
             "created_at", "updated_at",
         ]
         read_only_fields = [
             "id", "host", "song_count", "voting_is_open", "is_member", "participant_count",
+            "like_count", "has_liked",
             "current_song", "current_position_seconds",
             "created_at", "updated_at",
         ]
@@ -41,6 +45,14 @@ class EventSerializer(serializers.ModelSerializer):
         if not request or not request.user.is_authenticated:
             return False
         return obj.members.filter(member=request.user).exists()
+
+    def get_has_liked(self, obj):
+        """Whether the signed-in user has liked this event
+        (`POST .../like/` — an `EventLike` row)."""
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        return obj.likes.filter(user=request.user).exists()
 
     def get_current_song(self, obj):
         if obj.current_song_id is None:
@@ -100,19 +112,29 @@ class EventGuestSerializer(serializers.ModelSerializer):
     guest_email = serializers.EmailField(source="guest.email", read_only=True)
     guest_username = serializers.CharField(source="guest.username", read_only=True)
     guest_display_name = serializers.SerializerMethodField()
+    guest_avatar = serializers.SerializerMethodField()
+    guest_avatar_type = serializers.SerializerMethodField()
 
     class Meta:
         model = EventGuest
         fields = [
             "id", "event", "guest", "guest_email", "guest_username", "guest_display_name",
+            "guest_avatar", "guest_avatar_type",
             "rsvp_status", "invited_at",
         ]
         read_only_fields = [
-            "id", "invited_at", "guest_email", "guest_username", "guest_display_name", "rsvp_status",
+            "id", "invited_at", "guest_email", "guest_username", "guest_display_name",
+            "guest_avatar", "guest_avatar_type", "rsvp_status",
         ]
 
     def get_guest_display_name(self, obj):
         return _actor_display_name(obj.guest)
+
+    def get_guest_avatar(self, obj):
+        return avatar_for_user(obj.guest)[0]
+
+    def get_guest_avatar_type(self, obj):
+        return avatar_for_user(obj.guest)[1]
 
 
 class SongSerializer(serializers.ModelSerializer):
@@ -167,16 +189,25 @@ class EventMembershipSerializer(serializers.ModelSerializer):
     member_email = serializers.EmailField(source="member.email", read_only=True)
     member_username = serializers.CharField(source="member.username", read_only=True)
     member_display_name = serializers.SerializerMethodField()
+    member_avatar = serializers.SerializerMethodField()
+    member_avatar_type = serializers.SerializerMethodField()
 
     class Meta:
         model = EventMembership
         fields = [
-            "id", "event", "member", "member_email", "member_username", "member_display_name", "joined_at",
+            "id", "event", "member", "member_email", "member_username", "member_display_name",
+            "member_avatar", "member_avatar_type", "joined_at",
         ]
         read_only_fields = fields
 
     def get_member_display_name(self, obj):
         return _actor_display_name(obj.member)
+
+    def get_member_avatar(self, obj):
+        return avatar_for_user(obj.member)[0]
+
+    def get_member_avatar_type(self, obj):
+        return avatar_for_user(obj.member)[1]
 
 
 class EventAccessRequestSerializer(serializers.ModelSerializer):

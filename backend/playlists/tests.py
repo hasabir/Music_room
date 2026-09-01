@@ -292,3 +292,62 @@ class PlaylistIsCollaboratorFieldTests(APITestCase):
             p for p in response.data["results"] if p["id"] == self.playlist_id
         )
         self.assertTrue(playlist["is_collaborator"])
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class PlaylistParticipantAvatarFieldTests(APITestCase):
+    """
+    PlaylistCollaboratorSerializer/PlaylistAccessRequestSerializer expose
+    `collaborator_avatar`/`collaborator_avatar_type` and
+    `requester_avatar`/`requester_avatar_type` — same pattern as events'
+    guest/member avatar fields (see events.tests.ParticipantAvatarFieldTests),
+    sourced from `profiles.services.avatar_for_user`, not visibility-gated.
+    """
+
+    def setUp(self):
+        self.owner = create_verified_user("owner@test.com")
+        self.collaborator = create_verified_user("collab@test.com")
+        self.requester = create_verified_user("requester@test.com")
+
+        self.client.force_authenticate(self.owner)
+        playlist_resp = self.client.post("/api/v1/playlists/", {"title": "Private Mix", "visibility": "private"})
+        self.playlist_id = playlist_resp.data["id"]
+        self.collaborators_url = f"/api/v1/playlists/{self.playlist_id}/collaborators/"
+        self.access_requests_url = f"/api/v1/playlists/{self.playlist_id}/access-requests/"
+
+        self.client.post(self.collaborators_url, {"user_id": self.collaborator.id})
+
+    def test_collaborator_avatar_defaults_when_no_profile(self):
+        response = self.client.get(self.collaborators_url)
+        row = response.data[0]
+        self.assertIsNone(row["collaborator_avatar"])
+        self.assertEqual(row["collaborator_avatar_type"], "preset")
+
+    def test_collaborator_avatar_reflects_their_profile(self):
+        from profiles.services import create_profile_for_user
+
+        profile = create_profile_for_user(self.collaborator)
+        profile.avatar_preset_id = "5"
+        profile.save(update_fields=["avatar_preset_id"])
+
+        response = self.client.get(self.collaborators_url)
+        row = response.data[0]
+        self.assertEqual(row["collaborator_avatar"], "5")
+        self.assertEqual(row["collaborator_avatar_type"], "preset")
+
+    def test_requester_avatar_reflects_their_profile(self):
+        from profiles.services import create_profile_for_user
+
+        profile = create_profile_for_user(self.requester)
+        profile.avatar_type = "external_url"
+        profile.avatar_external_url = "https://example.test/requester.jpg"
+        profile.save(update_fields=["avatar_type", "avatar_external_url"])
+
+        self.client.force_authenticate(self.requester)
+        self.client.post(self.access_requests_url, {})
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(self.access_requests_url)
+        row = response.data[0]
+        self.assertEqual(row["requester_avatar"], "https://example.test/requester.jpg")
+        self.assertEqual(row["requester_avatar_type"], "external_url")

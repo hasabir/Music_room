@@ -225,6 +225,24 @@ class EventApi {
     return VoteResult.fromJson(response);
   }
 
+  /// Likes the event. Anyone who can see it can like it, independent of
+  /// hosting/joining.
+  Future<LikeResult> likeEvent(int eventId) async {
+    final response = await _authorizedPost(
+      ApiConfig.eventLikeUri(eventId),
+      body: const {},
+    );
+    return LikeResult.fromJson(response);
+  }
+
+  /// Removes the signed-in user's own like from the event, if any.
+  Future<LikeResult> unlikeEvent(int eventId) async {
+    final response = await _authorizedDeleteWithResponse(
+      ApiConfig.eventLikeUri(eventId),
+    );
+    return LikeResult.fromJson(response);
+  }
+
   /// Lists everyone invited to the event.
   Future<List<EventGuest>> listGuests(int eventId) async {
     final response = await _authorizedGetList(
@@ -245,6 +263,20 @@ class EventApi {
   /// Removes a guest from the event. Host only.
   Future<void> removeGuest(int eventId, int userId) async {
     await _authorizedDelete(ApiConfig.eventGuestDetailUri(eventId, userId));
+  }
+
+  /// Sets the signed-in user's own RSVP status on their invitation to
+  /// [eventId] — accept or decline. Only valid on an event the caller has
+  /// actually been invited to (an `EventGuest` row already exists for
+  /// them); see [eventGuestRsvpAccepted]/[eventGuestRsvpDeclined].
+  Future<EventGuest> respondToInvite(int eventId, {required bool accept}) async {
+    final response = await _authorizedPost(
+      ApiConfig.eventGuestRespondUri(eventId),
+      body: {
+        'response': accept ? eventGuestRsvpAccepted : eventGuestRsvpDeclined,
+      },
+    );
+    return EventGuest.fromJson(response);
   }
 
   /// Lists everyone who has self-joined the event (as opposed to

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../auth/auth_api.dart';
 import '../core/api/api_client.dart';
 import 'add_friends_screen.dart';
 import 'profile_api.dart';
+import 'profile_avatar.dart';
 import 'profile_models.dart';
-import 'view_profile_screen.dart';
+import 'profile_preview_sheet.dart';
 
 class _ConnectionsColors {
   static const background = Color(0xFF0E0E15);
@@ -31,12 +33,14 @@ class ConnectionsScreen extends StatefulWidget {
 
 class _ConnectionsScreenState extends State<ConnectionsScreen> {
   final _profileApi = ProfileApi();
+  final _authApi = AuthApi();
 
   var _isLoading = true;
   String? _error;
   List<Friend> _friends = const [];
   List<FriendRequest> _received = const [];
   List<FriendRequest> _sent = const [];
+  int? _currentUserId;
 
   var _tab = _ConnectionsTab.friends;
   var _searchQuery = '';
@@ -44,6 +48,9 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   @override
   void initState() {
     super.initState();
+    _authApi.getCurrentUser().then((user) {
+      if (mounted) setState(() => _currentUserId = user.id);
+    });
     _load();
   }
 
@@ -90,8 +97,11 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
           ..._friends,
           Friend(
             id: request.otherUserId,
+            username: request.otherUserUsername,
             firstName: request.otherUserFirstName,
             lastName: request.otherUserLastName,
+            avatar: request.otherUserAvatar,
+            avatarType: request.otherUserAvatarType,
           ),
         ];
       });
@@ -111,28 +121,27 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   }
 
   Future<void> _onViewFriend(Friend friend) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ViewProfileScreen(
-          userId: friend.id,
-          initialFullName: friend.fullName,
-          relationshipStatus: RelationshipStatus.friends,
-        ),
-      ),
+    await showProfilePreview(
+      context,
+      userId: friend.id,
+      currentUserId: _currentUserId,
+      initialName: friend.fullName,
+      initialUsername: friend.username,
+      initialAvatar: friend.avatar,
+      initialAvatarType: friend.avatarType,
     );
     _load();
   }
 
-  Future<void> _onViewRequest(FriendRequest request, RelationshipStatus status) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ViewProfileScreen(
-          userId: request.otherUserId,
-          initialFullName: request.otherUserFullName,
-          relationshipStatus: status,
-          friendshipId: request.id,
-        ),
-      ),
+  Future<void> _onViewRequest(FriendRequest request) async {
+    await showProfilePreview(
+      context,
+      userId: request.otherUserId,
+      currentUserId: _currentUserId,
+      initialName: request.otherUserFullName,
+      initialUsername: request.otherUserUsername,
+      initialAvatar: request.otherUserAvatar,
+      initialAvatarType: request.otherUserAvatarType,
     );
     _load();
   }
@@ -207,10 +216,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
                             sent: _sent,
                             onAccept: _onAccept,
                             onReject: _onReject,
-                            onTapReceived: (request) =>
-                                _onViewRequest(request, RelationshipStatus.pendingReceived),
-                            onTapSent: (request) =>
-                                _onViewRequest(request, RelationshipStatus.pendingSent),
+                            onTapReceived: _onViewRequest,
+                            onTapSent: _onViewRequest,
                           ),
                   );
                 },
@@ -457,7 +464,11 @@ class _FriendRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
               child: Row(
                 children: [
-                  _Avatar(letter: friend.firstName.isNotEmpty ? friend.firstName[0].toUpperCase() : '?'),
+                  _Avatar(
+                    letter: friend.firstName.isNotEmpty ? friend.firstName[0].toUpperCase() : '?',
+                    avatar: friend.avatar,
+                    avatarType: friend.avatarType,
+                  ),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Text(
@@ -597,6 +608,8 @@ class _ReceivedRequestRow extends StatelessWidget {
                     letter: request.otherUserFirstName.isNotEmpty
                         ? request.otherUserFirstName[0].toUpperCase()
                         : '?',
+                    avatar: request.otherUserAvatar,
+                    avatarType: request.otherUserAvatarType,
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -650,6 +663,8 @@ class _SentRequestRow extends StatelessWidget {
               letter: request.otherUserFirstName.isNotEmpty
                   ? request.otherUserFirstName[0].toUpperCase()
                   : '?',
+              avatar: request.otherUserAvatar,
+              avatarType: request.otherUserAvatarType,
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -707,7 +722,30 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({required this.letter});
+  const _Avatar({required this.letter, required this.avatar, required this.avatarType});
+
+  final String letter;
+  final String? avatar;
+  final String? avatarType;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: SizedBox(
+        width: 44,
+        height: 44,
+        child: ProfileAvatarImage(
+          avatar: avatar,
+          avatarType: avatarType ?? profileAvatarTypePreset,
+          fallback: _AvatarFallback(letter: letter),
+        ),
+      ),
+    );
+  }
+}
+
+class _AvatarFallback extends StatelessWidget {
+  const _AvatarFallback({required this.letter});
 
   final String letter;
 

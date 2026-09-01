@@ -1,5 +1,7 @@
 # playlists/serializers.py
 from rest_framework import serializers
+from profiles.serializers import _actor_display_name
+from profiles.services import avatar_for_user
 from .models import Playlist, PlaylistCollaborator, PlaylistSong, PlaylistAccessRequest
 
 
@@ -50,14 +52,30 @@ class PlaylistSerializer(serializers.ModelSerializer):
 
 class PlaylistCollaboratorSerializer(serializers.ModelSerializer):
     collaborator_username = serializers.CharField(source="collaborator.username", read_only=True)
+    collaborator_display_name = serializers.SerializerMethodField()
+    collaborator_avatar = serializers.SerializerMethodField()
+    collaborator_avatar_type = serializers.SerializerMethodField()
 
     class Meta:
         model = PlaylistCollaborator
         fields = [
-            "id", "playlist", "collaborator", "collaborator_username", "invited_at",
+            "id", "playlist", "collaborator", "collaborator_username", "collaborator_display_name",
+            "collaborator_avatar", "collaborator_avatar_type", "invited_at",
             "can_add_songs", "can_reorder_songs", "can_manage_collaborators",
         ]
-        read_only_fields = ["id", "invited_at", "collaborator_username"]
+        read_only_fields = [
+            "id", "invited_at", "collaborator_username", "collaborator_display_name",
+            "collaborator_avatar", "collaborator_avatar_type",
+        ]
+
+    def get_collaborator_display_name(self, obj):
+        return _actor_display_name(obj.collaborator)
+
+    def get_collaborator_avatar(self, obj):
+        return avatar_for_user(obj.collaborator)[0]
+
+    def get_collaborator_avatar_type(self, obj):
+        return avatar_for_user(obj.collaborator)[1]
 
 
 class AddSongToPlaylistSerializer(serializers.Serializer):
@@ -106,11 +124,26 @@ class CollaboratorPermissionsSerializer(serializers.Serializer):
 
 class PlaylistAccessRequestSerializer(serializers.ModelSerializer):
     requester_username = serializers.CharField(source="requester.username", read_only=True)
+    requester_display_name = serializers.SerializerMethodField()
+    requester_avatar = serializers.SerializerMethodField()
+    requester_avatar_type = serializers.SerializerMethodField()
 
     class Meta:
         model = PlaylistAccessRequest
-        fields = ["id", "playlist", "requester", "requester_username", "status", "requested_at", "decided_at"]
+        fields = [
+            "id", "playlist", "requester", "requester_username", "requester_display_name",
+            "requester_avatar", "requester_avatar_type", "status", "requested_at", "decided_at",
+        ]
         read_only_fields = fields
+
+    def get_requester_display_name(self, obj):
+        return _actor_display_name(obj.requester)
+
+    def get_requester_avatar(self, obj):
+        return avatar_for_user(obj.requester)[0]
+
+    def get_requester_avatar_type(self, obj):
+        return avatar_for_user(obj.requester)[1]
 
 
 class DecideAccessRequestSerializer(serializers.Serializer):
