@@ -1,4 +1,4 @@
-package com.musicroom.app
+package com.music_room.app
 
 import io.flutter.embedding.android.FlutterActivity
 
