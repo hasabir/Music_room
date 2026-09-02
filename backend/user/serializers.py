@@ -33,14 +33,19 @@ class ActionLogSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     has_google_linked = serializers.SerializerMethodField()
+    google_linked_email = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'email', 'username', 'first_name', 'last_name', 'registration_method',
-            'is_email_verified', 'has_google_linked', 'date_joined',
+            'is_email_verified', 'has_google_linked', 'google_linked_email', 'date_joined',
         ]
         read_only_fields = fields
 
     def get_has_google_linked(self, obj):
         return obj.social_accounts.exists()
+
+    def get_google_linked_email(self, obj):
+        social_account = obj.social_accounts.first()
+        return social_account.email if social_account else None

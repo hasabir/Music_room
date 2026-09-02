@@ -423,3 +423,75 @@ upfront pre-check (so "too far" can show immediately on open, without firing a r
 to find out). The actual vote submission still goes through the backend's own distance check
 as the authoritative decision; the client-side copy exists purely for a faster/friendlier
 message and is never trusted on its own to allow a vote through.
+
+## Google account linking: no email match, reject-not-replace, unlink guarded by password usability
+
+**Decision:** `GoogleLinkView` (`POST`/`DELETE /api/v1/auth/google/link/`) was extended, not
+rebuilt. Four rule changes from what existed before this work:
+
+1. **Linking no longer requires the Google account's email to match the signed-in user's
+   platform email.** The old check (`google_email.lower() != request.user.email.lower()`) is
+   gone. `SocialAccount` gained its own `email` field specifically so the Google account's
+   email has somewhere to live that isn't `User.email` — linking never reads or writes
+   `User.email` in either direction.
+2. **A user can link at most one Google account — a second link attempt is rejected, not
+   offered as a replace.** `SocialAccount.user` is now `unique=True` (DB-enforced), and
+   `GoogleLinkView.post` explicitly checks for an existing `SocialAccount` on the current user
+   (distinct from the existing check for the *incoming* `provider_uid` already belonging to
+   someone else) before creating a new row. Chosen over "replace" because the UI has never had
+   a control for it — the Connected Accounts screen only ever shows the "Link" card when
+   nothing is linked — and reject is a strict subset of replace's complexity: it needs no new
+   confirmation flow, and a user who genuinely wants to switch accounts can unlink then link,
+   using the two operations this work already adds.
+3. **Unlinking is new** (`GoogleLinkView.delete`) — there was no such endpoint before.
+4. **The unlink guard is `request.user.has_usable_password()`, not
+   `registration_method == "email"`.** These happen to agree for every account today, but
+   `has_usable_password()` is the actually-correct check: it's what Django itself uses to
+   decide whether `check_password` can ever succeed, and it degrades safely — a Google-native
+   signup (`registration_method="google"`) has no usable password (`create_user` calls
+   `set_unusable_password()` when none is given) and no path to ever gain one, since
+   `ChangePasswordView` requires the *current* password as proof, which is uncheckable when
+   unusable. So a Google-native account's own Google link is correctly, permanently
+   unremovable through this check alone, with no separate `registration_method` special-case
+   needed — matching what the pre-existing UI comment already documented as intentional.
+
+**Why extend `SocialAccount` instead of building a generic multi-provider `AuthIdentity` table:**
+the originating task spec called for a provider-agnostic `AuthIdentity(provider,
+provider_user_id, email, password_hash, ...)` model supporting email/google/facebook, with
+`User.password` migrated into it. That schema doesn't match this codebase: `backend/apps/users/`
+has Facebook-shaped fields but is dead code (not in `INSTALLED_APPS`, not wired to any URL — see
+the avatar decision above), so "facebook" has never been a real provider here, and there is no
+present need for one. Building the generic version would mean moving `password` off `User` and
+touching `RegisterSerializer`, `LoginSerializer`, `ChangePasswordSerializer`, both password-reset
+serializers, `GoogleLoginView`, and `UserSerializer` — a full auth-architecture rewrite — to
+support a provider with zero call sites. Every constraint the task actually required (global
+uniqueness of a linked Google account, at-most-one-per-user, the linked email living outside
+`User.email`, idempotent re-linking) is satisfied by `SocialAccount` as extended here:
+`provider_uid` was already globally `unique=True`; per-user uniqueness is the new `user`
+`unique=True`; the new `email` field covers the rest. If a second real provider is ever added,
+generalizing `SocialAccount` at that point (e.g. adding a `provider` column) is a much smaller
+change than reversing a premature generalization would have been.
+
+**Status codes stay 400, not 409/422:** every other failure mode in this entire `authentication`
+app — invalid credentials, expired codes, mismatched tokens, disabled accounts — is reported as
+`400` via `serializers.ValidationError`, distinguished by message text rather than status code.
+Introducing `409`/`422` here specifically would be the only place in the app that does that.
+Kept the existing convention; the distinguishing information is in the response body
+(`"This Google account is already linked to another Music Room account."` vs. `"Your account
+already has a Google account linked..."` vs. token-invalid messages), same as everywhere else
+in this API.
+
+**Migration backfill:** `SocialAccount.email` was added as a new required field to rows that
+already existed. Every pre-existing row was created either by `GoogleLoginView` (where the
+account's email *is* the Google email it signed up with, by construction) or by the old,
+email-matching `GoogleLinkView` (where a match was mandatory to create the row at all) — so
+`user.email` is a lossless backfill for every row that predates this change
+(`0004_socialaccount_email_and_unique_user`).
+
+**Mobile:** `ConnectedAccountsScreen` already called `linkGoogleAccount` before this work — the
+Google button, native picker flow, and error-toast plumbing all pre-existed and needed no new
+wiring. Added: `AuthApi.unlinkGoogleAccount` (`DELETE`, mirroring the existing authorized-request
+retry pattern), `AuthUser.googleLinkedEmail` (now shown instead of the previous hardcoded blank
+email on the "linked" card), a confirm dialog before unlinking (matching
+`PlaylistCollaboratorsScreen`'s existing remove-confirmation pattern), and updated copy that no
+longer claims linking requires a matching email.

@@ -75,8 +75,13 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.username
 
 class SocialAccount(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='social_accounts')
+    # unique=True: at most one linked Google account per user (reject, not
+    # replace, a second link attempt — see DECISIONS.md).
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='social_accounts', unique=True)
     provider_uid = models.CharField(max_length=255, unique=True)  # Google's unique 'sub' claim
+    # The Google account's own email, independent of User.email — linking
+    # never requires (or touches) the platform email. See DECISIONS.md.
+    email = models.EmailField()
     linked_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

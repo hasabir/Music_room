@@ -10,6 +10,7 @@ class AuthUser {
     required this.isEmailVerified,
     required this.registrationMethod,
     required this.hasGoogleLinked,
+    this.googleLinkedEmail,
   });
 
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
@@ -21,6 +22,7 @@ class AuthUser {
     isEmailVerified: json['is_email_verified'] as bool? ?? false,
     registrationMethod: json['registration_method'] as String? ?? 'email',
     hasGoogleLinked: json['has_google_linked'] as bool? ?? false,
+    googleLinkedEmail: json['google_linked_email'] as String?,
   );
 
   final int id;
@@ -36,6 +38,11 @@ class AuthUser {
   /// Whether a Google account has been linked (in addition to, or as, the
   /// sign-in method) — see `authentication.GoogleLinkView`.
   final bool hasGoogleLinked;
+
+  /// The linked Google account's own email — independent of [email], since
+  /// linking never requires (or copies in) a matching address. `null` when
+  /// [hasGoogleLinked] is false.
+  final String? googleLinkedEmail;
 }
 
 /// Result of a successful login call.

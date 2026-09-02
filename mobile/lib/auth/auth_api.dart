@@ -99,15 +99,26 @@ class AuthApi {
   /// Links a Google account to the signed-in user, using an ID token
   /// obtained via [GoogleAuthService.signInAndGetIdToken].
   ///
-  /// The backend requires the Google account's email to match the
-  /// signed-in account's email. Throws [ApiException] if it doesn't
-  /// match, or if that Google account is already linked to a different
-  /// Music Room account.
+  /// The Google account's email does NOT need to match the signed-in
+  /// account's email — linking never touches [AuthUser.email]. Throws
+  /// [ApiException] if that Google account is already linked to a
+  /// different Music Room account, or if this account already has a
+  /// different Google account linked (unlink it first).
   Future<AuthUser> linkGoogleAccount({required String idToken}) async {
     final response = await _authorizedPost(
       ApiConfig.googleLinkUri(),
       body: {'id_token': idToken},
     );
+    return AuthUser.fromJson(response['user'] as Map<String, dynamic>);
+  }
+
+  /// Unlinks the Google account from the signed-in user.
+  ///
+  /// Throws [ApiException] if no Google account is linked, or if
+  /// unlinking would leave the account with no way to log in (a
+  /// Google-only signup that never set a password).
+  Future<AuthUser> unlinkGoogleAccount() async {
+    final response = await _authorizedDelete(ApiConfig.googleLinkUri());
     return AuthUser.fromJson(response['user'] as Map<String, dynamic>);
   }
 
@@ -205,6 +216,31 @@ class AuthApi {
         body: body,
         accessToken: refreshedToken,
       );
+    }
+  }
+
+  /// DELETEs [uri] with the stored access token, transparently refreshing
+  /// and retrying once on a 401. Same session-handling as [_authorizedGet].
+  Future<Map<String, dynamic>> _authorizedDelete(Uri uri) async {
+    final accessToken = await _tokenStorage.readAccessToken();
+    if (accessToken == null) {
+      throw SessionExpiredException();
+    }
+
+    try {
+      return await _apiClient.deleteWithResponse(uri, accessToken: accessToken);
+    } on ApiException catch (error) {
+      if (error.statusCode != 401) rethrow;
+
+      final String refreshedToken;
+      try {
+        refreshedToken = await refreshAccessToken();
+      } on ApiException {
+        await _tokenStorage.clear();
+        throw SessionExpiredException();
+      }
+
+      return await _apiClient.deleteWithResponse(uri, accessToken: refreshedToken);
     }
   }
 

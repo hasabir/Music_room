@@ -18,15 +18,17 @@ class _ConnectedColors {
 
 /// Shows how the signed-in account authenticates, from the real
 /// `AuthUser` fields (`email`, `is_email_verified`, `registration_method`,
-/// `has_google_linked`).
+/// `has_google_linked`, `google_linked_email`).
 ///
 /// A Google-registered account's sign-in method can't be changed here —
-/// there's no "disconnect" endpoint, since that would leave the user
-/// locked out (Google-only signups get an unusable password; see
-/// `User.objects.create_user` in the backend). But an email/password
-/// account that hasn't linked Google yet can do so via
-/// `POST /api/v1/auth/google/link/` (`GoogleLinkView`), which requires
-/// the Google account's email to match this account's email.
+/// there's no way to unlink it, since that would leave the user locked
+/// out (Google-only signups get an unusable password; see
+/// `User.objects.create_user` in the backend, and `GoogleLinkView.delete`'s
+/// `has_usable_password()` guard). An email/password account can link
+/// (`POST /api/v1/auth/google/link/`) and unlink
+/// (`DELETE /api/v1/auth/google/link/`) a Google account freely — linking
+/// never requires the Google account's email to match this account's
+/// email (see DECISIONS.md).
 class ConnectedAccountsScreen extends StatefulWidget {
   const ConnectedAccountsScreen({super.key, required this.authUser});
 
@@ -41,6 +43,7 @@ class _ConnectedAccountsScreenState extends State<ConnectedAccountsScreen> {
 
   late AuthUser _authUser;
   bool _isLinking = false;
+  bool _isUnlinking = false;
 
   @override
   void initState() {
@@ -68,6 +71,55 @@ class _ConnectedAccountsScreenState extends State<ConnectedAccountsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
     } finally {
       if (mounted) setState(() => _isLinking = false);
+    }
+  }
+
+  Future<bool> _confirmUnlinkGoogle() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _ConnectedColors.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Unlink Google Account?',
+          style: TextStyle(fontFamily: 'Sora', color: _ConnectedColors.body),
+        ),
+        content: const Text(
+          "You'll no longer be able to sign in with Google — only your "
+          'email and password.',
+          style: TextStyle(color: _ConnectedColors.muted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: _ConnectedColors.muted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Unlink', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> _onUnlinkGoogle() async {
+    if (!await _confirmUnlinkGoogle()) return;
+
+    setState(() => _isUnlinking = true);
+    try {
+      final updated = await _authApi.unlinkGoogleAccount();
+      if (!mounted) return;
+      setState(() => _authUser = updated);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Google account unlinked.')));
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _isUnlinking = false);
     }
   }
 
@@ -115,12 +167,10 @@ class _ConnectedAccountsScreenState extends State<ConnectedAccountsScreen> {
             ),
             const SizedBox(height: 14),
             if (_authUser.hasGoogleLinked)
-              const _AccountCard(
-                icon: Icons.g_mobiledata_rounded,
-                title: 'Google Account',
-                subtitle: 'LINKED',
-                email: '',
-                note: 'You can also sign in with Google.',
+              _LinkedGoogleCard(
+                email: _authUser.googleLinkedEmail ?? '',
+                isUnlinking: _isUnlinking,
+                onUnlink: _onUnlinkGoogle,
               )
             else
               _LinkGoogleCard(isLinking: _isLinking, onLink: _onLinkGoogle),
@@ -288,7 +338,8 @@ class _LinkGoogleCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           const Text(
-            'Link a Google account with the same email so you can sign in either way.',
+            'Link any Google account so you can sign in either way — it '
+            "doesn't need to match this account's email.",
             style: TextStyle(color: _ConnectedColors.muted, fontSize: 12, height: 1.4),
           ),
           const SizedBox(height: 14),
@@ -314,6 +365,107 @@ class _LinkGoogleCard extends StatelessWidget {
                   : const Icon(Icons.link_rounded, size: 18),
               label: Text(
                 isLinking ? 'Linking...' : 'Link Google Account',
+                style: const TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LinkedGoogleCard extends StatelessWidget {
+  const _LinkedGoogleCard({
+    required this.email,
+    required this.isUnlinking,
+    required this.onUnlink,
+  });
+
+  final String email;
+  final bool isUnlinking;
+  final VoidCallback onUnlink;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _ConnectedColors.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _ConnectedColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: _ConnectedColors.background,
+                child: const Icon(
+                  Icons.g_mobiledata_rounded,
+                  color: _ConnectedColors.headline,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Google Account',
+                      style: TextStyle(
+                        fontFamily: 'Sora',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: _ConnectedColors.body,
+                      ),
+                    ),
+                    Text(
+                      'LINKED',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.6,
+                        color: _ConnectedColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (email.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(email, style: const TextStyle(color: _ConnectedColors.body, fontSize: 14)),
+          ],
+          const SizedBox(height: 10),
+          const Text(
+            'You can also sign in with Google.',
+            style: TextStyle(color: _ConnectedColors.muted, fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: OutlinedButton.icon(
+              onPressed: isUnlinking ? null : onUnlink,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.redAccent,
+                side: const BorderSide(color: Colors.redAccent),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
+              ),
+              icon: isUnlinking
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent),
+                    )
+                  : const Icon(Icons.link_off_rounded, size: 18),
+              label: Text(
+                isUnlinking ? 'Unlinking...' : 'Unlink Google Account',
                 style: const TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700),
               ),
             ),

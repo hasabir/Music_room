@@ -471,6 +471,7 @@ class GoogleLoginView(generics.GenericAPIView):
             SocialAccount.objects.create(
                 user=user,
                 provider_uid=google_uid,
+                email=email,
             )
 
         if not user.is_active:
@@ -495,22 +496,43 @@ class GoogleLoginView(generics.GenericAPIView):
         )
 
 
-@extend_schema(
-    summary="Link a Google account to the signed-in account",
-    description=(
-        "Verifies a Google ID token server-side, then links that Google "
-        "account to the currently signed-in user — letting them log in "
-        "with either their password or Google afterward. Requires the "
-        "Google account's email to match the signed-in account's email. "
-        "Fails if that Google account is already linked to a different "
-        "Music Room account."
+@extend_schema_view(
+    post=extend_schema(
+        summary="Link a Google account to the signed-in account",
+        description=(
+            "Verifies a Google ID token server-side, then links that Google "
+            "account to the currently signed-in user — letting them log in "
+            "with either their password or Google afterward. The Google "
+            "account's email does NOT need to match the signed-in account's "
+            "email (see DECISIONS.md) — it's stored on the link itself, "
+            "never copied onto the platform account. Fails if that Google "
+            "account is already linked to a different Music Room account, "
+            "or if this account already has a different Google account "
+            "linked (unlink it first)."
+        ),
+        request=GoogleLoginSerializer,
+        responses={
+            200: OpenApiResponse(description="Google account linked (or already linked to this account)."),
+            400: OpenApiResponse(
+                description="Invalid Google token, already linked elsewhere, or this account already has a different Google account linked."
+            ),
+        },
+        tags=["auth"],
     ),
-    request=GoogleLoginSerializer,
-    responses={
-        200: OpenApiResponse(description="Google account linked (or already linked to this account)."),
-        400: OpenApiResponse(description="Invalid Google token, email mismatch, or already linked elsewhere."),
-    },
-    tags=["auth"],
+    delete=extend_schema(
+        summary="Unlink the Google account from the signed-in account",
+        description=(
+            "Removes the Google account linked to the signed-in user. "
+            "Blocked if this would leave the account with no way to log "
+            "in — i.e. a Google-only signup that never set a usable "
+            "password."
+        ),
+        responses={
+            200: OpenApiResponse(description="Google account unlinked."),
+            400: OpenApiResponse(description="No Google account linked, or unlinking would leave zero login methods."),
+        },
+        tags=["auth"],
+    ),
 )
 class GoogleLinkView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
@@ -524,11 +546,6 @@ class GoogleLinkView(generics.GenericAPIView):
         google_uid = serializer.validated_data["google_uid"]
         google_email = serializer.validated_data["email"]
 
-        if google_email.lower() != request.user.email.lower():
-            raise serializers.ValidationError(
-                "This Google account's email must match your account email to link it."
-            )
-
         existing = SocialAccount.objects.filter(provider_uid=google_uid).first()
         if existing:
             if existing.user_id == request.user.id:
@@ -540,10 +557,22 @@ class GoogleLinkView(generics.GenericAPIView):
                     status=status.HTTP_200_OK,
                 )
             raise serializers.ValidationError(
-                "This Google account is already linked to a different account."
+                {"detail": "This Google account is already linked to another Music Room account."}
             )
 
-        SocialAccount.objects.create(user=request.user, provider_uid=google_uid)
+        if SocialAccount.objects.filter(user=request.user).exists():
+            raise serializers.ValidationError(
+                {
+                    "detail": (
+                        "Your account already has a Google account linked. "
+                        "Unlink it before linking a different one."
+                    )
+                }
+            )
+
+        SocialAccount.objects.create(
+            user=request.user, provider_uid=google_uid, email=google_email
+        )
 
         log_action(
             request,
@@ -555,6 +584,44 @@ class GoogleLinkView(generics.GenericAPIView):
             {
                 "user": UserSerializer(request.user).data,
                 "detail": "Google account linked successfully.",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def delete(self, request):
+        social_account = SocialAccount.objects.filter(user=request.user).first()
+        if not social_account:
+            raise serializers.ValidationError({"detail": "No Google account is linked."})
+
+        # A Google-only signup (`create_user` called `set_unusable_password`)
+        # has no other way to log in — unlinking would lock them out
+        # permanently, since there's no path to set a password without
+        # already having one (ChangePasswordView requires the current
+        # password as proof). This also covers an email/password user who
+        # somehow ended up without a usable password, not just
+        # registration_method == "google" specifically.
+        if not request.user.has_usable_password():
+            raise serializers.ValidationError(
+                {
+                    "detail": (
+                        "Unlinking Google would leave your account with no way to "
+                        "log in. Set a password first."
+                    )
+                }
+            )
+
+        social_account.delete()
+
+        log_action(
+            request,
+            "authentication.google_unlink",
+            user=request.user,
+        )
+
+        return Response(
+            {
+                "user": UserSerializer(request.user).data,
+                "detail": "Google account unlinked successfully.",
             },
             status=status.HTTP_200_OK,
         )

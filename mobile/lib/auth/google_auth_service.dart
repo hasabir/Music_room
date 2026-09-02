@@ -15,7 +15,16 @@ class GoogleAuthService {
 
   /// Runs the Google account picker and returns the ID token
   /// to send to your backend's /auth/google/ endpoint.
+  ///
+  /// Signs out of the plugin's own cached session first — otherwise
+  /// `signIn()` silently reuses whichever Google account last completed
+  /// this flow (anywhere in the app: login or linking) without ever
+  /// showing the account picker again. Since linking explicitly allows
+  /// any Google account regardless of the signed-in user's email, always
+  /// showing the picker is what lets a user actually pick a *different*
+  /// one instead of being stuck with whatever was cached.
   static Future<String> signInAndGetIdToken() async {
+    await _googleSignIn.signOut();
     final GoogleSignInAccount? account = await _googleSignIn.signIn();
     if (account == null) {
       throw GoogleAuthCancelled();

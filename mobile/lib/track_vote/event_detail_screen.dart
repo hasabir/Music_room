@@ -643,6 +643,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Hosted by ${event.host}',
+                      style: const TextStyle(
+                        color: _EventColors.muted,
+                        fontSize: 13,
+                      ),
+                    ),
                     if (event.description.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Text(
