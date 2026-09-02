@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../core/api/api_client.dart';
+import '../home/home_screen.dart';
+import 'auth_api.dart';
+import 'google_auth_service.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
 
@@ -17,23 +21,58 @@ class _WelcomeColors {
 /// First screen shown to unauthenticated users after the splash screen.
 ///
 /// Offers account creation, log in, and a Google sign-in entry point.
-/// None of those flows are implemented yet — each button exposes a clearly
-/// marked placeholder callback for the real screens to be wired in later.
-class WelcomeScreen extends StatelessWidget {
+class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
 
-  void _onCreateAccount(BuildContext context) {
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  final _authApi = AuthApi();
+
+  bool _isSubmitting = false;
+  String? _errorMessage;
+
+  void _onCreateAccount() {
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const RegisterScreen()));
   }
 
-  void _onLogIn(BuildContext context) {
+  void _onLogIn() {
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const LoginScreen()));
   }
 
-  // TODO: Replace with real Google Sign-In once the auth service exists.
-  void _onContinueWithGoogle(BuildContext context) {}
+  Future<void> _onContinueWithGoogle() async {
+    if (_isSubmitting) return;
+
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final idToken = await GoogleAuthService.signInAndGetIdToken();
+      await _authApi.loginWithGoogle(idToken: idToken);
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
+    } on GoogleAuthCancelled {
+      // User dismissed the account picker — not an error.
+    } on GoogleAuthFailed catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = error.message);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = error.message);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,18 +89,40 @@ class WelcomeScreen extends StatelessWidget {
               const SizedBox(height: 16),
               const _Description(),
               const Spacer(flex: 4),
-              _CreateAccountButton(onPressed: () => _onCreateAccount(context)),
+              if (_errorMessage != null) ...[
+                _ErrorMessage(message: _errorMessage!),
+                const SizedBox(height: 12),
+              ],
+              _CreateAccountButton(
+                onPressed: _isSubmitting ? null : _onCreateAccount,
+              ),
               const SizedBox(height: 12),
-              _LogInButton(onPressed: () => _onLogIn(context)),
+              _LogInButton(onPressed: _isSubmitting ? null : _onLogIn),
               const SizedBox(height: 20),
               const _OrDivider(),
               const SizedBox(height: 20),
-              _GoogleButton(onPressed: () => _onContinueWithGoogle(context)),
+              _GoogleButton(
+                onPressed: _isSubmitting ? null : () => _onContinueWithGoogle(),
+              ),
               const SizedBox(height: 24),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ErrorMessage extends StatelessWidget {
+  const _ErrorMessage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      message,
+      style: const TextStyle(fontSize: 14, color: Colors.redAccent),
     );
   }
 }
@@ -104,7 +165,7 @@ class _Description extends StatelessWidget {
 class _CreateAccountButton extends StatelessWidget {
   const _CreateAccountButton({required this.onPressed});
 
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -150,7 +211,7 @@ class _CreateAccountButton extends StatelessWidget {
 class _LogInButton extends StatelessWidget {
   const _LogInButton({required this.onPressed});
 
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +269,7 @@ class _OrDivider extends StatelessWidget {
 class _GoogleButton extends StatelessWidget {
   const _GoogleButton({required this.onPressed});
 
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
