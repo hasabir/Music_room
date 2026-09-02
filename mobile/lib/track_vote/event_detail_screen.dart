@@ -643,13 +643,35 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Hosted by ${event.host}',
-                      style: const TextStyle(
-                        color: _EventColors.muted,
-                        fontSize: 13,
-                      ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.person_rounded,
+                          size: 15,
+                          color: _EventColors.tertiary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text.rich(
+                          TextSpan(
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: _EventColors.muted,
+                            ),
+                            children: [
+                              const TextSpan(text: 'Hosted by '),
+                              TextSpan(
+                                text: event.host,
+                                style: const TextStyle(
+                                  fontFamily: 'Sora',
+                                  fontWeight: FontWeight.w700,
+                                  color: _EventColors.tertiary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                     if (event.description.isNotEmpty) ...[
                       const SizedBox(height: 6),
