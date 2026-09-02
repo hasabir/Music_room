@@ -220,6 +220,8 @@ _ACTIVITY_MESSAGE_BUILDERS = {
     "event.vote_retracted": lambda n, m: f'{n} retracted their vote for {m.get("song_title", "")} in {m.get("event_title", "")}',
     "event.guest_invited": lambda n, m: f'{n} invited a guest to room {m.get("title", "")}',
     "event.guest_removed": lambda n, m: f'{n} removed a guest from room {m.get("title", "")}',
+    "event.liked": lambda n, m: f'{n} liked the room {m.get("event_title", "")}',
+    "event.unliked": lambda n, m: f'{n} unliked the room {m.get("event_title", "")}',
 }
 
 

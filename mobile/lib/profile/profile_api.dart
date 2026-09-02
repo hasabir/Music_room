@@ -97,6 +97,18 @@ class ProfileApi {
     return OtherUserProfile.fromJson(response);
   }
 
+  /// Fetches [userId]'s recent activity feed, newest first — already
+  /// filtered server-side by their `field_visibility.activity` tier (see
+  /// `UserActivityView`), so this can come back empty either because they
+  /// haven't granted this viewer visibility or because they simply have no
+  /// activity yet; both render the same way (see [ActivityEntry]).
+  Future<List<ActivityEntry>> getUserActivity(int userId) async {
+    final response = await _authorizedGetList(
+      ApiConfig.userActivityUri(userId),
+    );
+    return response.map((json) => ActivityEntry.fromJson(json)).toList();
+  }
+
   /// Lists friend requests sent to the signed-in user that are still
   /// awaiting their response.
   Future<List<FriendRequest>> getReceivedRequests() async {

@@ -16,6 +16,12 @@ class _ViewProfileColors {
   static const tertiary = Color(0xFF2FD9F4);
   static const destructive = Color(0xFFE0555F);
   static const chip = Color(0xFF232230);
+
+  // Recent Activity icon accents — one per [_activityVisual] bucket.
+  static const activityMusic = tertiary;
+  static const activitySocial = Color(0xFFFF6FA5);
+  static const activityVote = Color(0xFFFFC857);
+  static const activityLike = Color(0xFFFF5C7A);
 }
 
 /// Read-only view of another user's profile, backed by
@@ -35,10 +41,15 @@ class _ViewProfileColors {
 /// "Vibe Signature" card (see [_VibeSignatureCard]) when non-empty — same
 /// section layout and card styling as the owner's own profile screen
 /// (`personal_profile.dart`), minus the edit affordances a viewer has no
-/// use for. "Listening Now" and a "Recent Activity" feed from the
-/// original design are deliberately not shown: there's no backend
-/// concept of either, and faking them would assert real-time behavior
-/// about a specific person rather than read as generic UI chrome.
+/// use for. A "Recent Activity" feed (see [_RecentActivityCard]) is
+/// fetched separately from `GET /profile/<user_id>/activity/` and shown
+/// only when it comes back non-empty — the endpoint already applies the
+/// target's `field_visibility.activity` tier server-side (public, friends,
+/// or private — see `UserActivityView`), so an empty result already means
+/// "nothing this viewer is allowed to see" and needs no extra client-side
+/// gating. "Listening Now" from the original design is still not shown:
+/// there's no backend concept of it, and faking it would assert real-time
+/// behavior about a specific person rather than read as generic UI chrome.
 class ViewProfileScreen extends StatefulWidget {
   const ViewProfileScreen({
     super.key,
@@ -61,6 +72,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
   final _profileApi = ProfileApi();
 
   late Future<OtherUserProfile> _profileFuture;
+  late Future<List<ActivityEntry>> _activityFuture;
   late RelationshipStatus _relationshipStatus;
   int? _friendshipId;
   var _isActing = false;
@@ -71,6 +83,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
     _relationshipStatus = widget.relationshipStatus;
     _friendshipId = widget.friendshipId;
     _profileFuture = _profileApi.getUserProfile(widget.userId);
+    _activityFuture = _profileApi.getUserActivity(widget.userId);
   }
 
   Future<void> _runAction(Future<void> Function() action) async {
@@ -185,6 +198,17 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
                         const SizedBox(height: 16),
                         _VibeSignatureCard(genres: profile.favoriteGenres),
                       ],
+                      FutureBuilder<List<ActivityEntry>>(
+                        future: _activityFuture,
+                        builder: (context, activitySnapshot) {
+                          final entries = activitySnapshot.data ?? const [];
+                          if (entries.isEmpty) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: _RecentActivityCard(entries: entries),
+                          );
+                        },
+                      ),
                     ],
                   );
                 },
@@ -759,6 +783,217 @@ class _VibeSignatureCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// How many entries [_RecentActivityCard] shows inline before offering
+/// "View All".
+const _recentActivityPreviewCount = 5;
+
+/// Read-only feed card for another user's recent activity — see
+/// [ViewProfileScreen]'s doc comment for the visibility rules already
+/// applied server-side to [entries]. Shows the [_recentActivityPreviewCount]
+/// most recent entries (already newest-first, per `ActionLog.Meta.ordering`)
+/// plus a "View All" row when there are more, which pushes
+/// [_ActivityListScreen] with the full (already-fetched) list rather than
+/// making a second request.
+class _RecentActivityCard extends StatelessWidget {
+  const _RecentActivityCard({required this.entries});
+
+  final List<ActivityEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = entries.take(_recentActivityPreviewCount).toList();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _ViewProfileColors.card,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _ViewProfileColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Recent Activity',
+                style: TextStyle(
+                  fontFamily: 'Sora',
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                  color: _ViewProfileColors.body,
+                ),
+              ),
+              if (entries.length > preview.length)
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => _ActivityListScreen(entries: entries),
+                      ),
+                    );
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: _ViewProfileColors.tertiary,
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'VIEW ALL',
+                    style: TextStyle(
+                      fontFamily: 'Sora',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          for (var i = 0; i < preview.length; i++) ...[
+            if (i > 0) const _DetailDivider(),
+            _ActivityRow(entry: preview[i]),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The full-list counterpart to [_RecentActivityCard]'s "VIEW ALL" —
+/// reuses the exact same [entries] already fetched for the card, so this
+/// is just a longer scrollable rendering of the same rows, not a second
+/// network round-trip.
+class _ActivityListScreen extends StatelessWidget {
+  const _ActivityListScreen({required this.entries});
+
+  final List<ActivityEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _ViewProfileColors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            const _Header(title: 'Recent Activity'),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                itemCount: entries.length,
+                itemBuilder: (context, index) {
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: _ViewProfileColors.card,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: _ViewProfileColors.border),
+                    ),
+                    child: _ActivityRow(entry: entries[index]),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Actions that are directly about music itself — creating a playlist,
+/// or adding/reordering a track in one — as opposed to who's involved.
+/// See [_activityVisual].
+const _musicActivityActions = {
+  'playlist.created',
+  'playlist.song_added',
+  'playlist.song_removed',
+  'playlist.song_moved',
+  'event.song_added',
+};
+
+/// Casting or retracting a vote for a queued song. See [_activityVisual].
+const _voteActivityActions = {'event.vote_cast', 'event.vote_retracted'};
+
+/// Liking or unliking a room. See [_activityVisual].
+const _likeActivityActions = {'event.liked', 'event.unliked'};
+
+/// (icon, accent color) for an [ActivityEntry.action], grouped into four
+/// buckets: music (adding/reordering a track, creating a playlist — see
+/// [_musicActivityActions]), a vote on a queued song
+/// ([_voteActivityActions]), liking a room ([_likeActivityActions]), and
+/// everything else — creating/joining a room, guest and collaborator
+/// invites, access requests — which reads as a social action about who's
+/// involved rather than the music itself.
+(IconData, Color) _activityVisual(String action) {
+  if (_voteActivityActions.contains(action)) {
+    return (Icons.thumb_up_rounded, _ViewProfileColors.activityVote);
+  }
+  if (_likeActivityActions.contains(action)) {
+    return (Icons.favorite_rounded, _ViewProfileColors.activityLike);
+  }
+  if (_musicActivityActions.contains(action)) {
+    return (Icons.music_note_rounded, _ViewProfileColors.activityMusic);
+  }
+  return (Icons.people_alt_rounded, _ViewProfileColors.activitySocial);
+}
+
+class _ActivityRow extends StatelessWidget {
+  const _ActivityRow({required this.entry});
+
+  final ActivityEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, accent) = _activityVisual(entry.action);
+    final visibility = entry.metadata['visibility'];
+    final timeLabel = visibility == 'private'
+        ? '${formatTimeAgo(entry.createdAt)} · Friends Only'
+        : formatTimeAgo(entry.createdAt);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.16),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 18, color: accent),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                entry.message,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.35,
+                  color: _ViewProfileColors.body,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                timeLabel,
+                style: const TextStyle(fontSize: 12, color: _ViewProfileColors.muted),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

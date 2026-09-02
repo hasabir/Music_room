@@ -90,6 +90,8 @@ class ApiConfig {
       Uri.parse('$baseUrl/api/v1/profile/friends/$userId/cancel/');
   static Uri userProfileUri(int userId) =>
       Uri.parse('$baseUrl/api/v1/profile/profile/$userId/');
+  static Uri userActivityUri(int userId) =>
+      Uri.parse('$baseUrl/api/v1/profile/profile/$userId/activity/');
   static Uri userSearchUri(String query) =>
       Uri.parse('$baseUrl$userSearchEndpoint')
           .replace(queryParameters: {'q': query});

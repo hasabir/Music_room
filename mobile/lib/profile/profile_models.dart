@@ -20,6 +20,32 @@ const _monthNames = [
 String formatBirthday(DateTime date) =>
     '${_monthNames[date.month - 1]} ${date.day}, ${date.year}';
 
+/// Formats a past timestamp as a short relative label (e.g. "3 hours ago",
+/// "Yesterday", "3 days ago"), for the Recent Activity feed
+/// ([ActivityEntry]/`GET /profile/<id>/activity/`).
+String formatTimeAgo(DateTime dateTime) {
+  final diff = DateTime.now().difference(dateTime.toLocal());
+  if (diff.inMinutes < 1) return 'Just now';
+  if (diff.inMinutes < 60) {
+    return '${diff.inMinutes} minute${diff.inMinutes == 1 ? '' : 's'} ago';
+  }
+  if (diff.inHours < 24) {
+    return '${diff.inHours} hour${diff.inHours == 1 ? '' : 's'} ago';
+  }
+  if (diff.inDays == 1) return 'Yesterday';
+  if (diff.inDays < 7) return '${diff.inDays} days ago';
+  if (diff.inDays < 30) {
+    final weeks = diff.inDays ~/ 7;
+    return '$weeks week${weeks == 1 ? '' : 's'} ago';
+  }
+  if (diff.inDays < 365) {
+    final months = diff.inDays ~/ 30;
+    return '$months month${months == 1 ? '' : 's'} ago';
+  }
+  final years = diff.inDays ~/ 365;
+  return '$years year${years == 1 ? '' : 's'} ago';
+}
+
 /// Human-readable labels for the backend's `Profile.MUSIC_GENRE_CHOICES`
 /// (see `backend/profiles/models.py`). Keys are the genre codes stored/sent
 /// to the API; values are what's shown in the UI.
@@ -477,4 +503,48 @@ class OtherUserProfile {
   /// Always present regardless of visibility filtering — see
   /// `backend/profiles/views.py`'s `UserProfileView` docstring.
   final int playlistsCount;
+}
+
+/// One entry in a user's activity feed, as returned by
+/// `GET /api/v1/profile/me/activity/` or
+/// `GET /api/v1/profile/profile/<user_id>/activity/`
+/// (`ActivityLogSerializer`, backed by `ActionLog`). Already filtered
+/// server-side by the target's `field_visibility.activity` tier and the
+/// viewer's friendship with them — see `UserActivityView`/
+/// `_activity_queryset_for` on the backend — so every entry returned here
+/// is one this viewer is allowed to see; there's nothing left to gate
+/// client-side. [message] is pre-formatted and ready to display as-is.
+class ActivityEntry {
+  const ActivityEntry({
+    required this.id,
+    required this.action,
+    required this.actorDisplayName,
+    required this.message,
+    required this.metadata,
+    required this.createdAt,
+  });
+
+  factory ActivityEntry.fromJson(Map<String, dynamic> json) => ActivityEntry(
+    id: json['id'] as int,
+    action: json['action'] as String? ?? '',
+    actorDisplayName: json['actor_display_name'] as String? ?? '',
+    message: json['message'] as String? ?? '',
+    metadata: (json['metadata'] as Map<String, dynamic>?) ?? const {},
+    createdAt: DateTime.parse(json['created_at'] as String),
+  );
+
+  final int id;
+
+  /// e.g. "playlist.created", "event.vote_cast" — see
+  /// `_ACTIVITY_MESSAGE_BUILDERS` on the backend for the full set.
+  final String action;
+  final String actorDisplayName;
+  final String message;
+
+  /// Free-form per-action context (title, visibility, song/artist, ...).
+  /// [message] already renders whatever's relevant, so this is only worth
+  /// reading directly for something [message] doesn't already say — e.g.
+  /// `metadata['visibility']`, to badge a private room/playlist.
+  final Map<String, dynamic> metadata;
+  final DateTime createdAt;
 }
