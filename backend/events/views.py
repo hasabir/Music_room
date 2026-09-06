@@ -16,7 +16,7 @@ from .models import Event, Song, EventSong, Vote, EventLike
 from .serializers import (
     EventSerializer, AddSongToQueueSerializer, EventSongSerializer
 )
-from .permissions import can_user_see_event, can_user_vote
+from .permissions import can_user_see_event, can_user_suggest_track, can_user_vote
 from .broadcast import broadcast_queue_update
 
 @extend_schema_view(
@@ -166,7 +166,10 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
     post=extend_schema(
         summary="Add a song to the queue",
         description=(
-            "Adds a new song to this event's queue. If a song with the "
+            "Adds a new song to this event's queue. Requires having "
+            "actually joined the event first (host, self-joined via "
+            "`POST .../join/`, or an invited guest) — see "
+            "can_user_suggest_track. If a song with the "
             "same title and artist already exists in the catalog, it "
             "is reused instead of creating a duplicate. Fails if the "
             "song is already in this event's queue (`queued` or "
@@ -177,7 +180,7 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
         responses={
             201: EventSongSerializer,
             400: OpenApiResponse(description="Song already in queue, or invalid input."),
-            403: OpenApiResponse(description="You do not have access to this event."),
+            403: OpenApiResponse(description="You do not have access to this event, or haven't joined it yet."),
         },
         tags=["events"],
     ),
@@ -208,14 +211,15 @@ class EventQueueView(APIView):
 
     def post(self, request, event_id):
         event = get_object_or_404(Event, id=event_id)
-        if not can_user_see_event(request.user, event):
-            return Response({"detail": "You do not have access to this event."},
-                             status=status.HTTP_403_FORBIDDEN)
+
+        allowed, reason = can_user_suggest_track(request.user, event)
+        if not allowed:
+            return Response({"detail": reason}, status=status.HTTP_403_FORBIDDEN)
 
         # Closed: viewing/voting stays open, but the queue is frozen — no
         # new track suggestions from anyone, host included. Canceled is a
         # stricter superset of that (and already blocks everyone but the
-        # host from reaching this point at all, via can_user_see_event
+        # host from reaching this point at all, via can_user_suggest_track
         # above) — the host still can't add to a canceled event's queue.
         if event.status == Event.STATUS_CLOSED:
             return Response({"detail": "This event is closed — new tracks can no longer be suggested."},

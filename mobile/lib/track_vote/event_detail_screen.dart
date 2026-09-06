@@ -100,6 +100,39 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   /// invite/remove actions — nothing else checks host status separately.
   bool get _isHost => _authUser?.username == _event?.host;
 
+  /// Whether the signed-in user has actually joined this event — the
+  /// backend's own gate on suggesting a track (`can_user_suggest_track`
+  /// in `events/permissions.py`), mirrored here so the button reflects
+  /// the same rule rather than surfacing it only as a 403 after the tap.
+  /// Host -> always true. Self-joined public event -> `Event.isMember`
+  /// (`POST .../join/`). Private event -> true unconditionally: seeing a
+  /// private event at all already implies an invite (`can_user_see_event`
+  /// only lets the host or a guest through), and there's no separate
+  /// self-join for private events to distinguish "invited" from "joined"
+  /// in the first place.
+  bool get _hasJoinedEvent {
+    final event = _event;
+    if (event == null) return true;
+    return _isHost || event.isMember || event.visibility == eventVisibilityPrivate;
+  }
+
+  var _isJoiningEvent = false;
+
+  Future<void> _onJoinEvent() async {
+    if (_isJoiningEvent) return;
+    setState(() => _isJoiningEvent = true);
+    try {
+      await _eventApi.joinEvent(widget.eventId);
+      await _refetchState();
+    } on SessionExpiredException {
+      await _signOutAndReturnToWelcome();
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } finally {
+      if (mounted) setState(() => _isJoiningEvent = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -758,6 +791,34 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   fontSize: 12.5,
                   color: _EventColors.muted,
                   fontStyle: FontStyle.italic,
+                ),
+              )
+            // Suggesting a track requires having actually joined (see
+            // _hasJoinedEvent's doc comment / can_user_suggest_track on
+            // the backend) — a public event a viewer can merely *see*
+            // doesn't qualify, so this replaces the suggest button with a
+            // join prompt until they explicitly join.
+            else if (!_hasJoinedEvent)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _isJoiningEvent ? null : _onJoinEvent,
+                  icon: _isJoiningEvent
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.how_to_reg_rounded, size: 20),
+                  label: Text(_isJoiningEvent ? 'Joining…' : 'Join to suggest a track'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _EventColors.tertiary,
+                    foregroundColor: const Color(0xFF0E0E15),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
                 ),
               )
             else

@@ -36,6 +36,33 @@ def can_user_see_event(user, event):
     return event.guests.filter(guest=user).exists()
 
 
+def can_user_suggest_track(user, event):
+    """
+    Can this user suggest a new track for this event's queue right now?
+    Returns (allowed: bool, reason: str), same contract as can_user_vote.
+
+    Host -> always yes. Otherwise requires having actually joined: a
+    self-joined EventMembership row (public events — see EventJoinView)
+    or an EventGuest invite (private events have no separate self-join
+    at all, so having a guest row is how you're "in" one there). Being
+    able to *see* a public event isn't enough on its own — the whole
+    point of this gate is to distinguish "just browsing" from "actually
+    joined", which is also why it's independent of vote_permission:
+    voting has its own, separate everyone/invited_only gate
+    (can_user_vote) and no join requirement at all.
+    """
+    if not can_user_see_event(user, event):
+        return False, "You do not have access to this event."
+
+    if event.host_id == user.id:
+        return True, ""
+
+    if event.members.filter(member=user).exists() or event.guests.filter(guest=user).exists():
+        return True, ""
+
+    return False, "Join this event before suggesting a track."
+
+
 def can_user_vote(user, event, user_latitude=None, user_longitude=None):
     """
     Can this user cast a vote on this event right now?

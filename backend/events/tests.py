@@ -186,6 +186,41 @@ class QueueAndVotingTests(APITestCase):
         response = self.client.post(private_queue_url, {"title": "Song", "artist": "Artist"})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_add_song_requires_joining_a_public_event_first(self):
+        # Public -> can_user_see_event already lets a stranger in, but
+        # seeing the event isn't the same as having joined it.
+        stranger = create_verified_user("stranger@test.com")
+        self._login(stranger)
+
+        response = self.client.post(self.queue_url, {"title": "Song", "artist": "Artist"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["detail"], "Join this event before suggesting a track.")
+
+    def test_add_song_allowed_after_joining(self):
+        stranger = create_verified_user("stranger@test.com")
+        self._login(stranger)
+
+        join_response = self.client.post(f"/api/v1/events/{self.event_id}/join/")
+        self.assertEqual(join_response.status_code, status.HTTP_201_CREATED)
+
+        response = self.client.post(self.queue_url, {"title": "Song", "artist": "Artist"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_add_song_allowed_for_invited_guest_without_a_separate_join(self):
+        # Private events have no self-join at all — an invite (EventGuest)
+        # is what being "in" one means, so it should be enough on its own.
+        guest = create_verified_user("guest@test.com")
+        self.client.force_authenticate(self.host)
+        private_resp = self.client.post("/api/v1/events/", {"title": "Secret", "visibility": "private"})
+        private_id = private_resp.data["id"]
+        self.client.post(f"/api/v1/events/{private_id}/guests/", {"user_id": guest.id})
+
+        self._login(guest)
+        response = self.client.post(
+            f"/api/v1/events/{private_id}/queue/", {"title": "Song", "artist": "Artist"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
     # ---------- VOTING RULES ----------
 
     def test_voting_blocked_with_fewer_than_2_songs(self):
