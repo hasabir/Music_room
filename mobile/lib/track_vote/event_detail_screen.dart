@@ -14,6 +14,7 @@ import '../profile/profile_api.dart';
 import '../profile/profile_avatar.dart';
 import '../profile/profile_models.dart';
 import '../profile/profile_preview_sheet.dart';
+import '../settings/subscription_screen.dart';
 import 'event_api.dart';
 import 'event_models.dart';
 import 'event_widgets.dart';
@@ -414,6 +415,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       await _refetchState();
     } on SessionExpiredException {
       await _signOutAndReturnToWelcome();
+    } on VoteLimitReachedException catch (error) {
+      // A plain snackbar, not the requirements sheet _voteRestrictionReason
+      // drives — that one disables every row uniformly (see isReadOnly
+      // below), which would incorrectly block retracting an *already*
+      // voted row too. Reaching the cap should only ever block casting a
+      // vote on a *new* track (see atVoteLimit in the build method).
+      _showMessage(error.message);
     } on VoteNotPermittedException catch (error) {
       if (mounted) setState(() => _voteRestrictionReason = error.message);
     } on ApiException catch (error) {
@@ -467,12 +475,42 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Future<void> _openSuggestTrack() async {
+    final event = _event;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => SuggestTrackScreen(eventId: widget.eventId),
+        builder: (_) => SuggestTrackScreen(
+          eventId: widget.eventId,
+          initialSuggestionCount: event?.mySuggestionCount ?? 0,
+          suggestionLimit: (_authUser?.isPremium ?? false)
+              ? null
+              : event?.mySuggestionLimit,
+        ),
       ),
     );
     await _refetchState();
+  }
+
+  /// Opens the Settings > Subscription screen from the suggestion-limit
+  /// upsell button. Refetches both the event (its `my_suggestion_*`/
+  /// `my_vote_*` fields) and the signed-in user afterward, so an upgrade
+  /// made there is reflected here immediately — `atSuggestionLimit`/
+  /// `atVoteLimit` both key off `_authUser.isPremium` too, which
+  /// `_refetchState()` alone wouldn't refresh.
+  Future<void> _openSubscriptionScreen() async {
+    final authUser = _authUser;
+    if (authUser == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => SubscriptionScreen(authUser: authUser)),
+    );
+    await _refetchState();
+    try {
+      final refreshedUser = await _authApi.getCurrentUser();
+      if (mounted) setState(() => _authUser = refreshedUser);
+    } on SessionExpiredException {
+      await _signOutAndReturnToWelcome();
+    } on ApiException {
+      // Keep showing the last known tier on a transient failure.
+    }
   }
 
   Future<void> _openGuestManagement() async {
@@ -631,6 +669,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         : _queue.where((entry) => entry.id != playing.id).toList();
     final isVotingRestricted = _voteRestrictionReason != null;
 
+    // Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md).
+    // `null` limit means Premium (or not yet loaded) — unlimited either way.
+    final isPremium = _authUser?.isPremium ?? false;
+    final atSuggestionLimit = !isPremium &&
+        event.mySuggestionLimit != null &&
+        event.mySuggestionCount >= event.mySuggestionLimit!;
+    final atVoteLimit = !isPremium &&
+        event.myVoteLimit != null &&
+        event.myVoteCount >= event.myVoteLimit!;
+
     return RefreshIndicator(
       onRefresh: _loadAll,
       color: _EventColors.tertiary,
@@ -769,6 +817,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 ),
               ],
             ),
+            if (!isPremium && event.myVoteLimit != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                '${event.myVoteCount}/${event.myVoteLimit} votes used this event',
+                style: const TextStyle(fontSize: 11, color: _EventColors.muted),
+              ),
+            ],
             const SizedBox(height: 8),
             // The backend only 403s POST .../queue/ for closed or
             // canceled — NOT for the three automatic
@@ -821,7 +876,29 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   ),
                 ),
               )
-            else
+            // Bonus: Free vs. Premium subscription — a Free user who's hit
+            // their per-event suggestion cap sees an upsell here instead
+            // of the normal button. The backend enforces this regardless
+            // (see SuggestionLimitReachedException below); this just
+            // avoids a doomed round trip and explains why.
+            else if (atSuggestionLimit)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _openSubscriptionScreen(),
+                  icon: const Icon(Icons.workspace_premium_rounded, size: 20),
+                  label: const Text('Suggestion limit reached — Upgrade to Premium'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _EventColors.muted,
+                    side: const BorderSide(color: _EventColors.cardBorder),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              )
+            else ...[
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
@@ -838,6 +915,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   ),
                 ),
               ),
+              if (!isPremium && event.mySuggestionLimit != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    '${event.mySuggestionCount}/${event.mySuggestionLimit} suggestions used',
+                    style: const TextStyle(fontSize: 11, color: _EventColors.muted),
+                  ),
+                ),
+            ],
             const SizedBox(height: 8),
             if (upNext.isEmpty)
               const _EmptyQueue()
@@ -846,7 +932,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 _QueueRow(
                   entry: entry,
                   isChanging: _changingVotes.contains(entry.id),
-                  isReadOnly: isVotingRestricted,
+                  // atVoteLimit only ever blocks casting a vote on a *new*
+                  // track (entry.hasVoted stays tappable) — retracting is
+                  // exactly how a Free user frees up a slot once here, so
+                  // it must never be disabled by the cap. Unlike
+                  // isVotingRestricted (reactive, uniform across every
+                  // row), this is proactive and per-row on purpose.
+                  isReadOnly: isVotingRestricted || (atVoteLimit && !entry.hasVoted),
                   isPlaying: playbackState.trackKey == _playbackKey(entry.id) &&
                       playbackState.isPlaying,
                   onVote: () => _toggleVote(entry),

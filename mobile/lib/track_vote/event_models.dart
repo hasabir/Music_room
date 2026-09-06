@@ -200,6 +200,10 @@ class Event {
     required this.hasLiked,
     required this.currentSong,
     required this.currentPositionSeconds,
+    required this.mySuggestionCount,
+    required this.mySuggestionLimit,
+    required this.myVoteCount,
+    required this.myVoteLimit,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -238,6 +242,10 @@ class Event {
         : EventSong.fromJson(json['current_song'] as Map<String, dynamic>),
     currentPositionSeconds: (json['current_position_seconds'] as num?)
         ?.toDouble(),
+    mySuggestionCount: json['my_suggestion_count'] as int? ?? 0,
+    mySuggestionLimit: json['my_suggestion_limit'] as int?,
+    myVoteCount: json['my_vote_count'] as int? ?? 0,
+    myVoteLimit: json['my_vote_limit'] as int?,
     createdAt: DateTime.parse(json['created_at'] as String),
     updatedAt: DateTime.parse(json['updated_at'] as String),
   );
@@ -314,6 +322,26 @@ class Event {
 
   /// Whether the signed-in user has liked this event.
   final bool hasLiked;
+
+  /// Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md).
+  /// Lifetime-per-event count of tracks the signed-in user has suggested
+  /// — never decreases, even after a suggested song leaves the queue.
+  final int mySuggestionCount;
+
+  /// `null` for a Premium user (or an unauthenticated request) —
+  /// "unlimited, don't show a counter". Otherwise the FREE-tier
+  /// per-event suggestion cap.
+  final int? mySuggestionLimit;
+
+  /// Live count of distinct tracks the signed-in user currently has an
+  /// active vote on in this event — retracting a vote lowers this,
+  /// unlike [mySuggestionCount].
+  final int myVoteCount;
+
+  /// `null` for a Premium user (or an unauthenticated request) —
+  /// "unlimited, don't show a counter". Otherwise the FREE-tier
+  /// per-event distinct-vote cap.
+  final int? myVoteLimit;
 
   /// The backend's authoritative "on air" song right now — see
   /// DECISIONS.md. `null` once every song has been played, or the queue

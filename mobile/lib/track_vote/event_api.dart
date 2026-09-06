@@ -19,6 +19,34 @@ class VoteNotPermittedException implements Exception {
   String toString() => 'VoteNotPermittedException($message)';
 }
 
+/// Thrown when the vote endpoint rejects the caller specifically because
+/// they've hit their FREE-tier distinct-vote cap for this event (backend
+/// `code: "vote_limit_reached"` — see docs/SUBSCRIPTION_BONUS.md). Kept
+/// distinct from [VoteNotPermittedException]: that one drives a reactive,
+/// whole-queue "voting restricted" banner, which would incorrectly cover
+/// retracting an *already-cast* vote too — and retracting is exactly how
+/// a Free user is meant to free up a slot once at this cap.
+class VoteLimitReachedException implements Exception {
+  VoteLimitReachedException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'VoteLimitReachedException($message)';
+}
+
+/// Thrown when the suggest-track endpoint rejects the caller because
+/// they've hit their FREE-tier suggestion cap for this event (backend
+/// `code: "suggestion_limit_reached"` — see docs/SUBSCRIPTION_BONUS.md).
+class SuggestionLimitReachedException implements Exception {
+  SuggestionLimitReachedException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'SuggestionLimitReachedException($message)';
+}
+
 /// Talks to the backend's `events` endpoints (`/api/v1/events/...`).
 ///
 /// Mirrors [PlaylistApi]'s access-token-with-refresh-and-retry handling, but
@@ -161,6 +189,10 @@ class EventApi {
   /// Adds a new song to the end of the event's queue, at zero votes.
   /// Reuses an existing catalog song if the same title/artist already
   /// exists.
+  ///
+  /// Throws [SuggestionLimitReachedException] (rather than a bare
+  /// [ApiException]) when a FREE-tier caller has hit their per-event
+  /// suggestion cap — see docs/SUBSCRIPTION_BONUS.md.
   Future<EventSong> addToQueue(
     int eventId, {
     required String title,
@@ -180,19 +212,31 @@ class EventApi {
       'preview_url': ?previewUrl,
       'playback_type': ?playbackType,
     };
-    final response = await _authorizedPost(
-      ApiConfig.eventQueueUri(eventId),
-      body: body,
-    );
-    return EventSong.fromJson(response);
+    try {
+      final response = await _authorizedPost(
+        ApiConfig.eventQueueUri(eventId),
+        body: body,
+      );
+      return EventSong.fromJson(response);
+    } on ApiException catch (error) {
+      if (error.code == 'suggestion_limit_reached') {
+        throw SuggestionLimitReachedException(error.message);
+      }
+      rethrow;
+    }
   }
 
   /// Casts the signed-in user's vote for [eventSongId]. [latitude]/
   /// [longitude] are only required when the event's
   /// `locationRestrictionEnabled` is `true`.
   ///
-  /// Throws [VoteNotPermittedException] (rather than a bare
-  /// [ApiException]) on a 403 — see that class for why.
+  /// Throws [VoteLimitReachedException] when a FREE-tier caller has hit
+  /// their per-event distinct-vote cap (checked first — it's also a 403,
+  /// but a more specific one than [VoteNotPermittedException] below), or
+  /// [VoteNotPermittedException] for any other 403 — i.e. any other
+  /// failure case in the backend's `can_user_vote` (not enough songs
+  /// queued yet, an invite-only license, or outside the allowed
+  /// location/time window; see `backend/events/permissions.py`).
   Future<VoteResult> vote(
     int eventId,
     int eventSongId, {
@@ -210,6 +254,9 @@ class EventApi {
       );
       return VoteResult.fromJson(response);
     } on ApiException catch (error) {
+      if (error.code == 'vote_limit_reached') {
+        throw VoteLimitReachedException(error.message);
+      }
       if (error.statusCode == 403) {
         throw VoteNotPermittedException(error.message);
       }

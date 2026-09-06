@@ -12,7 +12,8 @@ from rest_framework.test import APITestCase
 from rest_framework import status
 
 from user.models import User
-from .models import Event, Song, EventSong, Vote, EventGuest, EventAccessRequest, EventMembership
+from .models import Event, Song, EventSong, Vote, EventGuest, EventAccessRequest, EventMembership, EventParticipation
+from .services import FREE_SUGGESTION_LIMIT, FREE_VOTE_LIMIT
 
 
 def create_verified_user(email, password="TestPass123"):
@@ -2184,3 +2185,111 @@ class ParticipantAvatarFieldTests(APITestCase):
         row = response.data[0]
         self.assertEqual(row["member_avatar"], "3")
         self.assertEqual(row["member_avatar_type"], "preset")
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class SubscriptionLimitTests(APITestCase):
+    """
+    Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md)
+    — the FREE-tier suggestion/vote caps enforced in EventQueueView.post
+    and VoteView.post. Race-condition safety itself is covered separately
+    in events/concurrency_tests.py (this file's tests all run inside
+    APITestCase's single-connection transaction, which can't exercise
+    real cross-connection locking).
+    """
+
+    def setUp(self):
+        self.host = create_verified_user("sub_host@test.com")
+        self.free_user = create_verified_user("sub_free@test.com")
+        self.premium_user = create_verified_user("sub_premium@test.com")
+        self.premium_user.subscription_tier = User.SUBSCRIPTION_PREMIUM
+        self.premium_user.save(update_fields=["subscription_tier"])
+
+        self.client.force_authenticate(self.host)
+        event_resp = self.client.post("/api/v1/events/", {"title": "Sub Test Party"})
+        self.event_id = event_resp.data["id"]
+        self.queue_url = f"/api/v1/events/{self.event_id}/queue/"
+
+        # Suggesting requires having joined (can_user_suggest_track, a
+        # separate, earlier bonus — see docs/WEB_BONUS.md) — unrelated to
+        # subscription tier, but a precondition for every test below.
+        for user in (self.free_user, self.premium_user):
+            self.client.force_authenticate(user)
+            self.client.post(f"/api/v1/events/{self.event_id}/join/")
+
+    def _add_song_as(self, user, title, artist="Artist"):
+        self.client.force_authenticate(user)
+        return self.client.post(self.queue_url, {"title": title, "artist": artist})
+
+    def _vote_as(self, user, event_song_id):
+        self.client.force_authenticate(user)
+        return self.client.post(f"{self.queue_url}{event_song_id}/vote/")
+
+    def _retract_as(self, user, event_song_id):
+        self.client.force_authenticate(user)
+        return self.client.delete(f"{self.queue_url}{event_song_id}/vote/")
+
+    def test_free_user_blocked_at_11th_suggestion(self):
+        for i in range(FREE_SUGGESTION_LIMIT):
+            response = self._add_song_as(self.free_user, f"Free Song {i}")
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        eleventh = self._add_song_as(self.free_user, "One Too Many")
+        self.assertEqual(eleventh.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(eleventh.data["code"], "suggestion_limit_reached")
+
+        participation = EventParticipation.objects.get(event_id=self.event_id, user=self.free_user)
+        self.assertEqual(participation.suggestion_count, FREE_SUGGESTION_LIMIT)
+        # The rejected 11th suggestion never became a real queue entry —
+        # the catalog Song row itself is fine to exist either way (it's a
+        # shared, idempotent resource, not what the limit is protecting).
+        self.assertFalse(EventSong.objects.filter(event_id=self.event_id, song__title="One Too Many").exists())
+
+    def test_free_user_blocked_at_21st_distinct_vote_and_retraction_frees_a_slot(self):
+        # Seeded by the Premium user specifically — the host is Free-tier
+        # (see test_event_host_is_not_exempt_from_limits) and would hit
+        # its own 10-suggestion cap partway through seeding 21 songs.
+        song_ids = []
+        for i in range(FREE_VOTE_LIMIT + 1):
+            response = self._add_song_as(self.premium_user, f"Votable {i}")
+            song_ids.append(response.data["id"])
+
+        for song_id in song_ids[:FREE_VOTE_LIMIT]:
+            response = self._vote_as(self.free_user, song_id)
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        twenty_first = self._vote_as(self.free_user, song_ids[FREE_VOTE_LIMIT])
+        self.assertEqual(twenty_first.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(twenty_first.data["code"], "vote_limit_reached")
+
+        # Retracting one of the 20 frees a slot for a *different* distinct
+        # track — proving this is a live count, not a lifetime one (the
+        # opposite rule from suggestions, chosen deliberately).
+        retract = self._retract_as(self.free_user, song_ids[0])
+        self.assertEqual(retract.status_code, status.HTTP_200_OK)
+
+        now_allowed = self._vote_as(self.free_user, song_ids[FREE_VOTE_LIMIT])
+        self.assertEqual(now_allowed.status_code, status.HTTP_201_CREATED)
+
+    def test_premium_user_unrestricted_suggestions_and_votes(self):
+        # More than both Free caps, from a single Premium user acting as
+        # both the suggester and the voter — neither limit should ever
+        # apply to them.
+        song_ids = []
+        for i in range(FREE_SUGGESTION_LIMIT + FREE_VOTE_LIMIT + 5):
+            response = self._add_song_as(self.premium_user, f"Premium Song {i}")
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            song_ids.append(response.data["id"])
+
+        for song_id in song_ids[:FREE_VOTE_LIMIT + 5]:
+            response = self._vote_as(self.premium_user, song_id)
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_event_host_is_not_exempt_from_limits(self):
+        for i in range(FREE_SUGGESTION_LIMIT):
+            response = self._add_song_as(self.host, f"Host Song {i}")
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        eleventh = self._add_song_as(self.host, "Host Song Too Many")
+        self.assertEqual(eleventh.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(eleventh.data["code"], "suggestion_limit_reached")

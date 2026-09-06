@@ -48,26 +48,43 @@ def _collaborator_for(user, playlist):
     return playlist.collaborators.filter(collaborator=user).first()
 
 
+# Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md).
+# Editing a PUBLIC playlist requires Premium, regardless of the
+# playlist's own edit_permission — even "everyone can edit" is
+# overridden, and there is deliberately no owner exemption. Private
+# playlists never reach this check at all, so their existing behavior
+# under edit_permission is completely untouched.
+_PREMIUM_REQUIRED_REASON = (
+    "Editing a public playlist requires Premium — upgrade your account, "
+    "or ask the owner to make this playlist private."
+)
+_PREMIUM_REQUIRED_CODE = "public_playlist_requires_premium"
+
+
 def can_user_add_songs(user, playlist):
     if not can_user_see_playlist(user, playlist):
-        return False, "You do not have access to this playlist."
+        return False, "You do not have access to this playlist.", ""
+    if playlist.visibility == "public" and not user.is_premium:
+        return False, _PREMIUM_REQUIRED_REASON, _PREMIUM_REQUIRED_CODE
     if playlist.owner_id == user.id or playlist.edit_permission == "everyone":
-        return True, ""
+        return True, "", ""
     collaborator = _collaborator_for(user, playlist)
     if collaborator and collaborator.can_add_songs:
-        return True, ""
-    return False, "The playlist owner has not allowed you to add songs."
+        return True, "", ""
+    return False, "The playlist owner has not allowed you to add songs.", ""
 
 
 def can_user_reorder_songs(user, playlist):
     if not can_user_see_playlist(user, playlist):
-        return False, "You do not have access to this playlist."
+        return False, "You do not have access to this playlist.", ""
+    if playlist.visibility == "public" and not user.is_premium:
+        return False, _PREMIUM_REQUIRED_REASON, _PREMIUM_REQUIRED_CODE
     if playlist.owner_id == user.id or playlist.edit_permission == "everyone":
-        return True, ""
+        return True, "", ""
     collaborator = _collaborator_for(user, playlist)
     if collaborator and collaborator.can_reorder_songs:
-        return True, ""
-    return False, "The playlist owner has not allowed you to reorder songs."
+        return True, "", ""
+    return False, "The playlist owner has not allowed you to reorder songs.", ""
 
 
 def can_user_manage_collaborators(user, playlist):

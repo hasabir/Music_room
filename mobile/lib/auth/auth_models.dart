@@ -11,6 +11,8 @@ class AuthUser {
     required this.registrationMethod,
     required this.hasGoogleLinked,
     this.googleLinkedEmail,
+    this.subscriptionTier = subscriptionTierFree,
+    this.isPremium = false,
   });
 
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
@@ -23,6 +25,8 @@ class AuthUser {
     registrationMethod: json['registration_method'] as String? ?? 'email',
     hasGoogleLinked: json['has_google_linked'] as bool? ?? false,
     googleLinkedEmail: json['google_linked_email'] as String?,
+    subscriptionTier: json['subscription_tier'] as String? ?? subscriptionTierFree,
+    isPremium: json['is_premium'] as bool? ?? false,
   );
 
   final int id;
@@ -43,7 +47,17 @@ class AuthUser {
   /// linking never requires (or copies in) a matching address. `null` when
   /// [hasGoogleLinked] is false.
   final String? googleLinkedEmail;
+
+  /// Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md)
+  /// — [subscriptionTierFree] or [subscriptionTierPremium]. [isPremium] is
+  /// the same thing as a bool, mirroring the backend's `User.is_premium`
+  /// property; prefer it everywhere except the Settings tier display.
+  final String subscriptionTier;
+  final bool isPremium;
 }
+
+const String subscriptionTierFree = 'free';
+const String subscriptionTierPremium = 'premium';
 
 /// Result of a successful login call.
 class LoginResult {

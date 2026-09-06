@@ -39,8 +39,23 @@ class _SuggestColors {
 /// a separate preview clip over it. Adding a song sends it through
 /// `POST /events/<id>/queue/` instead of a playlist's add-song endpoint.
 class SuggestTrackScreen extends StatefulWidget {
-  const SuggestTrackScreen({super.key, required this.eventId});
+  const SuggestTrackScreen({
+    super.key,
+    required this.eventId,
+    this.initialSuggestionCount = 0,
+    this.suggestionLimit,
+  });
   final int eventId;
+
+  /// How many tracks this user has already suggested to this event
+  /// (lifetime-cumulative — see `docs/SUBSCRIPTION_BONUS.md`) as of when
+  /// this screen was opened, and the Free-tier cap (`null` = Premium,
+  /// unlimited). Used only to short-circuit locally and show a banner —
+  /// the backend re-checks and is the actual source of truth, so a stale
+  /// value here (e.g. from another device) just means the user sees the
+  /// [SuggestionLimitReachedException] snackbar instead of the banner.
+  final int initialSuggestionCount;
+  final int? suggestionLimit;
 
   @override
   State<SuggestTrackScreen> createState() => _SuggestTrackScreenState();
@@ -62,6 +77,16 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
   final Set<String> _added = <String>{};
   var _isLoading = false;
   String? _error;
+
+  /// Local mirror of the count, bumped on every successful add so the
+  /// banner (and [_atLimit]) update without leaving this screen. Starts
+  /// from [SuggestTrackScreen.initialSuggestionCount], which may already
+  /// be stale by the time this screen opens (e.g. another device
+  /// suggested since); the backend is what actually enforces the cap.
+  late int _suggestionCount = widget.initialSuggestionCount;
+
+  bool get _atLimit =>
+      widget.suggestionLimit != null && _suggestionCount >= widget.suggestionLimit!;
 
   /// `false` searches by title/artist/etc (the default keyword match);
   /// `true` looks the query up as an artist name instead and returns that
@@ -166,6 +191,13 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
         ? '${track.title}\u0000${track.artist}'
         : track.externalId;
     if (_adding.contains(key) || _added.contains(key)) return;
+    if (_atLimit) {
+      _showSnack(
+        'You have reached the ${widget.suggestionLimit} suggestion limit for '
+        'this event. Upgrade to Premium for unlimited suggestions.',
+      );
+      return;
+    }
     setState(() => _adding.add(key));
     try {
       await _eventApi.addToQueue(
@@ -179,10 +211,18 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
         playbackType: track.playbackType,
       );
       if (!mounted) return;
-      setState(() => _added.add(key));
+      setState(() {
+        _added.add(key);
+        _suggestionCount++;
+      });
       _showSnack('Added "${track.title}" to the event queue.');
     } on SessionExpiredException {
       await _signOut();
+    } on SuggestionLimitReachedException catch (error) {
+      if (mounted) {
+        setState(() => _suggestionCount = widget.suggestionLimit ?? _suggestionCount);
+      }
+      _showSnack(error.message);
     } on ApiException catch (error) {
       _showSnack(error.message);
     } finally {
@@ -262,11 +302,48 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
             ),
           ),
           const SizedBox(height: 8),
+          if (widget.suggestionLimit != null) _buildLimitBanner(),
           Expanded(child: _buildBody()),
         ],
       ),
     ),
   );
+
+  Widget _buildLimitBanner() {
+    final limit = widget.suggestionLimit!;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: (_atLimit ? Colors.redAccent : _SuggestColors.tertiary)
+              .withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              _atLimit ? Icons.block_rounded : Icons.info_outline_rounded,
+              size: 16,
+              color: _atLimit ? Colors.redAccent : _SuggestColors.tertiary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _atLimit
+                    ? 'Suggestion limit reached ($limit/$limit) — upgrade to Premium for unlimited suggestions.'
+                    : '$_suggestionCount/$limit suggestions used for this event.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _atLimit ? Colors.redAccent : _SuggestColors.muted,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildBody() {
     if (_isLoading) {

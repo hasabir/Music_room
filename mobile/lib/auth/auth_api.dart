@@ -122,6 +122,19 @@ class AuthApi {
     return AuthUser.fromJson(response['user'] as Map<String, dynamic>);
   }
 
+  /// Mock upgrade/downgrade — see docs/SUBSCRIPTION_BONUS.md. No real
+  /// payment gateway; this just flips the stored tier server-side.
+  /// [tier] must be [subscriptionTierFree] or [subscriptionTierPremium].
+  /// Switching to the tier the user is already on is a no-op success,
+  /// not an error.
+  Future<AuthUser> switchSubscriptionTier({required String tier}) async {
+    final response = await _authorizedPost(
+      ApiConfig.subscriptionUri(),
+      body: {'tier': tier},
+    );
+    return AuthUser.fromJson(response['user'] as Map<String, dynamic>);
+  }
+
   /// Fetches the currently-authenticated user using the stored access
   /// token.
   ///

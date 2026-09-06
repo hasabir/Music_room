@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 /// Thrown when the backend returns a non-2xx response, or the response body
 /// can't be parsed as expected.
 class ApiException implements Exception {
-  ApiException(this.statusCode, this.message, {this.fieldErrors});
+  ApiException(this.statusCode, this.message, {this.fieldErrors, this.code});
 
   final int statusCode;
   final String message;
@@ -15,6 +15,14 @@ class ApiException implements Exception {
   /// Field-level validation errors, e.g. `{"email": ["already in use"]}`,
   /// as returned by Django REST Framework serializers.
   final Map<String, dynamic>? fieldErrors;
+
+  /// Machine-readable error code the backend includes on specific
+  /// responses (e.g. `"suggestion_limit_reached"`, `"vote_limit_reached"`,
+  /// `"public_playlist_requires_premium"` — see
+  /// docs/SUBSCRIPTION_BONUS.md) — `null` for the many error responses
+  /// that don't set one. Lets callers branch on a stable identifier
+  /// instead of parsing [message] text.
+  final String? code;
 
   @override
   String toString() => 'ApiException($statusCode, $message)';
@@ -278,7 +286,12 @@ class ApiClient {
     final message = decoded != null
         ? _firstErrorMessage(decoded)
         : 'Request failed with status ${response.statusCode}';
-    throw ApiException(response.statusCode, message, fieldErrors: decoded);
+    throw ApiException(
+      response.statusCode,
+      message,
+      fieldErrors: decoded,
+      code: decoded?['code'] as String?,
+    );
   }
 
   Map<String, dynamic> _decode(http.Response response) {
@@ -301,11 +314,22 @@ class ApiClient {
     final message = decoded != null
         ? _firstErrorMessage(decoded)
         : 'Request failed with status ${response.statusCode}';
-    throw ApiException(response.statusCode, message, fieldErrors: decoded);
+    throw ApiException(
+      response.statusCode,
+      message,
+      fieldErrors: decoded,
+      code: decoded?['code'] as String?,
+    );
   }
 
+  /// Picks the first human-readable message out of an error body — skips
+  /// `code` (a machine-readable identifier alongside `detail` on some
+  /// responses; see [ApiException.code]) explicitly rather than relying
+  /// on `detail` happening to be the first key in the body.
   String _firstErrorMessage(Map<String, dynamic> body) {
-    for (final value in body.values) {
+    for (final entry in body.entries) {
+      if (entry.key == 'code') continue;
+      final value = entry.value;
       if (value is List && value.isNotEmpty) {
         return value.first.toString();
       }

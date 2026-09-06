@@ -1,6 +1,6 @@
 # events/views.py
 from django.db import IntegrityError , transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, status
@@ -18,6 +18,7 @@ from .serializers import (
 )
 from .permissions import can_user_see_event, can_user_suggest_track, can_user_vote
 from .broadcast import broadcast_queue_update
+from .services import FREE_SUGGESTION_LIMIT, FREE_VOTE_LIMIT, lock_participation
 
 @extend_schema_view(
     get=extend_schema(
@@ -263,31 +264,69 @@ class EventQueueView(APIView):
                 defaults=song_defaults,
             )
 
-        # Catch the event up to now first — otherwise a song whose real
-        # playtime already elapsed could still read as stale `playing`
-        # data from before this request, and get wrongly rejected below as
-        # "already in the queue" instead of being recognized as revivable.
-        event.sync_current_song()
+        with transaction.atomic():
+            # Catch the event up to now first — otherwise a song whose real
+            # playtime already elapsed could still read as stale `playing`
+            # data from before this request, and get wrongly rejected below
+            # as "already in the queue" instead of being recognized as
+            # revivable.
+            event.sync_current_song()
 
-        event_song, created = EventSong.objects.get_or_create(
-            event=event, song=song, defaults={"added_by": request.user}
-        )
-        revived = False
-        if not created:
-            if event_song.status != "played":
+            # FREE-tier cap (see events/services.py + docs/SUBSCRIPTION_BONUS.md).
+            # lock_participation() serializes this one user's own concurrent
+            # suggestions for this event via SELECT ... FOR UPDATE, so two
+            # near-simultaneous requests can't both read "under the limit"
+            # and both proceed.
+            participation = lock_participation(event, request.user)
+
+            # Checked *before* get_or_create() below so a request we're
+            # about to reject never leaves behind a newly-created EventSong
+            # row — we'd otherwise have to choose between silently
+            # committing it anyway or deleting it again right after.
+            existing = EventSong.objects.filter(event=event, song=song).first()
+            if existing is not None and existing.status != "played":
                 return Response({"detail": "This song is already in the queue."},
                                  status=status.HTTP_400_BAD_REQUEST)
-            # It already had its turn and dropped out of the queue (see
-            # `Event.sync_current_song`) — `unique_together` means it can't
-            # become a second row, so bring this same one back instead:
-            # fresh votes, fresh position, credited to whoever just
-            # re-suggested it, same as any other newly-added song.
-            revived = True
-            event_song.votes.all().delete()
-            event_song.status = "queued"
-            event_song.added_by = request.user
-            event_song.added_at = timezone.now()
-            event_song.save(update_fields=["status", "added_by", "added_at"])
+
+            if not request.user.is_premium and participation.suggestion_count >= FREE_SUGGESTION_LIMIT:
+                return Response(
+                    {
+                        "detail": f"Free accounts can suggest at most {FREE_SUGGESTION_LIMIT} "
+                                  f"tracks per event. Upgrade to Premium for unlimited suggestions.",
+                        "code": "suggestion_limit_reached",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            event_song, created = EventSong.objects.get_or_create(
+                event=event, song=song, defaults={"added_by": request.user}
+            )
+            revived = False
+            if not created:
+                if event_song.status != "played":
+                    # A concurrent suggestion for this exact song landed
+                    # between the pre-check above and here — same "already
+                    # queued" outcome, just caught at the last possible
+                    # moment instead of assumed impossible.
+                    return Response({"detail": "This song is already in the queue."},
+                                     status=status.HTTP_400_BAD_REQUEST)
+                # It already had its turn and dropped out of the queue (see
+                # `Event.sync_current_song`) — `unique_together` means it can't
+                # become a second row, so bring this same one back instead:
+                # fresh votes, fresh position, credited to whoever just
+                # re-suggested it, same as any other newly-added song.
+                revived = True
+                event_song.votes.all().delete()
+                event_song.status = "queued"
+                event_song.added_by = request.user
+                event_song.added_at = timezone.now()
+                event_song.save(update_fields=["status", "added_by", "added_at"])
+
+            # Lifetime-per-event, never decremented — see EventParticipation's
+            # doc comment for why this can't just be derived from
+            # EventSong.added_by (revival above reassigns that field).
+            participation.suggestion_count = F("suggestion_count") + 1
+            participation.save(update_fields=["suggestion_count"])
 
         log_action(request, "event.song_added", user=request.user, metadata={
             "event_id": event.id,
@@ -384,6 +423,33 @@ class VoteView(APIView):
             return Response({"detail": reason}, status=status.HTTP_403_FORBIDDEN)
         try:
             with transaction.atomic():
+                # FREE-tier cap (see events/services.py + docs/SUBSCRIPTION_BONUS.md).
+                # Same per-(event, user) lock as the suggestion cap, so two
+                # near-simultaneous votes from this user can't both read
+                # "under the limit" and both proceed.
+                lock_participation(event, request.user)
+
+                # Re-voting a song already voted for must still fall through
+                # to the existing "already voted" IntegrityError path below,
+                # even at the cap — it doesn't consume a new distinct slot.
+                already_voted = Vote.objects.filter(
+                    event_song=event_song, voter=request.user
+                ).exists()
+                if not already_voted and not request.user.is_premium:
+                    distinct_count = Vote.objects.filter(
+                        voter=request.user, event_song__event=event
+                    ).count()
+                    if distinct_count >= FREE_VOTE_LIMIT:
+                        return Response(
+                            {
+                                "detail": f"Free accounts can vote on at most {FREE_VOTE_LIMIT} "
+                                          f"different tracks per event. Upgrade to Premium, or "
+                                          f"retract another vote first.",
+                                "code": "vote_limit_reached",
+                            },
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+
                 Vote.objects.create(event_song=event_song, voter=request.user)
         except IntegrityError:
             return Response({"detail": "You have already voted for this song."},

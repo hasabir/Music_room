@@ -1,3 +1,0 @@
-[] if a new track is added to the event it the status of the event should be updated to live again so add join button to the event detail screen if the current user is not already joined or envited to the event and make sure that the not joined user can not add a new track to the event unless he explicitly clicked on the join button to join the event.
-
-[] a person can not add a new track to the event unless he explicitly clicked on the join button to join the event.

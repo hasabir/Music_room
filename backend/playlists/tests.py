@@ -67,6 +67,13 @@ class PlaylistSongTests(APITestCase):
     def setUp(self):
         self.owner = create_verified_user("owner@test.com")
         self.editor = create_verified_user("editor@test.com")
+        # This class tests add/remove/move mechanics on a public playlist
+        # (edit_permission, position bookkeeping) — none of that is what
+        # PlaylistPremiumGateTests below already covers dedicatedly, so
+        # make the owner Premium here to keep testing only what this
+        # class has always tested, unaffected by the new gate.
+        self.owner.subscription_tier = User.SUBSCRIPTION_PREMIUM
+        self.owner.save(update_fields=["subscription_tier"])
 
         self.client.force_authenticate(self.owner)
         playlist_resp = self.client.post("/api/v1/playlists/", {"title": "Test Playlist"})
@@ -351,3 +358,75 @@ class PlaylistParticipantAvatarFieldTests(APITestCase):
         row = response.data[0]
         self.assertEqual(row["requester_avatar"], "https://example.test/requester.jpg")
         self.assertEqual(row["requester_avatar_type"], "external_url")
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class PlaylistPremiumGateTests(APITestCase):
+    """
+    Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md)
+    — editing a PUBLIC playlist requires Premium, regardless of
+    edit_permission, with no owner exemption. Private playlists must be
+    completely unaffected.
+    """
+
+    def setUp(self):
+        self.owner = create_verified_user("premium_gate_owner@test.com")
+
+        self.client.force_authenticate(self.owner)
+        public_resp = self.client.post(
+            "/api/v1/playlists/", {"title": "Public Mix", "edit_permission": "everyone"}
+        )
+        self.public_playlist_id = public_resp.data["id"]
+        self.public_songs_url = f"/api/v1/playlists/{self.public_playlist_id}/songs/"
+
+        private_resp = self.client.post(
+            "/api/v1/playlists/",
+            {"title": "Private Mix", "visibility": "private", "edit_permission": "everyone"},
+        )
+        self.private_playlist_id = private_resp.data["id"]
+        self.private_songs_url = f"/api/v1/playlists/{self.private_playlist_id}/songs/"
+
+    def test_free_owner_blocked_from_editing_own_public_playlist(self):
+        # Owner, "everyone can edit" — would succeed under the pre-existing
+        # edit_permission rules alone; the Premium gate overrides that.
+        response = self.client.post(self.public_songs_url, {"title": "Song", "artist": "Artist"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["code"], "public_playlist_requires_premium")
+
+    def test_free_owner_can_still_edit_own_private_playlist(self):
+        # Same owner, same Free tier, same "everyone can edit" setting —
+        # only `visibility` differs. Must be completely unaffected.
+        add = self.client.post(self.private_songs_url, {"title": "Song", "artist": "Artist"})
+        self.assertEqual(add.status_code, status.HTTP_201_CREATED)
+
+        move = self.client.post(
+            f"{self.private_songs_url}{add.data['id']}/move/", {"new_position": 0}
+        )
+        self.assertEqual(move.status_code, status.HTTP_200_OK)
+
+        remove = self.client.delete(f"{self.private_songs_url}{add.data['id']}/")
+        self.assertEqual(remove.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_premium_owner_can_edit_own_public_playlist(self):
+        self.owner.subscription_tier = User.SUBSCRIPTION_PREMIUM
+        self.owner.save(update_fields=["subscription_tier"])
+
+        add = self.client.post(self.public_songs_url, {"title": "Song", "artist": "Artist"})
+        self.assertEqual(add.status_code, status.HTTP_201_CREATED)
+
+        move = self.client.post(
+            f"{self.public_songs_url}{add.data['id']}/move/", {"new_position": 0}
+        )
+        self.assertEqual(move.status_code, status.HTTP_200_OK)
+
+        remove = self.client.delete(f"{self.public_songs_url}{add.data['id']}/")
+        self.assertEqual(remove.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_free_non_owner_blocked_from_editing_public_everyone_playlist(self):
+        # A non-owner relying purely on edit_permission="everyone" — also
+        # overridden, same as the owner, confirming there's no special
+        # case for *who* is editing, only the playlist's own visibility.
+        other = create_verified_user("premium_gate_other@test.com")
+        self.client.force_authenticate(other)
+        response = self.client.post(self.public_songs_url, {"title": "Song", "artist": "Artist"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["code"], "public_playlist_requires_premium")

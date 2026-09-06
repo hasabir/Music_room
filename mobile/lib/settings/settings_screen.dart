@@ -9,6 +9,7 @@ import '../profile/edit_profile_screen.dart';
 import '../profile/profile_avatar.dart';
 import '../profile/profile_models.dart';
 import 'connected_accounts_screen.dart';
+import 'subscription_screen.dart';
 import 'update_password_screen.dart';
 
 class _SettingsColors {
@@ -49,6 +50,12 @@ class SettingsScreen extends StatelessWidget {
   void _onConnectedAccounts(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => ConnectedAccountsScreen(authUser: authUser)),
+    );
+  }
+
+  void _onSubscription(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => SubscriptionScreen(authUser: authUser)),
     );
   }
 
@@ -158,6 +165,13 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
+          _SettingsRow(
+            icon: Icons.workspace_premium_outlined,
+            title: 'Subscription',
+            subtitle: authUser.isPremium ? 'Premium' : 'Free',
+            subtitleColor: authUser.isPremium ? _SettingsColors.verified : null,
+            onTap: () => _onSubscription(context),
+          ),
           _SettingsRow(
             icon: Icons.account_circle_outlined,
             title: 'Connected Accounts',

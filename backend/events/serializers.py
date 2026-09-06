@@ -3,7 +3,8 @@ from django.utils import timezone
 from rest_framework import serializers
 from profiles.serializers import _actor_display_name
 from profiles.services import avatar_for_user
-from .models import Event, EventGuest, EventMembership, Song, EventSong, Vote, EventAccessRequest
+from .models import Event, EventGuest, EventMembership, EventParticipation, Song, EventSong, Vote, EventAccessRequest
+from .services import FREE_SUGGESTION_LIMIT, FREE_VOTE_LIMIT
 
 class EventSerializer(serializers.ModelSerializer):
     host = serializers.StringRelatedField(read_only=True)
@@ -15,6 +16,10 @@ class EventSerializer(serializers.ModelSerializer):
     participant_count = serializers.ReadOnlyField()
     like_count = serializers.ReadOnlyField()
     has_liked = serializers.SerializerMethodField()
+    my_suggestion_count = serializers.SerializerMethodField()
+    my_suggestion_limit = serializers.SerializerMethodField()
+    my_vote_count = serializers.SerializerMethodField()
+    my_vote_limit = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -27,12 +32,14 @@ class EventSerializer(serializers.ModelSerializer):
             "song_count", "voting_is_open", "is_member",
             "like_count", "has_liked",
             "current_song", "current_position_seconds",
+            "my_suggestion_count", "my_suggestion_limit", "my_vote_count", "my_vote_limit",
             "created_at", "updated_at",
         ]
         read_only_fields = [
             "id", "host", "song_count", "voting_is_open", "is_member", "participant_count",
             "like_count", "has_liked",
             "current_song", "current_position_seconds",
+            "my_suggestion_count", "my_suggestion_limit", "my_vote_count", "my_vote_limit",
             "created_at", "updated_at",
         ]
 
@@ -53,6 +60,36 @@ class EventSerializer(serializers.ModelSerializer):
         if not request or not request.user.is_authenticated:
             return False
         return obj.likes.filter(user=request.user).exists()
+
+    # ---- Bonus: FREE-tier suggestion/vote limits (docs/SUBSCRIPTION_BONUS.md) ----
+    # The `*_limit` fields return `null` for a Premium user (or an
+    # unauthenticated request) — the client renders that uniformly as
+    # "unlimited, no counter shown" and never hardcodes 10/20 itself.
+
+    def get_my_suggestion_count(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return 0
+        participation = EventParticipation.objects.filter(event=obj, user=request.user).first()
+        return participation.suggestion_count if participation else 0
+
+    def get_my_suggestion_limit(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated or request.user.is_premium:
+            return None
+        return FREE_SUGGESTION_LIMIT
+
+    def get_my_vote_count(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return 0
+        return Vote.objects.filter(voter=request.user, event_song__event=obj).count()
+
+    def get_my_vote_limit(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated or request.user.is_premium:
+            return None
+        return FREE_VOTE_LIMIT
 
     def get_current_song(self, obj):
         if obj.current_song_id is None:

@@ -15,6 +15,7 @@ import '../core/auth/token_storage.dart';
 import '../core/playback/playback_controller.dart';
 import '../core/responsive/responsive.dart';
 import '../home/home_screen.dart';
+import '../settings/subscription_screen.dart';
 import 'add_song_search_screen.dart';
 import 'edit_playlist_screen.dart';
 import 'playlist_api.dart';
@@ -678,6 +679,17 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
     await _refetchCollaborators();
   }
 
+  /// Opens Settings > Subscription from the [_PremiumRequiredBanner]'s
+  /// upgrade button. Reuses [_loadAll] afterward rather than a narrower
+  /// refresh — it already re-fetches `_authUser` alongside the playlist,
+  /// which is exactly what `isPremiumBlocked` needs to recompute.
+  Future<void> _onUpgradeToPremium(AuthUser authUser) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => SubscriptionScreen(authUser: authUser)),
+    );
+    await _loadAll();
+  }
+
   Future<void> _onEditPlaylist() async {
     final playlist = _playlist;
     if (playlist == null) return;
@@ -789,7 +801,15 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
         playlist.editPermission == playlistEditPermissionEveryone ||
         (playlist.editPermission == playlistEditPermissionInvitedOnly &&
             isCollaborator);
-    final canEdit = hasEditPermission && !kIsWeb;
+    // Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md).
+    // Editing a *public* playlist requires Premium, regardless of
+    // `editPermission` — including for the owner, with no exemption. This
+    // is enforced server-side (`can_user_add_songs`/`can_user_reorder_songs`
+    // in `backend/playlists/permissions.py`); the check here only controls
+    // whether this screen shows edit affordances at all.
+    final isPremiumBlocked =
+        playlist.visibility == playlistVisibilityPublic && !authUser.isPremium;
+    final canEdit = hasEditPermission && !kIsWeb && !isPremiumBlocked;
     final needsInvitations =
         playlist.visibility != playlistVisibilityPublic ||
         playlist.editPermission != playlistEditPermissionEveryone;
@@ -819,6 +839,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
         // permission, they're missing a mobile device.
         if (kIsWeb) ...[
           const _WebViewOnlyBanner(),
+          const SizedBox(height: 16),
+        ] else if (hasEditPermission && isPremiumBlocked) ...[
+          // Only shown to someone who would otherwise be allowed to edit —
+          // a stranger with no edit permission at all sees the "ask the
+          // owner"/invited-only banner below instead, regardless of tier.
+          _PremiumRequiredBanner(onUpgrade: () => _onUpgradeToPremium(authUser)),
           const SizedBox(height: 16),
         ] else if (!canEdit &&
             playlist.editPermission == playlistEditPermissionInvitedOnly) ...[
@@ -971,6 +997,61 @@ class _WebViewOnlyBanner extends StatelessWidget {
               'Viewing on web. Open the Music Room app on your phone to add, '
               'reorder, or remove songs.',
               style: TextStyle(fontSize: 12, color: _PlaylistColors.muted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown in place of [_EditLockedBanner] when the signed-in user *would*
+/// otherwise be allowed to edit this playlist (owner, or `editPermission`
+/// grants it) but it's public and they're on the Free tier — see
+/// docs/SUBSCRIPTION_BONUS.md. Unlike [_WebViewOnlyBanner], something
+/// actionable is being withheld here, so this uses the red "locked"
+/// styling and offers a direct upgrade shortcut.
+class _PremiumRequiredBanner extends StatelessWidget {
+  const _PremiumRequiredBanner({required this.onUpgrade});
+
+  final VoidCallback onUpgrade;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.redAccent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.workspace_premium_outlined, size: 16, color: Colors.redAccent),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Editing a public playlist requires Premium — upgrade your '
+                  'account, or ask the owner to make this playlist private.',
+                  style: TextStyle(fontSize: 12, color: _PlaylistColors.muted),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: onUpgrade,
+              style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+              child: const Text(
+                'UPGRADE TO PREMIUM',
+                style: TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700, fontSize: 12),
+              ),
             ),
           ),
         ],

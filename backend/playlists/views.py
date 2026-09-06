@@ -21,6 +21,17 @@ from .services import add_song_to_playlist, remove_song_from_playlist, move_song
 from .broadcast import broadcast_playlist_update
 
 
+def _permission_denied(reason, code):
+    """Shared 403 shape for can_user_add_songs/can_user_reorder_songs
+    rejections — `code` is only ever non-empty for the Premium-required
+    case (see permissions.py), so this stays `{"detail": ...}` for every
+    other existing rejection reason, unchanged."""
+    body = {"detail": reason}
+    if code:
+        body["code"] = code
+    return Response(body, status=status.HTTP_403_FORBIDDEN)
+
+
 @extend_schema_view(
     get=extend_schema(
         summary="List my playlists",
@@ -140,9 +151,9 @@ class PlaylistSongListView(APIView):
 
     def post(self, request, playlist_id):
         playlist = get_object_or_404(Playlist, id=playlist_id)
-        allowed, reason = can_user_add_songs(request.user, playlist)
+        allowed, reason, code = can_user_add_songs(request.user, playlist)
         if not allowed:
-            return Response({"detail": reason}, status=status.HTTP_403_FORBIDDEN)
+            return _permission_denied(reason, code)
 
         serializer = AddSongToPlaylistSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -208,9 +219,9 @@ class PlaylistSongDeleteView(APIView):
 
     def delete(self, request, playlist_id, playlist_song_id):
         playlist = get_object_or_404(Playlist, id=playlist_id)
-        allowed, reason = can_user_add_songs(request.user, playlist)
+        allowed, reason, code = can_user_add_songs(request.user, playlist)
         if not allowed:
-            return Response({"detail": reason}, status=status.HTTP_403_FORBIDDEN)
+            return _permission_denied(reason, code)
 
         target = PlaylistSong.objects.filter(
             id=playlist_song_id, playlist=playlist
@@ -254,9 +265,9 @@ class PlaylistSongMoveView(APIView):
     throttle_classes = [MoveSongRateThrottle] 
     def post(self, request, playlist_id, playlist_song_id):
         playlist = get_object_or_404(Playlist, id=playlist_id)
-        allowed, reason = can_user_reorder_songs(request.user, playlist)
+        allowed, reason, code = can_user_reorder_songs(request.user, playlist)
         if not allowed:
-            return Response({"detail": reason}, status=status.HTTP_403_FORBIDDEN)
+            return _permission_denied(reason, code)
 
         serializer = MoveSongSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

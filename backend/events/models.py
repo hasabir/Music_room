@@ -460,6 +460,43 @@ class EventLike(models.Model):
         return f"{self.user.email} likes {self.event.title}"
 
 
+class EventParticipation(models.Model):
+    """
+    One user's standing in one event, for FREE-tier limit enforcement
+    (see events/services.py and docs/SUBSCRIPTION_BONUS.md). Two
+    independent things live here on purpose:
+
+    - `suggestion_count` is lifetime-cumulative and monotonic, per
+      (event, user) — it only ever goes up, even after a suggested song
+      finishes playing and leaves the queue. It's deliberately NOT
+      derived from `EventSong.added_by`, because reviving an
+      already-played song (see `EventQueueView.post`) reassigns
+      `added_by` to whoever revives it — reading "how many EventSongs
+      currently show added_by=me" would silently *shrink* the moment
+      someone else revives one of your past suggestions, which would
+      violate "never decreases".
+
+    - This row is also the FREE-tier vote-limit's lock anchor (see
+      `events.services.lock_participation`), even though the vote count
+      itself is never stored here at all — it's read live from `Vote`,
+      because a retraction must immediately free up a slot (the
+      opposite monotonicity rule from suggestions, chosen deliberately
+      so retracting-then-revoting on a different track keeps working).
+    """
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="participations")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="event_participations"
+    )
+    suggestion_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ("event", "user")
+
+    def __str__(self):
+        return f"{self.user.email} in {self.event.title} ({self.suggestion_count} suggested)"
+
+
 class Song(models.Model):
     """A song known to the system (general catalog, not tied to any one event)."""
 

@@ -136,7 +136,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     _refresh();
   }
 
-  void _onSettings() {
+  Future<void> _onSettings() async {
     final data = _currentData;
     if (data == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -146,12 +146,16 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
       );
       return;
     }
-    Navigator.of(context).push(
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) =>
             SettingsScreen(profile: data.profile, authUser: data.authUser),
       ),
     );
+    // A subscription tier change (or Google account link/unlink) on that
+    // screen would otherwise leave this screen showing a stale AuthUser
+    // until some unrelated refresh happened to fire.
+    _refresh();
   }
 
   _ProfileData? _currentData;

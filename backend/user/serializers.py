@@ -40,6 +40,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'username', 'first_name', 'last_name', 'registration_method',
             'is_email_verified', 'has_google_linked', 'google_linked_email', 'date_joined',
+            'subscription_tier', 'is_premium',
         ]
         read_only_fields = fields
 
@@ -49,3 +50,9 @@ class UserSerializer(serializers.ModelSerializer):
     def get_google_linked_email(self, obj):
         social_account = obj.social_accounts.first()
         return social_account.email if social_account else None
+
+
+class SubscriptionSwitchSerializer(serializers.Serializer):
+    """Used for POSTing a tier switch — see SubscriptionSwitchView. A mock
+    upgrade/downgrade, no payment gateway; just validates the tier name."""
+    tier = serializers.ChoiceField(choices=User.SUBSCRIPTION_CHOICES)

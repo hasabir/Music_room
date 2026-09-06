@@ -7,11 +7,11 @@ from .models import ActionLog
 admin.site.register(ActionLog)
 class UserAdmin(BaseUserAdmin):
     ordering = ['username']
-    list_display = ['username', 'email', 'first_name', 'last_name', 'registration_method', 'is_email_verified', 'is_staff']
+    list_display = ['username', 'email', 'first_name', 'last_name', 'registration_method', 'is_email_verified', 'subscription_tier', 'is_staff']
     search_fields = ['username', 'email', 'first_name', 'last_name']
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
-        ('Personal info', {'fields': ('username', 'first_name', 'last_name', 'registration_method', 'is_email_verified')}),
+        ('Personal info', {'fields': ('username', 'first_name', 'last_name', 'registration_method', 'is_email_verified', 'subscription_tier')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'date_joined')}),
     )

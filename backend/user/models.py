@@ -45,6 +45,19 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('google', 'Google'),
     ]
 
+    # Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md).
+    # A mock tier — no payment gateway — switched via
+    # POST /api/v1/user/subscription/. Everything that actually enforces a
+    # limit reads `is_premium` below, never `subscription_tier` directly,
+    # so a future real integration only has to keep writing this same
+    # field correctly; nothing in the enforcement layer would change.
+    SUBSCRIPTION_FREE = 'free'
+    SUBSCRIPTION_PREMIUM = 'premium'
+    SUBSCRIPTION_CHOICES = [
+        (SUBSCRIPTION_FREE, 'Free'),
+        (SUBSCRIPTION_PREMIUM, 'Premium'),
+    ]
+
     email = models.EmailField(unique=True)
     username = models.CharField(
         max_length=30,
@@ -65,8 +78,15 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)
+    subscription_tier = models.CharField(
+        max_length=10, choices=SUBSCRIPTION_CHOICES, default=SUBSCRIPTION_FREE
+    )
 
     objects = UserManager()
+
+    @property
+    def is_premium(self):
+        return self.subscription_tier == self.SUBSCRIPTION_PREMIUM
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []  # email + password already required by USERNAME_FIELD/AbstractBaseUser
