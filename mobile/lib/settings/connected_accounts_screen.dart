@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../auth/auth_api.dart';
@@ -173,7 +174,14 @@ class _ConnectedAccountsScreenState extends State<ConnectedAccountsScreen> {
                 onUnlink: _onUnlinkGoogle,
               )
             else
-              _LinkGoogleCard(isLinking: _isLinking, onLink: _onLinkGoogle),
+              _LinkGoogleCard(
+                isLinking: _isLinking,
+                // Linking runs the same broken-on-web google_sign_in flow
+                // as signing in — see welcome_screen.dart's doc comment —
+                // so it stays mobile-only here too. Unlinking above is a
+                // plain REST call and works fine on web.
+                onLink: kIsWeb ? null : _onLinkGoogle,
+              ),
           ],
         ],
       ),
@@ -283,7 +291,11 @@ class _LinkGoogleCard extends StatelessWidget {
   const _LinkGoogleCard({required this.isLinking, required this.onLink});
 
   final bool isLinking;
-  final VoidCallback onLink;
+
+  /// `null` on web (see the doc comment at the call site) — the button
+  /// stays visible but disabled, with its label swapped to explain why,
+  /// rather than disappearing outright.
+  final VoidCallback? onLink;
 
   @override
   Widget build(BuildContext context) {
@@ -362,9 +374,13 @@ class _LinkGoogleCard extends StatelessWidget {
                         color: _ConnectedColors.headline,
                       ),
                     )
-                  : const Icon(Icons.link_rounded, size: 18),
+                  : Icon(onLink == null ? Icons.smartphone_rounded : Icons.link_rounded, size: 18),
               label: Text(
-                isLinking ? 'Linking...' : 'Link Google Account',
+                isLinking
+                    ? 'Linking...'
+                    : onLink == null
+                    ? 'Available in the mobile app'
+                    : 'Link Google Account',
                 style: const TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700),
               ),
             ),

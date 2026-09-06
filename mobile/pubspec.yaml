@@ -42,6 +42,7 @@ dependencies:
   audioplayers: ^6.1.0
   geolocator: ^13.0.2
   geocoding: ^5.0.0
+  web_socket_channel: ^3.0.1
 
 
 

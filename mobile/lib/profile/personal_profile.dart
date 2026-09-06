@@ -5,6 +5,7 @@ import '../auth/auth_models.dart';
 import '../auth/welcome_screen.dart';
 import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
+import '../core/responsive/responsive.dart';
 import '../core/widgets/app_bottom_nav.dart';
 import '../core/widgets/app_tab_navigation.dart';
 import '../playlists/playlist_api.dart';
@@ -157,7 +158,9 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ResponsiveScaffold(
+      currentTab: AppTab.profile,
+      onTabSelected: (tab) => navigateToTab(context, AppTab.profile, tab),
       backgroundColor: _ProfileColors.background,
       body: SafeArea(
         child: Column(
@@ -236,10 +239,6 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
             ),
           ],
         ),
-      ),
-      bottomNavigationBar: AppBottomNav(
-        currentTab: AppTab.profile,
-        onTabSelected: (tab) => navigateToTab(context, AppTab.profile, tab),
       ),
     );
   }

@@ -71,9 +71,9 @@ class Event(models.Model):
     # before the status escalates one rung. Change these (e.g. to
     # timedelta(minutes=1)) to test this without waiting real days —
     # nothing else needs editing, sync_activity_status reads only these. ----
-    GHOST_TOWN_AFTER = timedelta(minutes=1)
-    RIP_ATTENDANCE_AFTER = timedelta(minutes=2)
-    PARTY_OF_NOBODY_AFTER = timedelta(minutes=3)
+    GHOST_TOWN_AFTER = timedelta(days=1)
+    RIP_ATTENDANCE_AFTER = timedelta(days=2)
+    PARTY_OF_NOBODY_AFTER = timedelta(days=3)
     # Longest inactivity threshold first, so the loop in
     # sync_activity_status picks the correct (highest-matching) rung in
     # a single pass.

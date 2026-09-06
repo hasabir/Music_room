@@ -8,6 +8,7 @@ import '../auth/auth_models.dart';
 import '../auth/welcome_screen.dart';
 import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
+import '../core/responsive/responsive.dart';
 import '../core/widgets/app_bottom_nav.dart';
 import '../core/widgets/app_tab_navigation.dart';
 import '../profile/profile_api.dart';
@@ -284,8 +285,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ResponsiveScaffold(
+      currentTab: AppTab.home,
+      onTabSelected: (tab) => navigateToTab(context, AppTab.home, tab),
       backgroundColor: HomeColors.background,
+      floatingActionButton: _CreateEventFab(onTap: _onCreateEvent),
       body: SafeArea(
         child: _loadError != null
             ? HomeErrorPanel(message: _loadError!, onRetry: _load)
@@ -319,11 +323,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-      ),
-      floatingActionButton: _CreateEventFab(onTap: _onCreateEvent),
-      bottomNavigationBar: AppBottomNav(
-        currentTab: AppTab.home,
-        onTabSelected: (tab) => navigateToTab(context, AppTab.home, tab),
       ),
     );
   }

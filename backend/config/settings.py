@@ -120,6 +120,8 @@ REST_FRAMEWORK = {
         # NEW — track search (proxies Deezer, so keep it far below their own rate limits)
         "track_search": "300/min",
         "track_preview": "300/min",
+        # NEW — geocoding (proxies the Google Geocoding API; see docs/WEB_BONUS.md)
+        "geocode": "300/min",
     },
     
 }
@@ -199,13 +201,29 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Update CORS settings
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS/CSRF — the mobile app never needed either of these: CORS is a
+# browser-enforced mechanism (the browser withholds a cross-origin
+# response from JS unless the server's response carries an allowed
+# `Access-Control-Allow-Origin`), and mobile HTTP clients don't send an
+# `Origin` header or respect this at all. The Flutter *web* client, running
+# as JS in an actual browser, is the first client this project has that
+# CORS/CSRF apply to — see docs/WEB_BONUS.md for the full explanation and
+# why this used to be `CORS_ALLOW_ALL_ORIGINS = True` (reflects any origin,
+# which already let the web client through with zero config, but is far
+# more permissive than this project actually needs now that there's a real,
+# known list of origins to allow instead).
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 
-
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
-
+# Comma-separated in the env var — defaults to the fixed port this
+# project's `flutter run -d chrome --web-port=5000` (see mobile/README.md)
+# serves on locally. Add the deployed web origin here (or via the env var)
+# once one exists.
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5000').split(',')
+    if origin.strip()
+]
 
 # Allow all methods
 CORS_ALLOW_METHODS = [
@@ -217,10 +235,14 @@ CORS_ALLOW_METHODS = [
     'PUT',
 ]
 
-# Allow these headers
+# Django's own CSRF check (SessionAuthentication + any unsafe method — the
+# JWT-authenticated API traffic doesn't hit this, but the Django admin and
+# the DRF browsable API do) needs the same origins trusted separately from
+# CORS_ALLOWED_ORIGINS above.
 CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:3000',
-    'https://localhost:3000',
+    origin.strip()
+    for origin in os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:5000').split(',')
+    if origin.strip()
 ]
 CORS_ALLOW_HEADERS = [
     'accept',

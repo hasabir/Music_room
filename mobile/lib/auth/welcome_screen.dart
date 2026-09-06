@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../core/api/api_client.dart';
@@ -98,12 +99,23 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               ),
               const SizedBox(height: 12),
               _LogInButton(onPressed: _isSubmitting ? null : _onLogIn),
-              const SizedBox(height: 20),
-              const _OrDivider(),
-              const SizedBox(height: 20),
-              _GoogleButton(
-                onPressed: _isSubmitting ? null : () => _onContinueWithGoogle(),
-              ),
+              // Google Sign-In stays mobile-only for now: google_sign_in's
+              // web implementation only returns an ID token on a *second*
+              // sign-in (once a credential is already cached from a prior
+              // silent/One Tap flow) — the very first popup a new web user
+              // sees comes back with no ID token at all, which this app's
+              // backend call requires. See docs/WEB_BONUS.md for the two
+              // real fixes considered (a native Google button, or an
+              // access-token-based backend endpoint) and why this bonus
+              // ships without either for now.
+              if (!kIsWeb) ...[
+                const SizedBox(height: 20),
+                const _OrDivider(),
+                const SizedBox(height: 20),
+                _GoogleButton(
+                  onPressed: _isSubmitting ? null : () => _onContinueWithGoogle(),
+                ),
+              ],
               const SizedBox(height: 24),
             ],
           ),

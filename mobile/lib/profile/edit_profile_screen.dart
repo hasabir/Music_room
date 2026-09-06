@@ -233,7 +233,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     setState(() => _isUploadingPhoto = true);
     try {
-      final updated = await _profileApi.uploadProfileImage(picked.path);
+      final bytes = await picked.readAsBytes();
+      final updated = await _profileApi.uploadProfileImage(
+        bytes,
+        filename: picked.name,
+      );
       if (!mounted) return;
       setState(() => _latestProfile = updated);
     } on ApiException catch (error) {

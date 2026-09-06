@@ -1,13 +1,14 @@
 import re
 
 import requests
+from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import generics, serializers, status
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 
-from .throttles import TrackPreviewRateThrottle, TrackSearchRateThrottle
+from .throttles import GeocodeRateThrottle, TrackPreviewRateThrottle, TrackSearchRateThrottle
 
 class HomeView(APIView):
     def get(self, request):
@@ -265,15 +266,16 @@ class TrackTrendingView(APIView):
 @extend_schema(
     summary="Resolve a playable track URL",
     description=(
-        "Returns an Audius full-stream URL or fetches a fresh Deezer preview "
-        "URL for a stable external track ID. Deezer preview CDN URLs are "
-        "signed and expire, so clients resolve them immediately before playback."
+        "Returns a resolved Audius full-stream URL or a fresh Deezer preview "
+        "URL for a stable external track ID. Both are signed/expire (Deezer's "
+        "CDN URL directly; Audius's via the redirect this resolves), so "
+        "clients resolve them immediately before playback rather than caching."
     ),
     responses={
         200: OpenApiResponse(description="A current playable URL."),
         400: OpenApiResponse(description="The external ID is invalid."),
         404: OpenApiResponse(description="The track has no playable preview."),
-        502: OpenApiResponse(description="Deezer is unreachable or returned an error."),
+        502: OpenApiResponse(description="The upstream music service is unreachable or errored."),
     },
     tags=["tracks"],
 )
@@ -289,7 +291,41 @@ class TrackPreviewView(APIView):
                     {"detail": "An Audius track ID is required."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            return Response({"preview_url": _audius_stream_url(audius_track_id)})
+
+            # `_audius_stream_url` is a discovery-node URL that 302s to the
+            # actual content-node CDN URL. That 302 response itself carries
+            # no CORS headers at all (only the final content-node response
+            # does) — fine for native players, but `audioplayers_web`
+            # unconditionally sets `crossOrigin="anonymous"` on its <audio>
+            # element, and a crossOrigin-flagged element's browser fails the
+            # whole load the moment *any* hop in the chain lacks CORS
+            # headers, surfacing as a generic, misleading
+            # `MEDIA_ERR_SRC_NOT_SUPPORTED` rather than a CORS error.
+            # Confirmed directly: the same URL plays fine via a plain
+            # `<audio>` (no crossOrigin) but fails with crossOrigin set;
+            # Deezer's preview URLs have no redirect hop and aren't affected
+            # either way. Resolving the redirect here and handing the client
+            # the final, already-CORS-complete URL sidesteps the whole
+            # thing — one extra, lightweight hop (the redirect response
+            # itself has no body) already made immediately before playback,
+            # same as the Deezer branch below.
+            try:
+                redirect_response = requests.get(
+                    _audius_stream_url(audius_track_id), timeout=5, allow_redirects=False,
+                )
+            except requests.RequestException:
+                return Response(
+                    {"detail": "Unable to reach the music service. Please try again."},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+
+            resolved_url = redirect_response.headers.get("Location")
+            if redirect_response.status_code not in (301, 302, 303, 307, 308) or not resolved_url:
+                return Response(
+                    {"detail": "No preview is available for this track."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            return Response({"preview_url": resolved_url})
 
         if not external_id.isdecimal():
             return Response(
@@ -316,3 +352,74 @@ class TrackPreviewView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response({"preview_url": preview_url})
+
+
+GOOGLE_GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+
+
+@extend_schema(
+    summary="Forward-geocode a free-text location",
+    description=(
+        "Resolves a free-text place name (e.g. a profile's self-reported "
+        "'location' field, like 'Paris, France') into coordinates via the "
+        "Google Geocoding API, using this server's own API key.\n\n"
+        "Exists for the web client: the Flutter `geocoding` plugin (what "
+        "native builds use for this) has no web implementation at all, but "
+        "a location-restricted event's vote check still needs *some* way "
+        "to resolve the voter's profile location — see docs/WEB_BONUS.md."
+    ),
+    parameters=[
+        OpenApiParameter(name="q", type=str, required=True, description="Free-text place name."),
+    ],
+    responses={
+        200: OpenApiResponse(description="Resolved latitude/longitude."),
+        400: OpenApiResponse(description="Missing/blank `q`, or nothing matched."),
+        502: OpenApiResponse(description="Google's geocoding service is unreachable, unconfigured, or errored."),
+    },
+    tags=["geocoding"],
+)
+class GeocodeView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [GeocodeRateThrottle]
+
+    def get(self, request):
+        query = request.query_params.get("q", "").strip()
+        if not query:
+            return Response({"detail": "Query parameter 'q' is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not settings.GOOGLE_API_KEY:
+            return Response(
+                {"detail": "Geocoding is not configured on the server."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        try:
+            response = requests.get(
+                GOOGLE_GEOCODING_URL,
+                params={"address": query, "key": settings.GOOGLE_API_KEY},
+                timeout=5,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError):
+            return Response(
+                {"detail": "Unable to reach the geocoding service. Please try again."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        api_status = payload.get("status")
+        if api_status == "ZERO_RESULTS":
+            return Response({"detail": f'No location found for "{query}".'}, status=status.HTTP_400_BAD_REQUEST)
+        if api_status != "OK":
+            return Response(
+                {"detail": "Unable to reach the geocoding service. Please try again."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        results = payload.get("results") or []
+        location = (results[0].get("geometry", {}).get("location", {}) if results else {})
+        latitude, longitude = location.get("lat"), location.get("lng")
+        if latitude is None or longitude is None:
+            return Response({"detail": f'No location found for "{query}".'}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"latitude": latitude, "longitude": longitude})

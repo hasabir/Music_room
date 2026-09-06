@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -63,17 +64,27 @@ class ApiClient {
 
   /// PATCHes a single file field as `multipart/form-data`, for endpoints
   /// with an `ImageField`/`FileField` (JSON can't carry binary data).
+  ///
+  /// Takes raw [fileBytes] rather than a file path: `http.MultipartFile
+  /// .fromPath` reads through `dart:io`, which has no web implementation
+  /// and throws `UnsupportedError` there unconditionally — `fromBytes` has
+  /// no such platform split, so callers read bytes via `XFile.readAsBytes()`
+  /// (works on every platform image_picker supports, including web, where
+  /// `XFile.path` is a `blob:` URL rather than a real filesystem path).
   Future<Map<String, dynamic>> patchMultipartFile(
     Uri uri, {
     required String fieldName,
-    required String filePath,
+    required Uint8List fileBytes,
+    required String filename,
     String? accessToken,
   }) async {
     final request = http.MultipartRequest('PATCH', uri);
     if (accessToken != null) {
       request.headers['Authorization'] = 'Bearer $accessToken';
     }
-    request.files.add(await http.MultipartFile.fromPath(fieldName, filePath));
+    request.files.add(
+      http.MultipartFile.fromBytes(fieldName, fileBytes, filename: filename),
+    );
 
     late final http.StreamedResponse streamedResponse;
     try {

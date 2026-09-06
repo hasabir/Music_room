@@ -39,14 +39,47 @@ class TrackPreviewTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_resolves_audius_tracks_to_a_full_stream_url(self):
+    @patch("api.views.requests.get")
+    def test_resolves_audius_tracks_to_the_redirected_content_node_url(self, mock_get):
+        # `_audius_stream_url` is a discovery-node URL that 302s to the
+        # actual CDN URL — and that 302 carries no CORS headers, which
+        # breaks playback in `audioplayers_web` (it sets `crossOrigin`
+        # unconditionally; see docs/WEB_BONUS.md). This view follows the
+        # redirect itself and hands the client the resolved URL instead.
+        redirect_response = Mock()
+        redirect_response.status_code = 302
+        redirect_response.headers = {"Location": "https://creator-node.example.test/cidstream/abc"}
+        mock_get.return_value = redirect_response
+
         response = self.client.get("/api/v1/tracks/audius:AbC123/preview/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
             response.data["preview_url"],
-            "https://api.audius.co/v1/tracks/AbC123/stream",
+            "https://creator-node.example.test/cidstream/abc",
         )
+        mock_get.assert_called_once_with(
+            "https://api.audius.co/v1/tracks/AbC123/stream", timeout=5, allow_redirects=False,
+        )
+
+    @patch("api.views.requests.get")
+    def test_reports_when_an_audius_track_does_not_redirect(self, mock_get):
+        not_a_redirect = Mock()
+        not_a_redirect.status_code = 200
+        not_a_redirect.headers = {}
+        mock_get.return_value = not_a_redirect
+
+        response = self.client.get("/api/v1/tracks/audius:AbC123/preview/")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    @patch("api.views.requests.get")
+    def test_reports_when_audius_is_unreachable(self, mock_get):
+        mock_get.side_effect = requests.RequestException("boom")
+
+        response = self.client.get("/api/v1/tracks/audius:AbC123/preview/")
+
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
 
     @patch("api.views.requests.get")
     def test_reports_when_a_track_has_no_preview(self, mock_get):

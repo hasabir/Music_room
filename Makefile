@@ -1,4 +1,4 @@
-.PHONY: help build up down restart logs shell migrate makemigrations createsuperuser test clean
+.PHONY: help build up down restart logs shell migrate makemigrations createsuperuser test clean flutter-web flutter-web-build
 
 help:
 	@echo "Music Room - Development Commands"
@@ -17,6 +17,8 @@ help:
 	@echo "make clean          - Remove containers and volumes"
 	@echo "make flutter-get    - Install Flutter dependencies"
 	@echo "make flutter-run    - Run Flutter app"
+	@echo "make flutter-web    - Run the Flutter app in Chrome (needs 'make up' running; see docs/WEB_BONUS.md)"
+	@echo "make flutter-web-build - Compile the Flutter web build without opening a browser"
 	@echo "make setup          - Initial setup (build, migrate, create superuser)"
 	@echo "make dev            - Start development workflow (up + logs)"
 	@echo "make db             - Load test data into the database"
@@ -118,6 +120,20 @@ flutter-run:
 
 frun:
 	@cd mobile && flutter run
+
+# Web bonus (see docs/WEB_BONUS.md). Needs the backend up first (`make up`).
+# WEB_PORT must match an origin listed in the backend's
+# CORS_ALLOWED_ORIGINS/CSRF_TRUSTED_ORIGINS (http://localhost:5000 is
+# already the default in backend/.env.example) — override both together if
+# you use a different one, e.g. `make flutter-web WEB_PORT=5001`.
+WEB_PORT ?= 5000
+flutter-web:
+	@cd mobile && flutter run -d chrome --web-port=$(WEB_PORT)
+
+# Compiles the web build without launching a browser — a fast way to
+# confirm nothing's broken (equivalent to what CI would run).
+flutter-web-build:
+	@cd mobile && flutter build web
 
 # Development workflow
 dev: up logs

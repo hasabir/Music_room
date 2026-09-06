@@ -14,14 +14,21 @@ class TokenStorage {
   static const _accessTokenKey = 'auth_access_token';
   static const _refreshTokenKey = 'auth_refresh_token';
 
+  /// Writes both tokens one after another rather than via `Future.wait` —
+  /// on web, `flutter_secure_storage`'s first-ever write for a given
+  /// keychain lazily generates and stores a shared AES-GCM wrapping key
+  /// (see its `_getEncryptionKey`); two concurrent writes both racing to
+  /// create that key throws a `DOMException: OperationError` from the
+  /// loser (observed testing this bonus's login flow — see
+  /// docs/WEB_BONUS.md). Both tokens still end up stored correctly either
+  /// way, but doing this sequentially avoids the race, and the
+  /// performance cost of not parallelizing two tiny writes is negligible.
   Future<void> saveTokens({
     required String accessToken,
     required String refreshToken,
   }) async {
-    await Future.wait([
-      _storage.write(key: _accessTokenKey, value: accessToken),
-      _storage.write(key: _refreshTokenKey, value: refreshToken),
-    ]);
+    await _storage.write(key: _accessTokenKey, value: accessToken);
+    await _storage.write(key: _refreshTokenKey, value: refreshToken);
   }
 
   /// Overwrites just the access token, leaving the refresh token as-is.

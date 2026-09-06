@@ -8,3 +8,7 @@ class TrackSearchRateThrottle(UserRateThrottle):
 
 class TrackPreviewRateThrottle(UserRateThrottle):
     scope = "track_preview"
+
+
+class GeocodeRateThrottle(UserRateThrottle):
+    scope = "geocode"

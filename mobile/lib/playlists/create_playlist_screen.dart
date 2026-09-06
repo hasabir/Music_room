@@ -127,7 +127,12 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
 
       final customImage = _customCoverImage;
       if (customImage != null) {
-        playlist = await _playlistApi.uploadPlaylistCoverImage(playlist.id, customImage.path);
+        final bytes = await customImage.readAsBytes();
+        playlist = await _playlistApi.uploadPlaylistCoverImage(
+          playlist.id,
+          bytes,
+          filename: customImage.name,
+        );
       }
 
       if (!mounted) return;

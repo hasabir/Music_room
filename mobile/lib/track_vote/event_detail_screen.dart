@@ -8,6 +8,7 @@ import '../auth/welcome_screen.dart';
 import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
 import '../core/playback/playback_controller.dart';
+import '../core/responsive/responsive.dart';
 import '../playlists/playlist_api.dart';
 import '../profile/profile_api.dart';
 import '../profile/profile_avatar.dart';
@@ -304,6 +305,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       }
     } on String catch (message) {
       reason = message;
+    } on ApiException catch (error) {
+      // The web-only geocoding path (see forwardGeocodeCoordinates) can
+      // fail with a specific backend-reported reason instead of just
+      // resolving to null — surface it the same way as the `String` case
+      // above rather than letting it go uncaught.
+      reason = error.message;
     }
     if (mounted && reason != null) setState(() => _voteRestrictionReason = reason);
   }
@@ -600,6 +607,206 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         builder: (context, playbackState, _) {
           final isPlayingHere = playing != null &&
               playbackState.trackKey == _playbackKey(playing.id);
+
+          // Everything about the event itself: title, host, description,
+          // license badges, participants, and what's currently playing.
+          final infoChildren = <Widget>[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    event.title,
+                    style: const TextStyle(
+                      fontFamily: 'Sora',
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: _EventColors.headline,
+                    ),
+                  ),
+                ),
+                _LikeButton(
+                  hasLiked: event.hasLiked,
+                  likeCount: event.likeCount,
+                  isBusy: _isTogglingLike,
+                  onTap: _toggleLike,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(
+                  Icons.person_rounded,
+                  size: 15,
+                  color: _EventColors.tertiary,
+                ),
+                const SizedBox(width: 4),
+                Text.rich(
+                  TextSpan(
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: _EventColors.muted,
+                    ),
+                    children: [
+                      const TextSpan(text: 'Hosted by '),
+                      TextSpan(
+                        text: event.host,
+                        style: const TextStyle(
+                          fontFamily: 'Sora',
+                          fontWeight: FontWeight.w700,
+                          color: _EventColors.tertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (event.description.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                event.description,
+                style: const TextStyle(
+                  color: _EventColors.muted,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                EventVisibilityBadge(visibility: event.visibility),
+                EventStatusBadge(status: event.status),
+                EventLicenseBadge(votePermission: event.votePermission),
+                if (event.timeRestrictionEnabled)
+                  const EventTimeRestrictionBadge(),
+                if (event.locationRestrictionEnabled)
+                  const EventLocationRestrictionBadge(),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _ParticipantsSummaryCard(
+              attendees: _attendees,
+              participantCount: event.participantCount,
+              maxParticipants: event.maxParticipants,
+              onTap: _openParticipantsSheet,
+            ),
+            const SizedBox(height: 28),
+            const _SectionLabel('NOW PLAYING'),
+            const SizedBox(height: 10),
+            _NowPlayingCard(
+              song: playing,
+              isPlaying: isPlayingHere && playbackState.isPlaying,
+              position: isPlayingHere ? playbackState.position : Duration.zero,
+              duration: isPlayingHere ? playbackState.duration : Duration.zero,
+            ),
+            if (isVotingRestricted) ...[
+              const SizedBox(height: 28),
+              _VotingRestrictedCard(
+                // The backend already returns a specific reason for
+                // whichever check failed (2-songs minimum, invited-only,
+                // time window, or venue distance — see can_user_vote in
+                // events/permissions.py) — no need for a generic fallback
+                // here now that time/location are independent, separately
+                // reported restrictions rather than one bundled license
+                // value.
+                message: _voteRestrictionReason!,
+                onCheckRequirements: () => _showRequirements(event),
+              ),
+            ],
+          ];
+
+          // The vote queue: "Suggest a track" plus the ordered song list.
+          final queueChildren = <Widget>[
+            Row(
+              children: [
+                const Expanded(child: _SectionLabel('UP NEXT')),
+                Text(
+                  '${upNext.length} TRACK${upNext.length == 1 ? '' : 'S'}',
+                  style: const TextStyle(
+                    fontFamily: 'Sora',
+                    fontSize: 11,
+                    letterSpacing: 1,
+                    fontWeight: FontWeight.w800,
+                    color: _EventColors.tertiary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // The backend only 403s POST .../queue/ for closed or
+            // canceled — NOT for the three automatic
+            // ghost_town/rip_attendance/party_of_nobody statuses, which
+            // stay fully functional (suggesting a track is exactly what
+            // un-ghosts one — see eventStatusIsAutoInactive). Gating on
+            // "isn't live" instead of "is actually blocked" was a bug: it
+            // hid this button and showed a false "this event is closed"
+            // message the moment an event went quiet.
+            if (event.status == eventStatusClosed ||
+                event.status == eventStatusCanceled ||
+                event.status == eventStatusDeleted)
+              Text(
+                event.status == eventStatusDeleted
+                    ? 'This event has been deleted by the host.'
+                    : event.status == eventStatusCanceled
+                        ? 'This event has been canceled.'
+                        : 'This event is closed — no new tracks can be suggested.',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: _EventColors.muted,
+                  fontStyle: FontStyle.italic,
+                ),
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _openSuggestTrack,
+                  icon: const Icon(Icons.add_rounded, size: 20),
+                  label: const Text('Suggest a track'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _EventColors.tertiary,
+                    side: const BorderSide(color: _EventColors.cardBorder),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+            if (upNext.isEmpty)
+              const _EmptyQueue()
+            else
+              for (final entry in upNext) ...[
+                _QueueRow(
+                  entry: entry,
+                  isChanging: _changingVotes.contains(entry.id),
+                  isReadOnly: isVotingRestricted,
+                  isPlaying: playbackState.trackKey == _playbackKey(entry.id) &&
+                      playbackState.isPlaying,
+                  onVote: () => _toggleVote(entry),
+                ),
+                const SizedBox(height: 8),
+              ],
+          ];
+
+          final cover = _CoverHeader(
+            event: event,
+            isHost: _isHost,
+            onBack: () => Navigator.of(context).pop(),
+            onOpenMenu: _showEventMenu,
+          );
+
+          // Below the desktop breakpoint: the original single scrollable
+          // column, event info directly above the vote queue. At/above
+          // it: the info sits in a fixed-width left column next to the
+          // queue on the right, so a wide viewport shows both at once
+          // instead of stretching one phone-width column across the
+          // screen — the "distinct desktop layout" this bonus asks for.
           return ListView(
             // Horizontal inset moved to the Padding below the cover, so
             // the cover alone can span the full screen width — see
@@ -609,198 +816,38 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             // none of that risk).
             padding: const EdgeInsets.only(top: 4, bottom: 32),
             children: [
-              _CoverHeader(
-                event: event,
-                isHost: _isHost,
-                onBack: () => Navigator.of(context).pop(),
-                onOpenMenu: _showEventMenu,
-              ),
+              cover,
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 18),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            event.title,
-                            style: const TextStyle(
-                              fontFamily: 'Sora',
-                              fontSize: 28,
-                              fontWeight: FontWeight.w800,
-                              color: _EventColors.headline,
+                    if (isDesktopWidth(context))
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 380,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: infoChildren,
                             ),
                           ),
-                        ),
-                        _LikeButton(
-                          hasLiked: event.hasLiked,
-                          likeCount: event.likeCount,
-                          isBusy: _isTogglingLike,
-                          onTap: _toggleLike,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.person_rounded,
-                          size: 15,
-                          color: _EventColors.tertiary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text.rich(
-                          TextSpan(
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: _EventColors.muted,
+                          const SizedBox(width: 32),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: queueChildren,
                             ),
-                            children: [
-                              const TextSpan(text: 'Hosted by '),
-                              TextSpan(
-                                text: event.host,
-                                style: const TextStyle(
-                                  fontFamily: 'Sora',
-                                  fontWeight: FontWeight.w700,
-                                  color: _EventColors.tertiary,
-                                ),
-                              ),
-                            ],
                           ),
-                        ),
-                      ],
-                    ),
-                    if (event.description.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        event.description,
-                        style: const TextStyle(
-                          color: _EventColors.muted,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 14),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        EventVisibilityBadge(visibility: event.visibility),
-                        EventStatusBadge(status: event.status),
-                        EventLicenseBadge(votePermission: event.votePermission),
-                        if (event.timeRestrictionEnabled)
-                          const EventTimeRestrictionBadge(),
-                        if (event.locationRestrictionEnabled)
-                          const EventLocationRestrictionBadge(),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    _ParticipantsSummaryCard(
-                      attendees: _attendees,
-                      participantCount: event.participantCount,
-                      maxParticipants: event.maxParticipants,
-                      onTap: _openParticipantsSheet,
-                    ),
-                    const SizedBox(height: 28),
-                    const _SectionLabel('NOW PLAYING'),
-                    const SizedBox(height: 10),
-                    _NowPlayingCard(
-                      song: playing,
-                      isPlaying: isPlayingHere && playbackState.isPlaying,
-                      position: isPlayingHere ? playbackState.position : Duration.zero,
-                      duration: isPlayingHere ? playbackState.duration : Duration.zero,
-                    ),
-                    const SizedBox(height: 28),
-                    if (isVotingRestricted) ...[
-                      _VotingRestrictedCard(
-                        // The backend already returns a specific reason
-                        // for whichever check failed (2-songs minimum,
-                        // invited-only, time window, or venue distance —
-                        // see can_user_vote in events/permissions.py) —
-                        // no need for a generic fallback here now that
-                        // time/location are independent, separately
-                        // reported restrictions rather than one bundled
-                        // license value.
-                        message: _voteRestrictionReason!,
-                        onCheckRequirements: () => _showRequirements(event),
-                      ),
-                      const SizedBox(height: 22),
-                    ],
-                    Row(
-                      children: [
-                        const Expanded(child: _SectionLabel('UP NEXT')),
-                        Text(
-                          '${upNext.length} TRACK${upNext.length == 1 ? '' : 'S'}',
-                          style: const TextStyle(
-                            fontFamily: 'Sora',
-                            fontSize: 11,
-                            letterSpacing: 1,
-                            fontWeight: FontWeight.w800,
-                            color: _EventColors.tertiary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    // The backend only 403s POST .../queue/ for closed or
-                    // canceled — NOT for the three automatic
-                    // ghost_town/rip_attendance/party_of_nobody statuses,
-                    // which stay fully functional (suggesting a track is
-                    // exactly what un-ghosts one — see
-                    // eventStatusIsAutoInactive). Gating on "isn't live"
-                    // instead of "is actually blocked" was a bug: it
-                    // hid this button and showed a false "this event is
-                    // closed" message the moment an event went quiet.
-                    if (event.status == eventStatusClosed ||
-                        event.status == eventStatusCanceled ||
-                        event.status == eventStatusDeleted)
-                      Text(
-                        event.status == eventStatusDeleted
-                            ? 'This event has been deleted by the host.'
-                            : event.status == eventStatusCanceled
-                                ? 'This event has been canceled.'
-                                : 'This event is closed — no new tracks can be suggested.',
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: _EventColors.muted,
-                          fontStyle: FontStyle.italic,
-                        ),
+                        ],
                       )
-                    else
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: _openSuggestTrack,
-                          icon: const Icon(Icons.add_rounded, size: 20),
-                          label: const Text('Suggest a track'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _EventColors.tertiary,
-                            side: const BorderSide(color: _EventColors.cardBorder),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 8),
-                    if (upNext.isEmpty)
-                      const _EmptyQueue()
-                    else
-                      for (final entry in upNext) ...[
-                        _QueueRow(
-                          entry: entry,
-                          isChanging: _changingVotes.contains(entry.id),
-                          isReadOnly: isVotingRestricted,
-                          isPlaying: playbackState.trackKey == _playbackKey(entry.id) &&
-                              playbackState.isPlaying,
-                          onVote: () => _toggleVote(entry),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
+                    else ...[
+                      ...infoChildren,
+                      const SizedBox(height: 28),
+                      ...queueChildren,
+                    ],
                   ],
                 ),
               ),

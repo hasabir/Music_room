@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -227,12 +228,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: _isSubmitting ? null : _onLogIn,
                   isLoading: _isSubmitting,
                 ),
-                const SizedBox(height: 20),
-                const _OrDivider(),
-                const SizedBox(height: 20),
-                _GoogleButton(
-                  onPressed: _isSubmitting ? null : () => _onContinueWithGoogle(),
-                ),
+                // Mobile-only — see the matching comment in welcome_screen.dart.
+                if (!kIsWeb) ...[
+                  const SizedBox(height: 20),
+                  const _OrDivider(),
+                  const SizedBox(height: 20),
+                  _GoogleButton(
+                    onPressed: _isSubmitting ? null : () => _onContinueWithGoogle(),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 _CreateAccountPrompt(onPressed: _onCreateAccount),
                 const SizedBox(height: 24),

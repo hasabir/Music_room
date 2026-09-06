@@ -5,6 +5,7 @@ import '../auth/auth_models.dart';
 import '../auth/welcome_screen.dart';
 import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
+import '../core/responsive/responsive.dart';
 import '../core/widgets/app_bottom_nav.dart';
 import '../core/widgets/app_tab_navigation.dart';
 import 'create_event_screen.dart';
@@ -148,7 +149,9 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ResponsiveScaffold(
+      currentTab: AppTab.vote,
+      onTabSelected: (tab) => navigateToTab(context, AppTab.vote, tab),
       backgroundColor: _EventColors.background,
       body: SafeArea(
         child: Column(
@@ -209,20 +212,19 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
                               ),
                             ],
                           )
-                        : ListView.separated(
+                        : ResponsiveCardGrid(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                            itemCount: visible.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 16),
-                            itemBuilder: (context, index) {
-                              final event = visible[index];
-                              return _EventHeroCard(
-                                event: event,
-                                showJoinButton: _tab == _EventTab.discover,
-                                onTap: () => _onOpenEvent(event),
-                                onJoin: () => _onJoinEvent(event),
-                              );
-                            },
+                            spacing: 16,
+                            scrollPhysics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              for (final event in visible)
+                                _EventHeroCard(
+                                  event: event,
+                                  showJoinButton: _tab == _EventTab.discover,
+                                  onTap: () => _onOpenEvent(event),
+                                  onJoin: () => _onJoinEvent(event),
+                                ),
+                            ],
                           ),
                   );
                 },
@@ -230,10 +232,6 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
             ),
           ],
         ),
-      ),
-      bottomNavigationBar: AppBottomNav(
-        currentTab: AppTab.vote,
-        onTabSelected: (tab) => navigateToTab(context, AppTab.vote, tab),
       ),
     );
   }

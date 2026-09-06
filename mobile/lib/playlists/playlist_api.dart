@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../auth/auth_api.dart';
 import '../core/api/api_client.dart';
 import '../core/api/api_config.dart';
@@ -83,18 +85,22 @@ class PlaylistApi {
     return Playlist.fromJson(response);
   }
 
-  /// Uploads a custom cover photo from the file at [filePath], replacing
+  /// Uploads a custom cover photo from raw [fileBytes], replacing
   /// `Playlist.cover_image` (and clearing any preset — the backend only
   /// keeps one). Sent as `multipart/form-data` since the field is an
-  /// image, not JSON-representable. Owner only.
+  /// image, not JSON-representable. Owner only. Takes bytes rather than a
+  /// path so the caller can read them via `XFile.readAsBytes()` — the only
+  /// way that works on both native platforms and web.
   Future<Playlist> uploadPlaylistCoverImage(
     int playlistId,
-    String filePath,
-  ) async {
+    Uint8List fileBytes, {
+    required String filename,
+  }) async {
     final response = await _authorizedPatchMultipartFile(
       ApiConfig.playlistDetailUri(playlistId),
       fieldName: 'cover_image',
-      filePath: filePath,
+      fileBytes: fileBytes,
+      filename: filename,
     );
     return Playlist.fromJson(response);
   }
@@ -369,7 +375,8 @@ class PlaylistApi {
   Future<Map<String, dynamic>> _authorizedPatchMultipartFile(
     Uri uri, {
     required String fieldName,
-    required String filePath,
+    required Uint8List fileBytes,
+    required String filename,
   }) async {
     final accessToken = await _tokenStorage.readAccessToken();
     if (accessToken == null) throw SessionExpiredException();
@@ -378,7 +385,8 @@ class PlaylistApi {
       return await _apiClient.patchMultipartFile(
         uri,
         fieldName: fieldName,
-        filePath: filePath,
+        fileBytes: fileBytes,
+        filename: filename,
         accessToken: accessToken,
       );
     } on ApiException catch (error) {
@@ -387,7 +395,8 @@ class PlaylistApi {
       return await _apiClient.patchMultipartFile(
         uri,
         fieldName: fieldName,
-        filePath: filePath,
+        fileBytes: fileBytes,
+        filename: filename,
         accessToken: refreshedToken,
       );
     }

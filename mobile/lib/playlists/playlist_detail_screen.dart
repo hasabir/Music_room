@@ -2,8 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../auth/auth_api.dart';
 import '../auth/auth_models.dart';
@@ -12,6 +13,7 @@ import '../core/api/api_client.dart';
 import '../core/api/api_config.dart';
 import '../core/auth/token_storage.dart';
 import '../core/playback/playback_controller.dart';
+import '../core/responsive/responsive.dart';
 import '../home/home_screen.dart';
 import 'add_song_search_screen.dart';
 import 'edit_playlist_screen.dart';
@@ -56,7 +58,8 @@ class PlaylistDetailScreen extends StatefulWidget {
   State<PlaylistDetailScreen> createState() => _PlaylistDetailScreenState();
 }
 
-class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
+class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
+    with WidgetsBindingObserver {
   // The WebSocket below delivers normal updates immediately. Polling remains
   // as a low-frequency fallback for a temporarily unavailable socket.
   static const _pollInterval = Duration(seconds: 30);
@@ -69,7 +72,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   Timer? _pollTimer;
   StreamSubscription<String>? _previewCompleteSub;
-  WebSocket? _playlistSocket;
+  // web_socket_channel rather than dart:io's WebSocket — the latter has no
+  // web implementation at all (throws UnsupportedError there), which would
+  // otherwise make this the one thing standing between the Playlist
+  // Editor's read-only web view and actually seeing live updates. See
+  // docs/WEB_BONUS.md.
+  WebSocketChannel? _playlistChannel;
   StreamSubscription<dynamic>? _playlistSocketSub;
   Timer? _liveUpdateReconnectTimer;
   var _isConnectingLiveUpdates = false;
@@ -108,6 +116,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _playback.visiblePlaylistId = widget.playlistId;
     final activeKey = _playback.state.value.trackKey;
     final prefix = 'playlist:${widget.playlistId}:';
@@ -128,12 +137,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
     _previewCompleteSub?.cancel();
     _playback.state.removeListener(_syncPlaybackState);
     _liveUpdateReconnectTimer?.cancel();
     _playlistSocketSub?.cancel();
-    _playlistSocket?.close();
+    unawaited(_playlistChannel?.sink.close());
     if (_playback.visiblePlaylistId == widget.playlistId) {
       _playback.visiblePlaylistId = null;
     }
@@ -275,11 +285,41 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     await _refetchSongs();
   }
 
+  /// A backgrounded tab (or a phone app switched away from) can lose its
+  /// WebSocket without either side ever seeing a clean close: the OS/browser
+  /// can freeze the tab's JS entirely, or the underlying connection can go
+  /// quietly dead across a sleep/wake or network change with no `onDone`/
+  /// `onError` ever firing. [_connectLiveUpdates] alone can't recover from
+  /// that — it treats a non-null [_playlistChannel] as "already connected"
+  /// and does nothing, even if that channel is actually a zombie. Coming
+  /// back to the foreground is exactly when this needs to self-heal, so
+  /// this tears down whatever's there unconditionally and reconnects, plus
+  /// refetches immediately rather than waiting out the rest of the 30s poll
+  /// interval for however stale the list got while away.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    _forceReconnectLiveUpdates();
+    unawaited(_refetchSongs());
+  }
+
+  void _forceReconnectLiveUpdates() {
+    _liveUpdateReconnectTimer?.cancel();
+    _playlistSocketSub?.cancel();
+    _playlistSocketSub = null;
+    final staleChannel = _playlistChannel;
+    _playlistChannel = null;
+    unawaited(staleChannel?.sink.close());
+    _connectLiveUpdates();
+  }
+
   /// Subscribes to the playlist's existing server broadcast. The server sends
   /// the complete, authoritative song list after every add, removal, or move,
   /// so all open playlist screens update without waiting for the poll timer.
   void _connectLiveUpdates() {
-    if (!mounted || _isConnectingLiveUpdates || _playlistSocket != null) return;
+    if (!mounted || _isConnectingLiveUpdates || _playlistChannel != null) {
+      return;
+    }
     unawaited(_openLiveUpdates());
   }
 
@@ -295,14 +335,15 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         path: '/ws/playlists/${widget.playlistId}/',
         queryParameters: {'token': token},
       );
-      final socket = await WebSocket.connect(socketUri.toString());
+      final channel = WebSocketChannel.connect(socketUri);
+      await channel.ready;
       if (!mounted) {
-        await socket.close();
+        await channel.sink.close();
         return;
       }
 
-      _playlistSocket = socket;
-      _playlistSocketSub = socket.listen(
+      _playlistChannel = channel;
+      _playlistSocketSub = channel.stream.listen(
         _onLiveUpdate,
         onDone: _handleLiveUpdatesDisconnected,
         onError: (error, stackTrace) => _handleLiveUpdatesDisconnected(),
@@ -362,7 +403,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   void _handleLiveUpdatesDisconnected() {
     _playlistSocketSub?.cancel();
     _playlistSocketSub = null;
-    _playlistSocket = null;
+    _playlistChannel = null;
     _scheduleLiveUpdatesReconnect();
   }
 
@@ -653,9 +694,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         coverPreset: edit.coverPath == null ? edit.coverPreset : null,
       );
       if (edit.coverPath != null) {
+        // Editing (this whole method) is unreachable on web — see the
+        // `kIsWeb`-forced `canEdit = false` in build() — so a real
+        // filesystem path (and therefore dart:io File) is guaranteed here.
+        final bytes = await File(edit.coverPath!).readAsBytes();
         updated = await _playlistApi.uploadPlaylistCoverImage(
           playlist.id,
-          edit.coverPath!,
+          bytes,
+          filename: edit.coverPath!.split('/').last,
         );
       }
       if (!mounted) return;
@@ -731,17 +777,25 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final isCollaborator = _collaborators.any(
       (c) => c.collaboratorUsername == authUser.username,
     );
-    final canEdit =
+    // Editing (add/remove/reorder/collaborator-management/cover upload) is
+    // mobile-only — see docs/WEB_BONUS.md. `hasEditPermission` is the real,
+    // permission-based answer the mobile app still uses as-is; `canEdit`
+    // additionally folds in the platform restriction, so every edit
+    // affordance below (which all key off `canEdit`, not
+    // `hasEditPermission`) simply disappears on web without duplicating
+    // this check at each call site.
+    final hasEditPermission =
         isOwner ||
         playlist.editPermission == playlistEditPermissionEveryone ||
         (playlist.editPermission == playlistEditPermissionInvitedOnly &&
             isCollaborator);
+    final canEdit = hasEditPermission && !kIsWeb;
     final needsInvitations =
         playlist.visibility != playlistVisibilityPublic ||
         playlist.editPermission != playlistEditPermissionEveryone;
-    final showInvitationControls = isOwner && needsInvitations;
+    final showInvitationControls = !kIsWeb && isOwner && needsInvitations;
 
-    final header = Column(
+    final coverAndInfo = Column(
       children: [
         _CoverHero(playlist: playlist),
         const SizedBox(height: 20),
@@ -758,7 +812,15 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           ),
         ],
         const SizedBox(height: 24),
-        if (!canEdit &&
+        // `kIsWeb` always wins here: on web this playlist may well be
+        // editable in principle (`hasEditPermission`), just not from a
+        // browser, so the permission-flavored "ask the owner" banner below
+        // would be actively misleading — a web viewer isn't missing
+        // permission, they're missing a mobile device.
+        if (kIsWeb) ...[
+          const _WebViewOnlyBanner(),
+          const SizedBox(height: 16),
+        ] else if (!canEdit &&
             playlist.editPermission == playlistEditPermissionInvitedOnly) ...[
           _EditLockedBanner(
             myRequest: _myAccessRequest,
@@ -774,75 +836,145 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       ],
     );
 
+    final header = _Header(
+      title: 'Playlist',
+      canEdit: canEdit,
+      onAddSong: _onAddSong,
+      showCollaboratorManagement: showInvitationControls,
+      onManageCollaborators: _onManageCollaborators,
+      onEditPlaylist: !kIsWeb && isOwner ? _onEditPlaylist : null,
+    );
+
+    // [inlineHeader] is `null` for the desktop layout (which renders
+    // [coverAndInfo] in its own left-hand column instead) and [coverAndInfo]
+    // for the narrow/mobile layout (a single scrollable column, cover/info
+    // first) — see [_buildSongList]'s doc comment.
+    Widget buildSongList(Widget? inlineHeader) => canEdit
+        ? ReorderableListView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            header: inlineHeader,
+            buildDefaultDragHandles: false,
+            onReorderStart: (_) => setState(() => _isDragging = true),
+            onReorderEnd: (_) => setState(() => _isDragging = false),
+            onReorderItem: _onReorder,
+            children: [
+              for (var i = 0; i < _songs.length; i++)
+                Padding(
+                  key: ValueKey(_songs[i].id),
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Dismissible(
+                    key: ValueKey(_songs[i].id),
+                    direction: DismissDirection.endToStart,
+                    background: const _DismissBackground(),
+                    confirmDismiss: (_) => _confirmRemove(_songs[i]),
+                    onDismissed: (_) => _onRemoveSong(_songs[i]),
+                    child: _SongRow(
+                      song: _songs[i],
+                      isPlaying: _playingSongId == _songs[i].id,
+                      onTogglePreview: () =>
+                          _onToggleSongPreview(_songs[i]),
+                      dragHandle: ReorderableDragStartListener(
+                        index: i,
+                        child: const Icon(
+                          Icons.drag_handle_rounded,
+                          color: _PlaylistColors.muted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          )
+        : ListView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            children: [
+              if (inlineHeader != null) inlineHeader,
+              for (final song in _songs)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _SongRow(
+                    song: song,
+                    isPlaying: _playingSongId == song.id,
+                    onTogglePreview: () => _onToggleSongPreview(song),
+                  ),
+                ),
+            ],
+          );
+
     return Column(
       children: [
-        _Header(
-          title: 'Playlist',
-          canEdit: canEdit,
-          onAddSong: _onAddSong,
-          showCollaboratorManagement: showInvitationControls,
-          onManageCollaborators: _onManageCollaborators,
-          onEditPlaylist: isOwner ? _onEditPlaylist : null,
-        ),
+        header,
         Expanded(
           child: RefreshIndicator(
             onRefresh: _loadAll,
             color: _PlaylistColors.headline,
             backgroundColor: _PlaylistColors.card,
-            child: canEdit
-                ? ReorderableListView(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    header: header,
-                    buildDefaultDragHandles: false,
-                    onReorderStart: (_) => setState(() => _isDragging = true),
-                    onReorderEnd: (_) => setState(() => _isDragging = false),
-                    onReorderItem: _onReorder,
+            // Below the desktop breakpoint: exactly the original single
+            // scrollable column, cover/info card as the list's own header
+            // widget. At/above it: a fixed-width info column (cover,
+            // playback, collaborators, banner) alongside the song list
+            // scrolling independently in the remaining width — the
+            // "distinct desktop layout" this bonus asks for, not just a
+            // stretched phone screen. Reordering/dismiss-to-remove behave
+            // identically either way; only the arrangement changes.
+            child: isDesktopWidth(context)
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (var i = 0; i < _songs.length; i++)
-                        Padding(
-                          key: ValueKey(_songs[i].id),
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Dismissible(
-                            key: ValueKey(_songs[i].id),
-                            direction: DismissDirection.endToStart,
-                            background: const _DismissBackground(),
-                            confirmDismiss: (_) => _confirmRemove(_songs[i]),
-                            onDismissed: (_) => _onRemoveSong(_songs[i]),
-                            child: _SongRow(
-                              song: _songs[i],
-                              isPlaying: _playingSongId == _songs[i].id,
-                              onTogglePreview: () =>
-                                  _onToggleSongPreview(_songs[i]),
-                              dragHandle: ReorderableDragStartListener(
-                                index: i,
-                                child: const Icon(
-                                  Icons.drag_handle_rounded,
-                                  color: _PlaylistColors.muted,
-                                ),
-                              ),
-                            ),
-                          ),
+                      SizedBox(
+                        width: 340,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 8, 24),
+                          child: coverAndInfo,
                         ),
+                      ),
+                      const VerticalDivider(
+                        width: 1,
+                        color: _PlaylistColors.cardBorder,
+                      ),
+                      Expanded(child: buildSongList(null)),
                     ],
                   )
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    children: [
-                      header,
-                      for (final song in _songs)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _SongRow(
-                            song: song,
-                            isPlaying: _playingSongId == song.id,
-                            onTogglePreview: () => _onToggleSongPreview(song),
-                          ),
-                        ),
-                    ],
-                  ),
+                : buildSongList(coverAndInfo),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Shown in place of [_EditLockedBanner] whenever `kIsWeb` — see the
+/// doc comment where it's used in `_buildBody`. Neutral/informational
+/// (the tertiary accent color, not the red "you're missing permission"
+/// styling `_EditLockedBanner` uses) since nothing is actually wrong: the
+/// signed-in user may well be able to edit this playlist, just not from a
+/// browser yet.
+class _WebViewOnlyBanner extends StatelessWidget {
+  const _WebViewOnlyBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+      decoration: BoxDecoration(
+        color: _PlaylistColors.tertiary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _PlaylistColors.tertiary.withValues(alpha: 0.3)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.visibility_rounded, size: 16, color: _PlaylistColors.tertiary),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Viewing on web. Open the Music Room app on your phone to add, '
+              'reorder, or remove songs.',
+              style: TextStyle(fontSize: 12, color: _PlaylistColors.muted),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1699,108 +1831,3 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-class _PlaylistEdit {
-  const _PlaylistEdit({required this.title, this.coverPath});
-
-  final String title;
-  final String? coverPath;
-}
-
-class _EditPlaylistDialog extends StatefulWidget {
-  const _EditPlaylistDialog({required this.initialTitle});
-
-  final String initialTitle;
-
-  @override
-  State<_EditPlaylistDialog> createState() => _EditPlaylistDialogState();
-}
-
-class _EditPlaylistDialogState extends State<_EditPlaylistDialog> {
-  late final _titleController = TextEditingController(
-    text: widget.initialTitle,
-  );
-  String? _coverPath;
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickCover() async {
-    final image = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (image != null && mounted) setState(() => _coverPath = image.path);
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    backgroundColor: _PlaylistColors.card,
-    title: const Text(
-      'Edit playlist',
-      style: TextStyle(color: _PlaylistColors.body),
-    ),
-    content: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        TextField(
-          controller: _titleController,
-          maxLength: 100,
-          style: const TextStyle(color: _PlaylistColors.body),
-          decoration: const InputDecoration(labelText: 'Playlist name'),
-        ),
-        const SizedBox(height: 12),
-        InkWell(
-          onTap: _pickCover,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            height: 88,
-            decoration: BoxDecoration(
-              color: _PlaylistColors.chip,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _PlaylistColors.cardBorder),
-              image: _coverPath == null
-                  ? null
-                  : DecorationImage(
-                      image: FileImage(File(_coverPath!)),
-                      fit: BoxFit.cover,
-                    ),
-            ),
-            alignment: Alignment.center,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.45),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                _coverPath == null
-                    ? 'Choose cover image'
-                    : 'Tap to replace cover',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.of(context).pop(),
-        child: const Text('Cancel'),
-      ),
-      TextButton(
-        onPressed: () {
-          final title = _titleController.text.trim();
-          if (title.isEmpty) return;
-          Navigator.of(context)
-              .pop(_PlaylistEdit(title: title, coverPath: _coverPath));
-        },
-        child: const Text('Save'),
-      ),
-    ],
-  );
-}

@@ -65,13 +65,46 @@ either — `backend/api/views.py`, mounted at `/api/v1/tracks/...`:
 - **`/tracks/<external_id>/preview/`**: Deezer preview CDN URLs are signed and expire, so this
   is meant to be called immediately before playback, not cached long-term.
   - Audius id (has the `audius:` prefix) — the remainder must match `[A-Za-z0-9]+` or
-    `400 {"detail": "An Audius track ID is required."}`; on match, returns a computed stream
-    URL with **no actual network call to Audius** (it's a deterministic URL shape).
+    `400 {"detail": "An Audius track ID is required."}`; on match, follows the redirect
+    Audius's discovery-node stream URL 302s to and returns the resolved content-node CDN URL,
+    rather than the unresolved discovery-node URL itself (`_audius_stream_url`'s deterministic
+    shape, `GET .../tracks/<id>/stream`). **This one extra hop matters on web**: that 302
+    response carries no CORS headers, and `audioplayers_web` unconditionally sets
+    `crossOrigin="anonymous"` on its `<audio>` element — which fails the *entire* load the
+    moment any hop in the chain lacks CORS headers, surfacing as a generic
+    `MEDIA_ERR_SRC_NOT_SUPPORTED` rather than a CORS error. The resolved content-node URL itself
+    already sends `Access-Control-Allow-Origin: *`, so handing the client that instead sidesteps
+    the whole thing. Confirmed directly in a browser: the unresolved URL fails to play with
+    `crossOrigin` set and plays fine without it; the resolved URL plays fine either way. No such
+    issue on native (`crossOrigin` is a browser-only concept), so this was invisible until a web
+    client existed — see `docs/WEB_BONUS.md`. Redirect unreachable/not a redirect → `502`/`404`.
   - Otherwise must be all-decimal (Deezer numeric id) or `400 {"detail": "A Deezer numeric track ID is required."}`.
   - Deezer track has no `preview` field / it's empty → `404 {"detail": "No preview is available for this track."}`.
   - Deezer unreachable → `502`.
 - Throttled separately: `track_search` (300/min) and `track_preview` (300/min) — deliberately
   low, since these proxy Deezer and must stay well under Deezer's own rate limits.
+- Requires auth like everything else (`401` if not logged in).
+
+### Geocoding (feeds location-restricted event voting on web)
+
+Also in `backend/api/views.py`, mounted at `/api/v1/geocode/`:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/geocode/?q=<free text>` | Resolve a place name to `{"latitude": ..., "longitude": ...}` |
+
+- Proxies the **Google Geocoding API** using the `GOOGLE_API_KEY` env var (needs the
+  "Geocoding API" enabled on that key in Google Cloud Console — a `REQUEST_DENIED` from Google
+  surfaces as this endpoint's own `502`, not a crash).
+- Exists specifically for the **web client**: the Flutter `geocoding` plugin (what native
+  builds use to turn a voter's profile `location` text into coordinates before a vote on a
+  location-restricted event) has no web implementation at all. See `docs/WEB_BONUS.md` for the
+  full write-up.
+- Blank/missing `q` → `400 {"detail": "Query parameter 'q' is required."}`. Nothing found (or
+  Google reports `ZERO_RESULTS`) → `400 {"detail": "No location found for \"<q>\"."}`.
+  Unreachable / unconfigured / any other non-`OK` Google status → `502`.
+- Throttled separately: `geocode` (300/min), same reasoning as `track_search` — this proxies a
+  third-party API and should stay well under its own rate limits.
 - Requires auth like everything else (`401` if not logged in).
 
 ### WebSocket auth pattern (identical for both apps)
@@ -162,6 +195,7 @@ Full action list: `event.created`, `event.song_added`, `event.vote_cast`, `event
 | `playlist_access_request` | 3000/hour | `POST .../access-requests/` |
 | `track_search` | 300/min | `/tracks/search/`, `/tracks/trending/` |
 | `track_preview` | 300/min | `/tracks/<id>/preview/` |
+| `geocode` | 300/min | `/geocode/` |
 
 Guest/collaborator invite-remove and join endpoints have **no dedicated throttle** — they only
 inherit the global `user` default (1,000,000/hour, effectively unlimited).

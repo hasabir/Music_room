@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../auth/auth_api.dart';
@@ -5,6 +6,7 @@ import '../auth/auth_models.dart';
 import '../auth/welcome_screen.dart';
 import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
+import '../core/responsive/responsive.dart';
 import '../core/widgets/app_bottom_nav.dart';
 import '../core/widgets/app_tab_navigation.dart';
 import 'create_playlist_screen.dart';
@@ -193,12 +195,19 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ResponsiveScaffold(
+      currentTab: AppTab.playlist,
+      onTabSelected: (tab) => navigateToTab(context, AppTab.playlist, tab),
       backgroundColor: _PlaylistColors.background,
       body: SafeArea(
         child: Column(
           children: [
-            _ListHeader(onCreate: _onCreatePlaylist),
+            // Creating a playlist is a write action — Playlist Editor is
+            // read-only on web (see docs/WEB_BONUS.md), so the whole
+            // header shrinks to just the title there instead of showing a
+            // "+" button that would just 403 or, worse, silently do
+            // nothing.
+            _ListHeader(onCreate: kIsWeb ? null : _onCreatePlaylist),
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -248,26 +257,28 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                             children: [
                               _EmptyState(
                                 tab: _tab,
-                                onCreate: _tab == _PlaylistTab.mine
+                                onCreate: !kIsWeb && _tab == _PlaylistTab.mine
                                     ? _onCreatePlaylist
                                     : null,
                               ),
                             ],
                           )
-                        : ListView.separated(
+                        : ResponsiveCardGrid(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                            itemCount: visible.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 12),
-                            itemBuilder: (context, index) {
-                              final playlist = visible[index];
-                              return _PlaylistHeroCard(
-                                playlist: playlist,
-                                isOwner: playlist.owner == username,
-                                onTap: () => _onOpenPlaylist(playlist),
-                                onDelete: () => _onDeletePlaylist(playlist),
-                              );
-                            },
+                            spacing: 12,
+                            scrollPhysics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              for (final playlist in visible)
+                                _PlaylistHeroCard(
+                                  playlist: playlist,
+                                  // Deleting is a write action, same as
+                                  // creating above — hidden on web even
+                                  // for the owner.
+                                  isOwner: !kIsWeb && playlist.owner == username,
+                                  onTap: () => _onOpenPlaylist(playlist),
+                                  onDelete: () => _onDeletePlaylist(playlist),
+                                ),
+                            ],
                           ),
                   );
                 },
@@ -275,10 +286,6 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
             ),
           ],
         ),
-      ),
-      bottomNavigationBar: AppBottomNav(
-        currentTab: AppTab.playlist,
-        onTabSelected: (tab) => navigateToTab(context, AppTab.playlist, tab),
       ),
     );
   }
@@ -314,7 +321,11 @@ class _ListData {
 class _ListHeader extends StatelessWidget {
   const _ListHeader({required this.onCreate});
 
-  final VoidCallback onCreate;
+  /// `null` on web — see the doc comment at the call site. The "+" button
+  /// disappears outright rather than showing disabled, matching how
+  /// `EventDetailScreen`'s host-only "..." menu button doesn't exist in
+  /// the tree at all for a non-host.
+  final VoidCallback? onCreate;
 
   @override
   Widget build(BuildContext context) {
@@ -333,14 +344,15 @@ class _ListHeader extends StatelessWidget {
               ),
             ),
           ),
-          IconButton(
-            onPressed: onCreate,
-            style: IconButton.styleFrom(
-              backgroundColor: _PlaylistColors.card,
-              shape: const CircleBorder(),
+          if (onCreate != null)
+            IconButton(
+              onPressed: onCreate,
+              style: IconButton.styleFrom(
+                backgroundColor: _PlaylistColors.card,
+                shape: const CircleBorder(),
+              ),
+              icon: const Icon(Icons.add_rounded, color: _PlaylistColors.body),
             ),
-            icon: const Icon(Icons.add_rounded, color: _PlaylistColors.body),
-          ),
         ],
       ),
     );
