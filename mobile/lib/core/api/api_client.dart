@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'client_metadata.dart';
 
 /// Thrown when the backend returns a non-2xx response, or the response body
 /// can't be parsed as expected.
@@ -34,7 +35,7 @@ class ApiException implements Exception {
 /// parsing) so individual features don't each reimplement it.
 class ApiClient {
   ApiClient({http.Client? httpClient})
-    : _httpClient = httpClient ?? http.Client();
+    : _httpClient = MetadataClient(httpClient ?? http.Client());
 
   final http.Client _httpClient;
 

@@ -7,6 +7,26 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from authentication.utils import log_action
 from user.models import ActionLog
 from .serializers import ActionLogSerializer, SubscriptionSwitchSerializer, UserSerializer
+from .serializers import ClientActionSerializer
+from rest_framework.throttling import UserRateThrottle
+
+
+class ClientActionThrottle(UserRateThrottle):
+    rate = '120/min'
+    scope = 'client_action'
+
+
+class ClientActionView(generics.GenericAPIView):
+    permission_classes = [AllowAny]
+    serializer_class = ClientActionSerializer
+    throttle_classes = [ClientActionThrottle]
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = request.user if request.user.is_authenticated else None
+        log_action(request, 'client.' + serializer.validated_data['action'], user=user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ActionLogListView(generics.ListAPIView):

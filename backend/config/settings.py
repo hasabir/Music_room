@@ -49,6 +49,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'user.middleware.ActionAuditMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -245,6 +246,9 @@ CSRF_TRUSTED_ORIGINS = [
     if origin.strip()
 ]
 CORS_ALLOW_HEADERS = [
+    'x-platform',
+    'x-device',
+    'x-app-version',
     'accept',
     'accept-encoding',
     'authorization',

@@ -27,9 +27,18 @@ class ActionLogSerializer(serializers.ModelSerializer):
             "device",
             "app_version",
             "ip_address",
+            "metadata",
             "created_at",
         ]
         read_only_fields = fields
+
+
+class ClientActionSerializer(serializers.Serializer):
+    # Client events cannot impersonate authoritative server activity entries.
+    action = serializers.ChoiceField(choices=[
+        'interaction', 'navigation', 'playback.play', 'playback.pause',
+        'playback.resume', 'playback.stop', 'playback.seek',
+    ])
 
 class UserSerializer(serializers.ModelSerializer):
     has_google_linked = serializers.SerializerMethodField()

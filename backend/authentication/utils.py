@@ -8,15 +8,20 @@ from .tokens import email_verification_token
 from django.conf import settings
 from user.models import ActionLog
 from .models import OTPCode
+from ipaddress import ip_address
+
+
+def client_header(request, name, limit):
+    return ''.join(c for c in request.headers.get(name, '') if c.isprintable())[:limit]
 
 
 def log_action(request, action, user=None, metadata=None):
     ActionLog.objects.create(
         user=user,
         action=action,
-        platform=request.headers.get("X-Platform", ""),
-        device=request.headers.get("X-Device", ""),
-        app_version=request.headers.get("X-App-Version", ""),
+        platform=client_header(request, "X-Platform", 20),
+        device=client_header(request, "X-Device", 100),
+        app_version=client_header(request, "X-App-Version", 20),
         ip_address=get_client_ip(request),
         metadata=metadata or {},
     )
@@ -25,10 +30,11 @@ def log_action(request, action, user=None, metadata=None):
 def get_client_ip(request):
     forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
 
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-
-    return request.META.get("REMOTE_ADDR")
+    value = forwarded_for.split(",")[0].strip() if forwarded_for else request.META.get("REMOTE_ADDR")
+    try:
+        return str(ip_address(value))
+    except ValueError:
+        return None
 
 
 def send_verification_email(user):

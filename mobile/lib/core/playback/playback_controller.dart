@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import '../api/client_action_log.dart';
 
 /// The app-wide preview player. It deliberately lives beyond any individual
 /// route so audio keeps playing while the listener browses the app.
@@ -55,6 +56,7 @@ class PlaybackController {
     required String artworkUrl,
     Duration position = Duration.zero,
   }) async {
+    ClientActionLog.record('playback.play');
     await _player.stop();
     _setState(
       PlaybackState(
@@ -68,18 +70,26 @@ class PlaybackController {
     await _player.play(UrlSource(url), position: position);
   }
 
-  Future<void> pause() => _player.pause();
+  Future<void> pause() {
+    ClientActionLog.record('playback.pause');
+    return _player.pause();
+  }
 
-  Future<void> resume() => _player.resume();
+  Future<void> resume() {
+    ClientActionLog.record('playback.resume');
+    return _player.resume();
+  }
 
   Future<void> toggle() => _state.isPlaying ? pause() : resume();
 
   Future<void> stop() async {
+    ClientActionLog.record('playback.stop');
     await _player.stop();
     _setState(const PlaybackState());
   }
 
   Future<void> seek(Duration position) async {
+    ClientActionLog.record('playback.seek');
     final duration = _state.duration;
     if (duration == Duration.zero) return;
     final clamped = position < Duration.zero
