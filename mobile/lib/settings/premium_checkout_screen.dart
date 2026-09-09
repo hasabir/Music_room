@@ -74,23 +74,13 @@ class _PremiumCheckoutScreenState extends State<PremiumCheckoutScreen> {
         enableSuggestions: false,
         inputFormatters: index == 0
             ? [LengthLimitingTextInputFormatter(100)]
+            : index == 2
+            ? [_ExpiryDateFormatter()]
             : [
                 FilteringTextInputFormatter.allow(
-                  RegExp(
-                    index == 1
-                        ? r'[0-9 ]'
-                        : index == 2
-                        ? r'[0-9/]'
-                        : r'[0-9]',
-                  ),
+                  RegExp(index == 1 ? r'[0-9 ]' : r'[0-9]'),
                 ),
-                LengthLimitingTextInputFormatter(
-                  index == 1
-                      ? 23
-                      : index == 2
-                      ? 5
-                      : 4,
-                ),
+                LengthLimitingTextInputFormatter(index == 1 ? 23 : 4),
               ],
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
@@ -281,6 +271,40 @@ class _PremiumCheckoutScreenState extends State<PremiumCheckoutScreen> {
       ),
     ),
   );
+}
+
+class _ExpiryDateFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final limited = digits.substring(0, digits.length.clamp(0, 4));
+    final deleting = newValue.text.length < oldValue.text.length;
+    final addSlash = limited.length > 2 || (limited.length == 2 && !deleting);
+    final text = addSlash
+        ? '${limited.substring(0, 2)}/${limited.substring(2)}'
+        : limited;
+
+    int mapOffset(int offset) {
+      if (offset < 0) return text.length;
+      final before = newValue.text.substring(
+        0,
+        offset.clamp(0, newValue.text.length),
+      );
+      final count = before.replaceAll(RegExp(r'[^0-9]'), '').length;
+      return (count + (addSlash && count >= 2 ? 1 : 0)).clamp(0, text.length);
+    }
+
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection(
+        baseOffset: mapOffset(newValue.selection.baseOffset),
+        extentOffset: mapOffset(newValue.selection.extentOffset),
+      ),
+    );
+  }
 }
 
 String? validateDemoCard(String? value) {
