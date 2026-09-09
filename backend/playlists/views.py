@@ -1,4 +1,5 @@
 # playlists/views.py
+from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
@@ -17,7 +18,7 @@ from .serializers import (
     PlaylistSerializer, AddSongToPlaylistSerializer, MoveSongSerializer, PlaylistSongSerializer
 )
 from .permissions import can_user_see_playlist, can_user_add_songs, can_user_reorder_songs
-from .services import add_song_to_playlist, remove_song_from_playlist, move_song
+from .services import DuplicatePlaylistSong, add_song_to_playlist, remove_song_from_playlist, move_song
 from .broadcast import broadcast_playlist_update
 
 
@@ -159,35 +160,41 @@ class PlaylistSongListView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        song_defaults = {
-            "title": data["title"],
-            "artist": data["artist"],
-            "duration_seconds": data.get("duration_seconds"),
-            "external_id": data.get("external_id", ""),
-            "album_art_url": data.get("album_art_url", ""),
-            "preview_url": data.get("preview_url", ""),
-        }
-        external_id = data.get("external_id", "")
-        if external_id:
-            # A title/artist can exist at multiple providers. Keep the
-            # provider-specific entry so an Audius full stream never gets
-            # replaced by a same-named Deezer preview.
-            song, _ = Song.objects.get_or_create(
-                external_id=external_id,
-                defaults=song_defaults,
-            )
-        else:
-            song, _ = Song.objects.get_or_create(
-                title__iexact=data["title"],
-                artist__iexact=data["artist"],
-                defaults=song_defaults,
-            )
+        with transaction.atomic():
+            # Resolve the catalogue song under the same lock as insertion.
+            Playlist.objects.select_for_update().get(pk=playlist.pk)
+            song_defaults = {
+                "title": data["title"],
+                "artist": data["artist"],
+                "duration_seconds": data.get("duration_seconds"),
+                "external_id": data.get("external_id", ""),
+                "album_art_url": data.get("album_art_url", ""),
+                "preview_url": data.get("preview_url", ""),
+            }
+            external_id = data.get("external_id", "")
+            if external_id:
+                # A title/artist can exist at multiple providers. Keep the
+                # provider-specific entry so an Audius full stream never gets
+                # replaced by a same-named Deezer preview.
+                song, _ = Song.objects.get_or_create(
+                    external_id=external_id,
+                    defaults=song_defaults,
+                )
+            else:
+                song, _ = Song.objects.get_or_create(
+                    title__iexact=data["title"],
+                    artist__iexact=data["artist"],
+                    defaults=song_defaults,
+                )
 
-        if PlaylistSong.objects.filter(playlist=playlist, song=song).exists():
-            return Response({"detail": "This song is already in the playlist."},
-                             status=status.HTTP_400_BAD_REQUEST)
+            if PlaylistSong.objects.filter(playlist=playlist, song=song).exists():
+                return Response({"detail": "This song is already in the playlist."},
+                                 status=status.HTTP_400_BAD_REQUEST)
 
-        playlist_song = add_song_to_playlist(playlist, song, request.user)
+            try:
+                playlist_song = add_song_to_playlist(playlist, song, request.user)
+            except DuplicatePlaylistSong as error:
+                return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
 
         log_action(request, "playlist.song_added", user=request.user, metadata={
             "playlist_id": playlist.id,

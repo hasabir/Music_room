@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -12,13 +10,13 @@ class PlaylistEditResult {
     required this.title,
     required this.visibility,
     required this.editPermission,
-    this.coverPath,
+    this.coverImage,
     this.coverPreset,
   });
   final String title;
   final String visibility;
   final String editPermission;
-  final String? coverPath;
+  final XFile? coverImage;
   final String? coverPreset;
 }
 
@@ -33,7 +31,7 @@ class EditPlaylistScreen extends StatefulWidget {
 class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
   final _formKey = GlobalKey<FormState>();
   late final _title = TextEditingController(text: widget.playlist.title);
-  String? _coverPath;
+  XFile? _coverImage;
   late String? _coverPreset = widget.playlist.coverPreset;
   late String _visibility = widget.playlist.visibility;
   late String _editPermission = widget.playlist.editPermission;
@@ -51,7 +49,7 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
     );
     if (image != null && mounted) {
       setState(() {
-        _coverPath = image.path;
+        _coverImage = image;
         _coverPreset = null;
       });
     }
@@ -64,17 +62,17 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
         title: _title.text.trim(),
         visibility: _visibility,
         editPermission: _editPermission,
-        coverPath: _coverPath,
-        coverPreset: _coverPath == null ? _coverPreset : null,
+        coverImage: _coverImage,
+        coverPreset: _coverImage == null ? _coverPreset : null,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final selected = _coverPath == null ? null : File(_coverPath!);
+    final selected = _coverImage;
     final current = ApiConfig.resolveMediaUrl(widget.playlist.coverImageUrl);
-    final selectedPreset = _coverPath == null
+    final selectedPreset = _coverImage == null
         ? PlaylistCoverPreset.byId(_coverPreset)
         : null;
     return Scaffold(
@@ -118,7 +116,7 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
                         width: 136,
                         height: 136,
                         child: selected != null
-                            ? Image.file(selected, fit: BoxFit.cover)
+                            ? PlaylistPickedCover(image: selected)
                             : selectedPreset != null
                             ? Image.asset(
                                 selectedPreset.assetPath,
@@ -164,9 +162,10 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
                   for (final preset in PlaylistCoverPreset.all)
                     _PresetButton(
                       preset: preset,
-                      selected: _coverPath == null && _coverPreset == preset.id,
+                      selected:
+                          _coverImage == null && _coverPreset == preset.id,
                       onTap: () => setState(() {
-                        _coverPath = null;
+                        _coverImage = null;
                         _coverPreset = preset.id;
                       }),
                     ),

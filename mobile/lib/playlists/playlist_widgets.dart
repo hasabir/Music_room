@@ -1,7 +1,46 @@
 import 'package:flutter/material.dart';
 
+import 'dart:typed_data';
+
+import 'package:image_picker/image_picker.dart';
+
 import '../core/api/api_config.dart';
 import 'playlist_models.dart';
+
+/// Uses bytes for both native files and browser-selected blob URLs.
+class PlaylistPickedCover extends StatefulWidget {
+  const PlaylistPickedCover({super.key, required this.image});
+  final XFile image;
+
+  @override
+  State<PlaylistPickedCover> createState() => _PlaylistPickedCoverState();
+}
+
+class _PlaylistPickedCoverState extends State<PlaylistPickedCover> {
+  late Future<Uint8List> _bytes = widget.image.readAsBytes();
+
+  @override
+  void didUpdateWidget(PlaylistPickedCover oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.image != widget.image) _bytes = widget.image.readAsBytes();
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Uint8List>(
+    future: _bytes,
+    builder: (context, snapshot) {
+      if (snapshot.hasError) return const Icon(Icons.broken_image_outlined);
+      if (!snapshot.hasData) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      return Image.memory(
+        snapshot.data!,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined),
+      );
+    },
+  );
+}
 
 class PlaylistBadgeColors {
   const PlaylistBadgeColors._();
@@ -27,7 +66,9 @@ class VisibilityBadge extends StatelessWidget {
     return _Badge(
       label: isPublic ? 'Public' : 'Private',
       icon: isPublic ? Icons.public_rounded : Icons.lock_rounded,
-      color: isPublic ? PlaylistBadgeColors.visibilityPublic : PlaylistBadgeColors.visibilityPrivate,
+      color: isPublic
+          ? PlaylistBadgeColors.visibilityPublic
+          : PlaylistBadgeColors.visibilityPrivate,
     );
   }
 }
@@ -44,7 +85,11 @@ class EditPermissionBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (editPermission) {
       case playlistEditPermissionEveryone:
-        return const _Badge(label: 'Open Edit', icon: Icons.edit_rounded, color: PlaylistBadgeColors.editEveryone);
+        return const _Badge(
+          label: 'Open Edit',
+          icon: Icons.edit_rounded,
+          color: PlaylistBadgeColors.editEveryone,
+        );
       case playlistEditPermissionOwnerOnly:
         return const _Badge(
           label: 'Only Me',
@@ -67,7 +112,12 @@ class EditPermissionBadge extends StatelessWidget {
 /// icon as a last resort (matches the look every playlist had before
 /// covers existed).
 class PlaylistCoverThumb extends StatelessWidget {
-  const PlaylistCoverThumb({super.key, required this.playlist, required this.size, required this.radius});
+  const PlaylistCoverThumb({
+    super.key,
+    required this.playlist,
+    required this.size,
+    required this.radius,
+  });
 
   final Playlist playlist;
   final double size;
@@ -87,7 +137,8 @@ class PlaylistCoverThumb extends StatelessWidget {
             ? Image.network(
                 imageUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => _PresetOrFallback(preset: preset, size: size),
+                errorBuilder: (_, _, _) =>
+                    _PresetOrFallback(preset: preset, size: size),
               )
             : _PresetOrFallback(preset: preset, size: size),
       ),
@@ -106,14 +157,29 @@ class _PresetOrFallback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (preset != null) {
-      return Image.asset(preset!.assetPath, fit: BoxFit.cover, width: size, height: size);
+      return Image.asset(
+        preset!.assetPath,
+        fit: BoxFit.cover,
+        width: size,
+        height: size,
+      );
     }
 
     return Container(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: _fallbackColors),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: _fallbackColors,
+        ),
       ),
-      child: Center(child: Icon(Icons.graphic_eq_rounded, color: Colors.white, size: size * 0.45)),
+      child: Center(
+        child: Icon(
+          Icons.graphic_eq_rounded,
+          color: Colors.white,
+          size: size * 0.45,
+        ),
+      ),
     );
   }
 }
@@ -129,13 +195,23 @@ class _Badge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 11, color: color),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
         ],
       ),
     );

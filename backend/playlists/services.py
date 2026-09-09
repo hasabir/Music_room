@@ -1,24 +1,27 @@
 # playlists/services.py
-"""
-All functions here run inside select_for_update() transactions.
+"""Playlist edits lock the parent row before reading or changing song order.
 
-select_for_update() locks the matching rows in the database until the
-transaction finishes — so if two requests try to reorder the same
-playlist at the exact same moment, the second one simply waits until
-the first one's transaction is done, then runs safely on the updated
-state. This is what prevents the "competition problematics" (concurrent
-edits corrupting the list) that the subject specifically warns about.
+All edits to one playlist serialize; different playlists can edit independently.
+The parent exists even when there are no songs, unlike a child-row lock.
 """
 from django.db import transaction
 from django.db.models import F
-from .models import PlaylistSong
+from .models import Playlist, PlaylistSong
+
+
+class DuplicatePlaylistSong(ValueError):
+    pass
 
 
 def add_song_to_playlist(playlist, song, user):
     """Adds a song to the end of the playlist. Returns the new PlaylistSong."""
     with transaction.atomic():
+        # Serialize all edits, including additions to an empty playlist.
+        Playlist.objects.select_for_update().get(pk=playlist.pk)
+        if PlaylistSong.objects.filter(playlist=playlist, song=song).exists():
+            raise DuplicatePlaylistSong("This song is already in the playlist.")
         current_count = (
-            PlaylistSong.objects.select_for_update()
+            PlaylistSong.objects
             .filter(playlist=playlist)
             .count()
         )
@@ -37,9 +40,11 @@ def remove_song_from_playlist(playlist, playlist_song_id):
     Returns True if something was removed, False if not found.
     """
     with transaction.atomic():
+        # Serialize all edits, including additions to an empty playlist.
+        Playlist.objects.select_for_update().get(pk=playlist.pk)
         try:
             target = (
-                PlaylistSong.objects.select_for_update()
+                PlaylistSong.objects
                 .get(id=playlist_song_id, playlist=playlist)
             )
         except PlaylistSong.DoesNotExist:
@@ -50,7 +55,7 @@ def remove_song_from_playlist(playlist, playlist_song_id):
 
         # Shift everything after the removed song back by one, closing the gap
         (
-            PlaylistSong.objects.select_for_update()
+            PlaylistSong.objects
             .filter(playlist=playlist, position__gt=removed_position)
             .update(position=F("position") - 1)
         )
@@ -63,9 +68,11 @@ def move_song(playlist, playlist_song_id, new_position):
     to make room. Returns the updated PlaylistSong, or None if not found.
     """
     with transaction.atomic():
+        # Serialize all edits, including additions to an empty playlist.
+        Playlist.objects.select_for_update().get(pk=playlist.pk)
         try:
             target = (
-                PlaylistSong.objects.select_for_update()
+                PlaylistSong.objects
                 .get(id=playlist_song_id, playlist=playlist)
             )
         except PlaylistSong.DoesNotExist:
@@ -73,7 +80,7 @@ def move_song(playlist, playlist_song_id, new_position):
 
         old_position = target.position
         max_position = (
-            PlaylistSong.objects.select_for_update()
+            PlaylistSong.objects
             .filter(playlist=playlist)
             .count() - 1
         )
@@ -85,14 +92,14 @@ def move_song(playlist, playlist_song_id, new_position):
         if new_position > old_position:
             # Moving DOWN the list: shift everything in (old, new] up by one
             (
-                PlaylistSong.objects.select_for_update()
+                PlaylistSong.objects
                 .filter(playlist=playlist, position__gt=old_position, position__lte=new_position)
                 .update(position=F("position") - 1)
             )
         else:
             # Moving UP the list: shift everything in [new, old) down by one
             (
-                PlaylistSong.objects.select_for_update()
+                PlaylistSong.objects
                 .filter(playlist=playlist, position__gte=new_position, position__lt=old_position)
                 .update(position=F("position") + 1)
             )

@@ -163,9 +163,13 @@ triggers on `visibility == "public"`.
 ## Mobile UI
 
 - **Settings > Subscription** — current tier, what Premium unlocks, a
-  clearly-labeled "UPGRADE TO PREMIUM (MOCK)" / "DOWNGRADE TO FREE"
-  action (downgrade behind a confirmation dialog explaining nothing
-  already-suggested/voted is undone).
+  "UPGRADE TO PREMIUM" action opens a demo card checkout with cardholder,
+  card number (checksum), expiry, and CVC validation. Test details such as
+  `4242 4242 4242 4242`, a future `MM/YY`, and `123` are accepted.
+  Processing precedes the existing tier API; success appears only after it
+  confirms activation. Card details are never sent or persisted, and no
+  charge or recurring billing occurs. "DOWNGRADE TO FREE" remains behind
+  a confirmation dialog explaining nothing already-suggested/voted is undone.
 - **Event detail:** a suggestion-count caption ("`7/10 suggestions
   used`") and a vote-count caption near the queue when the limit
   applies (`null` limit from the API = Premium = no caption). At the
@@ -178,7 +182,7 @@ triggers on `visibility == "public"`.
   shows a banner, and short-circuits locally once at the limit (purely
   to avoid a pointless round trip — the backend still re-checks and is
   the actual source of truth, since the local count can be stale).
-- **Playlist detail:** `canEdit` becomes `hasEditPermission && !kIsWeb &&
+- **Playlist detail:** `canEdit` becomes `hasEditPermission &&
   !isPremiumBlocked`. A new banner ("Editing a public playlist requires
   Premium...") appears only for someone who would otherwise be allowed
   to edit (owner, or granted by `editPermission`) but is blocked purely

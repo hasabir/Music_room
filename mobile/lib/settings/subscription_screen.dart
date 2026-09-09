@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../auth/auth_api.dart';
 import '../auth/auth_models.dart';
 import '../core/api/api_client.dart';
+import 'premium_checkout_screen.dart';
 
 class _SubscriptionColors {
   static const background = Color(0xFF0E0E15);
@@ -51,21 +52,35 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       final updated = await _authApi.switchSubscriptionTier(tier: tier);
       if (!mounted) return;
       setState(() => _authUser = updated);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
             tier == subscriptionTierPremium
                 ? "You're now on Premium."
                 : "You're back on the Free plan.",
-          )));
+          ),
+        ),
+      );
     } on ApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     } finally {
       if (mounted) setState(() => _isSwitching = false);
     }
   }
 
-  Future<void> _onUpgrade() => _switchTo(subscriptionTierPremium);
+  Future<void> _onUpgrade() async {
+    final updated = await Navigator.of(context).push<AuthUser>(
+      MaterialPageRoute(
+        builder: (_) => PremiumCheckoutScreen(
+          onActivate: () =>
+              _authApi.switchSubscriptionTier(tier: subscriptionTierPremium),
+        ),
+      ),
+    );
+    if (updated != null && mounted) setState(() => _authUser = updated);
+  }
 
   Future<void> _onDowngrade() async {
     final confirmed = await showDialog<bool>(
@@ -86,11 +101,17 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: _SubscriptionColors.muted)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: _SubscriptionColors.muted),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Downgrade', style: TextStyle(color: Colors.redAccent)),
+            child: const Text(
+              'Downgrade',
+              style: TextStyle(color: Colors.redAccent),
+            ),
           ),
         ],
       ),
@@ -146,8 +167,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           ),
           const SizedBox(height: 24),
           const Text(
-            'This is a mock upgrade for demo purposes — no payment is processed.',
-            style: TextStyle(fontSize: 12, color: _SubscriptionColors.muted, fontStyle: FontStyle.italic),
+            'Try Premium with a demo checkout. Use test card details; no charge is made.',
+            style: TextStyle(
+              fontSize: 12,
+              color: _SubscriptionColors.muted,
+              fontStyle: FontStyle.italic,
+            ),
           ),
           const SizedBox(height: 16),
           if (!isPremium)
@@ -158,7 +183,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
                   gradient: const LinearGradient(
-                    colors: [_SubscriptionColors.gradientStart, _SubscriptionColors.gradientEnd],
+                    colors: [
+                      _SubscriptionColors.gradientStart,
+                      _SubscriptionColors.gradientEnd,
+                    ],
                   ),
                 ),
                 child: ElevatedButton(
@@ -168,17 +196,26 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     shadowColor: Colors.transparent,
                     disabledBackgroundColor: Colors.transparent,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
                   ),
                   child: _isSwitching
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
                       : const Text(
-                          'UPGRADE TO PREMIUM (MOCK)',
-                          style: TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700, letterSpacing: 0.4),
+                          'UPGRADE TO PREMIUM',
+                          style: TextStyle(
+                            fontFamily: 'Sora',
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
+                          ),
                         ),
                 ),
               ),
@@ -192,17 +229,26 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.redAccent,
                   side: const BorderSide(color: Colors.redAccent),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
                 ),
                 child: _isSwitching
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.redAccent,
+                        ),
                       )
                     : const Text(
                         'DOWNGRADE TO FREE',
-                        style: TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700, letterSpacing: 0.4),
+                        style: TextStyle(
+                          fontFamily: 'Sora',
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.4,
+                        ),
                       ),
               ),
             ),
@@ -225,7 +271,9 @@ class _TierCard extends StatelessWidget {
         color: _SubscriptionColors.card,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isPremium ? _SubscriptionColors.premium : _SubscriptionColors.border,
+          color: isPremium
+              ? _SubscriptionColors.premium
+              : _SubscriptionColors.border,
         ),
       ),
       child: Row(
@@ -234,8 +282,12 @@ class _TierCard extends StatelessWidget {
             radius: 22,
             backgroundColor: _SubscriptionColors.background,
             child: Icon(
-              isPremium ? Icons.workspace_premium_rounded : Icons.person_outline_rounded,
-              color: isPremium ? _SubscriptionColors.premium : _SubscriptionColors.headline,
+              isPremium
+                  ? Icons.workspace_premium_rounded
+                  : Icons.person_outline_rounded,
+              color: isPremium
+                  ? _SubscriptionColors.premium
+                  : _SubscriptionColors.headline,
               size: 24,
             ),
           ),
@@ -258,7 +310,10 @@ class _TierCard extends StatelessWidget {
                   isPremium
                       ? 'Unlimited suggestions, votes, and public playlist editing.'
                       : 'Limited suggestions/votes per event; private-playlist editing only.',
-                  style: const TextStyle(fontSize: 12, color: _SubscriptionColors.muted),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: _SubscriptionColors.muted,
+                  ),
                 ),
               ],
             ),
@@ -287,7 +342,11 @@ class _PerkRow extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 13, color: _SubscriptionColors.body, height: 1.3),
+              style: const TextStyle(
+                fontSize: 13,
+                color: _SubscriptionColors.body,
+                height: 1.3,
+              ),
             ),
           ),
         ],

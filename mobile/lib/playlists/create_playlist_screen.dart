@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../core/api/api_client.dart';
 import 'playlist_api.dart';
 import 'playlist_models.dart';
+import 'playlist_widgets.dart';
 
 class _CreatePlaylistColors {
   static const background = Color(0xFF0E0E15);
@@ -56,7 +55,8 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
   /// is already invite-only to even *see* — so that same "invite only"
   /// wording would just describe the default access rule twice. The real
   /// choice there is narrower: only the owner, or everyone already invited.
-  Map<String, String> get _editPermissionOptions => _visibility == playlistVisibilityPrivate
+  Map<String, String> get _editPermissionOptions =>
+      _visibility == playlistVisibilityPrivate
       ? const {
           playlistEditPermissionOwnerOnly: 'Only me',
           playlistEditPermissionInvitedOnly: 'Everyone invited',
@@ -158,7 +158,10 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
                 children: [
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.arrow_back_rounded, color: _CreatePlaylistColors.body),
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: _CreatePlaylistColors.body,
+                    ),
                   ),
                   const Text(
                     'Music Room',
@@ -188,7 +191,10 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
                   const SizedBox(height: 8),
                   const Text(
                     'Define the vibe and set the rules for your new room.',
-                    style: TextStyle(fontSize: 14, color: _CreatePlaylistColors.muted),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: _CreatePlaylistColors.muted,
+                    ),
                   ),
                   const SizedBox(height: 28),
                   const _FieldLabel('PLAYLIST NAME'),
@@ -222,7 +228,10 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
                   const _FieldLabel('VISIBILITY'),
                   const SizedBox(height: 8),
                   _SegmentedChoice(
-                    options: const {playlistVisibilityPublic: 'Public', playlistVisibilityPrivate: 'Private'},
+                    options: const {
+                      playlistVisibilityPublic: 'Public',
+                      playlistVisibilityPrivate: 'Private',
+                    },
                     value: _visibility,
                     onChanged: _onVisibilityChanged,
                   ),
@@ -235,18 +244,29 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
                               'among you can also make changes.'
                         : 'Anyone can see a public playlist. Choose whether anyone can also edit it, or just '
                               'people you invite.',
-                    style: const TextStyle(fontSize: 12.5, color: _CreatePlaylistColors.muted, height: 1.4),
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: _CreatePlaylistColors.muted,
+                      height: 1.4,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   _SegmentedChoice(
                     options: _editPermissionOptions,
                     value: _editPermission,
-                    onChanged: (value) => setState(() => _editPermission = value),
+                    onChanged: (value) =>
+                        setState(() => _editPermission = value),
                     vertical: true,
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 16),
-                    Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+                    Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 13,
+                      ),
+                    ),
                   ],
                   const SizedBox(height: 32),
                   SizedBox(
@@ -256,7 +276,10 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(18),
                         gradient: const LinearGradient(
-                          colors: [_CreatePlaylistColors.gradientStart, _CreatePlaylistColors.gradientEnd],
+                          colors: [
+                            _CreatePlaylistColors.gradientStart,
+                            _CreatePlaylistColors.gradientEnd,
+                          ],
                         ),
                       ),
                       child: ElevatedButton(
@@ -265,20 +288,29 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
                           backgroundColor: Colors.transparent,
                           shadowColor: Colors.transparent,
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
                         ),
                         child: _isSubmitting
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
                             : const Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Text(
                                     'Create Playlist',
-                                    style: TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700, fontSize: 15),
+                                    style: TextStyle(
+                                      fontFamily: 'Sora',
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                    ),
                                   ),
                                   SizedBox(width: 8),
                                   Icon(Icons.add_rounded, size: 20),
@@ -335,7 +367,9 @@ class _CoverPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedPreset = customImage == null ? PlaylistCoverPreset.byId(coverPreset) : null;
+    final selectedPreset = customImage == null
+        ? PlaylistCoverPreset.byId(coverPreset)
+        : null;
 
     return Column(
       children: [
@@ -350,7 +384,7 @@ class _CoverPicker extends StatelessWidget {
                   width: 116,
                   height: 116,
                   child: customImage != null
-                      ? Image.file(File(customImage!.path), fit: BoxFit.cover)
+                      ? PlaylistPickedCover(image: customImage!)
                       : _PresetSwatch(preset: selectedPreset, iconSize: 44),
                 ),
               ),
@@ -361,15 +395,24 @@ class _CoverPicker extends StatelessWidget {
                   color: _CreatePlaylistColors.tertiary,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.add_photo_alternate_rounded, size: 16, color: Colors.black),
+                child: const Icon(
+                  Icons.add_photo_alternate_rounded,
+                  size: 16,
+                  color: Colors.black,
+                ),
               ),
             ],
           ),
         ),
         const SizedBox(height: 6),
         Text(
-          customImage != null ? 'Tap to change your photo' : 'Tap to upload your own photo',
-          style: const TextStyle(fontSize: 12, color: _CreatePlaylistColors.muted),
+          customImage != null
+              ? 'Tap to change your photo'
+              : 'Tap to upload your own photo',
+          style: const TextStyle(
+            fontSize: 12,
+            color: _CreatePlaylistColors.muted,
+          ),
         ),
         const SizedBox(height: 16),
         SizedBox(
@@ -380,7 +423,8 @@ class _CoverPicker extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (context, index) {
               final preset = PlaylistCoverPreset.all[index];
-              final isSelected = customImage == null && coverPreset == preset.id;
+              final isSelected =
+                  customImage == null && coverPreset == preset.id;
               return GestureDetector(
                 onTap: () => onSelectPreset(preset.id),
                 child: Container(
@@ -388,9 +432,16 @@ class _CoverPicker extends StatelessWidget {
                   height: 64,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(18),
-                    border: isSelected ? Border.all(color: preset.glowColor, width: 2.5) : null,
+                    border: isSelected
+                        ? Border.all(color: preset.glowColor, width: 2.5)
+                        : null,
                     boxShadow: isSelected
-                        ? [BoxShadow(color: preset.glowColor.withValues(alpha: 0.45), blurRadius: 10)]
+                        ? [
+                            BoxShadow(
+                              color: preset.glowColor.withValues(alpha: 0.45),
+                              blurRadius: 10,
+                            ),
+                          ]
                         : null,
                   ),
                   padding: EdgeInsets.all(isSelected ? 0 : 2.5),
@@ -417,7 +468,12 @@ class _PresetSwatch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (preset != null) {
-      return Image.asset(preset!.assetPath, fit: BoxFit.cover, width: double.infinity, height: double.infinity);
+      return Image.asset(
+        preset!.assetPath,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+      );
     }
 
     return Container(
@@ -425,10 +481,19 @@ class _PresetSwatch extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [_CreatePlaylistColors.gradientStart, _CreatePlaylistColors.gradientEnd],
+          colors: [
+            _CreatePlaylistColors.gradientStart,
+            _CreatePlaylistColors.gradientEnd,
+          ],
         ),
       ),
-      child: Center(child: Icon(Icons.graphic_eq_rounded, color: Colors.white, size: iconSize)),
+      child: Center(
+        child: Icon(
+          Icons.graphic_eq_rounded,
+          color: Colors.white,
+          size: iconSize,
+        ),
+      ),
     );
   }
 }
@@ -472,7 +537,11 @@ class _SegmentedChoice extends StatelessWidget {
   Widget build(BuildContext context) {
     final chips = [
       for (final entry in options.entries)
-        _Chip(label: entry.value, isSelected: entry.key == value, onTap: () => onChanged(entry.key)),
+        _Chip(
+          label: entry.value,
+          isSelected: entry.key == value,
+          onTap: () => onChanged(entry.key),
+        ),
     ];
 
     if (vertical) {
@@ -498,7 +567,11 @@ class _SegmentedChoice extends StatelessWidget {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.isSelected, required this.onTap});
+  const _Chip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   final String label;
   final bool isSelected;
@@ -512,10 +585,14 @@ class _Chip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          color: isSelected ? _CreatePlaylistColors.tertiary.withValues(alpha: 0.15) : _CreatePlaylistColors.card,
+          color: isSelected
+              ? _CreatePlaylistColors.tertiary.withValues(alpha: 0.15)
+              : _CreatePlaylistColors.card,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? _CreatePlaylistColors.tertiary : _CreatePlaylistColors.border,
+            color: isSelected
+                ? _CreatePlaylistColors.tertiary
+                : _CreatePlaylistColors.border,
           ),
         ),
         child: Text(
@@ -525,7 +602,9 @@ class _Chip extends StatelessWidget {
             fontFamily: 'Sora',
             fontWeight: FontWeight.w700,
             fontSize: 13,
-            color: isSelected ? _CreatePlaylistColors.tertiary : _CreatePlaylistColors.muted,
+            color: isSelected
+                ? _CreatePlaylistColors.tertiary
+                : _CreatePlaylistColors.muted,
           ),
         ),
       ),

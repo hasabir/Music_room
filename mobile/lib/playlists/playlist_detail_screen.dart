@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -76,7 +74,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
   // web_socket_channel rather than dart:io's WebSocket — the latter has no
   // web implementation at all (throws UnsupportedError there), which would
   // otherwise make this the one thing standing between the Playlist
-  // Editor's read-only web view and actually seeing live updates. See
+  // Editor's web view and actually seeing live updates. See
   // docs/WEB_BONUS.md.
   WebSocketChannel? _playlistChannel;
   StreamSubscription<dynamic>? _playlistSocketSub;
@@ -703,17 +701,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
         title: edit.title,
         visibility: edit.visibility,
         editPermission: edit.editPermission,
-        coverPreset: edit.coverPath == null ? edit.coverPreset : null,
+        coverPreset: edit.coverImage == null ? edit.coverPreset : null,
       );
-      if (edit.coverPath != null) {
-        // Editing (this whole method) is unreachable on web — see the
-        // `kIsWeb`-forced `canEdit = false` in build() — so a real
-        // filesystem path (and therefore dart:io File) is guaranteed here.
-        final bytes = await File(edit.coverPath!).readAsBytes();
+      if (edit.coverImage != null) {
+        final bytes = await edit.coverImage!.readAsBytes();
         updated = await _playlistApi.uploadPlaylistCoverImage(
           playlist.id,
           bytes,
-          filename: edit.coverPath!.split('/').last,
+          filename: edit.coverImage!.name,
         );
       }
       if (!mounted) return;
@@ -789,13 +784,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
     final isCollaborator = _collaborators.any(
       (c) => c.collaboratorUsername == authUser.username,
     );
-    // Editing (add/remove/reorder/collaborator-management/cover upload) is
-    // mobile-only — see docs/WEB_BONUS.md. `hasEditPermission` is the real,
-    // permission-based answer the mobile app still uses as-is; `canEdit`
-    // additionally folds in the platform restriction, so every edit
-    // affordance below (which all key off `canEdit`, not
-    // `hasEditPermission`) simply disappears on web without duplicating
-    // this check at each call site.
     final hasEditPermission =
         isOwner ||
         playlist.editPermission == playlistEditPermissionEveryone ||
@@ -809,11 +797,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
     // whether this screen shows edit affordances at all.
     final isPremiumBlocked =
         playlist.visibility == playlistVisibilityPublic && !authUser.isPremium;
-    final canEdit = hasEditPermission && !kIsWeb && !isPremiumBlocked;
+    final canEdit = hasEditPermission && !isPremiumBlocked;
     final needsInvitations =
         playlist.visibility != playlistVisibilityPublic ||
         playlist.editPermission != playlistEditPermissionEveryone;
-    final showInvitationControls = !kIsWeb && isOwner && needsInvitations;
+    final showInvitationControls = isOwner && needsInvitations;
 
     final coverAndInfo = Column(
       children: [
@@ -832,19 +820,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
           ),
         ],
         const SizedBox(height: 24),
-        // `kIsWeb` always wins here: on web this playlist may well be
-        // editable in principle (`hasEditPermission`), just not from a
-        // browser, so the permission-flavored "ask the owner" banner below
-        // would be actively misleading — a web viewer isn't missing
-        // permission, they're missing a mobile device.
-        if (kIsWeb) ...[
-          const _WebViewOnlyBanner(),
-          const SizedBox(height: 16),
-        ] else if (hasEditPermission && isPremiumBlocked) ...[
+        if (hasEditPermission && isPremiumBlocked) ...[
           // Only shown to someone who would otherwise be allowed to edit —
           // a stranger with no edit permission at all sees the "ask the
           // owner"/invited-only banner below instead, regardless of tier.
-          _PremiumRequiredBanner(onUpgrade: () => _onUpgradeToPremium(authUser)),
+          _PremiumRequiredBanner(
+            onUpgrade: () => _onUpgradeToPremium(authUser),
+          ),
           const SizedBox(height: 16),
         ] else if (!canEdit &&
             playlist.editPermission == playlistEditPermissionInvitedOnly) ...[
@@ -868,7 +850,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
       onAddSong: _onAddSong,
       showCollaboratorManagement: showInvitationControls,
       onManageCollaborators: _onManageCollaborators,
-      onEditPlaylist: !kIsWeb && isOwner ? _onEditPlaylist : null,
+      onEditPlaylist: isOwner ? _onEditPlaylist : null,
     );
 
     // [inlineHeader] is `null` for the desktop layout (which renders
@@ -896,9 +878,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                     onDismissed: (_) => _onRemoveSong(_songs[i]),
                     child: _SongRow(
                       song: _songs[i],
+                      onRemove: () async {
+                        final song = _songs[i];
+                        if (await _confirmRemove(song) == true) {
+                          await _onRemoveSong(song);
+                        }
+                      },
                       isPlaying: _playingSongId == _songs[i].id,
-                      onTogglePreview: () =>
-                          _onToggleSongPreview(_songs[i]),
+                      onTogglePreview: () => _onToggleSongPreview(_songs[i]),
                       dragHandle: ReorderableDragStartListener(
                         index: i,
                         child: const Icon(
@@ -969,47 +956,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
   }
 }
 
-/// Shown in place of [_EditLockedBanner] whenever `kIsWeb` — see the
-/// doc comment where it's used in `_buildBody`. Neutral/informational
-/// (the tertiary accent color, not the red "you're missing permission"
-/// styling `_EditLockedBanner` uses) since nothing is actually wrong: the
-/// signed-in user may well be able to edit this playlist, just not from a
-/// browser yet.
-class _WebViewOnlyBanner extends StatelessWidget {
-  const _WebViewOnlyBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-      decoration: BoxDecoration(
-        color: _PlaylistColors.tertiary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _PlaylistColors.tertiary.withValues(alpha: 0.3)),
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.visibility_rounded, size: 16, color: _PlaylistColors.tertiary),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Viewing on web. Open the Music Room app on your phone to add, '
-              'reorder, or remove songs.',
-              style: TextStyle(fontSize: 12, color: _PlaylistColors.muted),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Shown in place of [_EditLockedBanner] when the signed-in user *would*
 /// otherwise be allowed to edit this playlist (owner, or `editPermission`
 /// grants it) but it's public and they're on the Free tier — see
-/// docs/SUBSCRIPTION_BONUS.md. Unlike [_WebViewOnlyBanner], something
-/// actionable is being withheld here, so this uses the red "locked"
+/// docs/SUBSCRIPTION_BONUS.md. This uses the red "locked"
 /// styling and offers a direct upgrade shortcut.
 class _PremiumRequiredBanner extends StatelessWidget {
   const _PremiumRequiredBanner({required this.onUpgrade});
@@ -1031,7 +981,11 @@ class _PremiumRequiredBanner extends StatelessWidget {
         children: [
           const Row(
             children: [
-              Icon(Icons.workspace_premium_outlined, size: 16, color: Colors.redAccent),
+              Icon(
+                Icons.workspace_premium_outlined,
+                size: 16,
+                color: Colors.redAccent,
+              ),
               SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -1050,7 +1004,11 @@ class _PremiumRequiredBanner extends StatelessWidget {
               style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
               child: const Text(
                 'UPGRADE TO PREMIUM',
-                style: TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700, fontSize: 12),
+                style: TextStyle(
+                  fontFamily: 'Sora',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
               ),
             ),
           ),
@@ -1693,6 +1651,7 @@ class _SongRow extends StatelessWidget {
     required this.isPlaying,
     required this.onTogglePreview,
     this.dragHandle,
+    this.onRemove,
   });
 
   final PlaylistSong song;
@@ -1702,6 +1661,7 @@ class _SongRow extends StatelessWidget {
   /// A [ReorderableDragStartListener]-wrapped handle icon, present only
   /// when this row is rendered inside an editable (reorderable) list.
   final Widget? dragHandle;
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -1772,6 +1732,12 @@ class _SongRow extends StatelessWidget {
                 const SizedBox(width: 8),
                 dragHandle!,
               ],
+              if (onRemove != null)
+                IconButton(
+                  tooltip: 'Remove song',
+                  onPressed: onRemove,
+                  icon: const Icon(Icons.remove_circle_outline, size: 20),
+                ),
             ],
           ),
         ),
@@ -1911,4 +1877,3 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
-

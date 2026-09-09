@@ -4,23 +4,36 @@ This documents the web build added on top of the existing Flutter app —
 what changed, every plugin/API break found and how it was fixed, the
 backend changes it required, and what was deliberately left out.
 
-## Scope
+## Current scope
 
-- **Music Track Vote — full read/write on web.** Browse public events,
-  access private ones via invite, suggest tracks, vote, see live
-  vote-driven reordering, all license rules (open / invited-only /
-  time / location) enforced exactly as on mobile.
-- **Music Playlist Editor — read-only on web.** View a playlist and its
-  current order, including live updates when someone else edits it.
-  Add/remove/reorder/collaborator-management/cover upload/create/delete
-  are mobile-only.
-- **Responsive layout.** A real desktop layout (side nav, multi-column
-  lists, two-column detail views) above a 900px-wide breakpoint, not a
-  stretched phone screen.
-- **Out of scope, untouched:** Music Control Delegation (not
-  implemented at all, mandatory or otherwise). Nothing here adds
-  write/edit capability to the Playlist Editor on web. No rewrite —
-  same widget tree, same state management, same API client layer.
+- **Music Track Vote:** existing web support is unchanged.
+- **Music Playlist Editor:** create/delete playlists, edit title/visibility/edit
+  permissions, choose preset or uploaded covers, add/remove/reorder songs, and
+  manage collaborators from the browser. The same ownership, invitation and
+  Free/Premium rules apply on mobile and web. Public playlist song editing
+  requires Premium; private playlists retain their existing permission rules.
+- **Responsive layout:** the existing desktop and narrow-screen layouts remain.
+- **Live collaboration:** WebSocket updates remain enabled across clients.
+- **Concurrency:** add/remove/move lock the parent Playlist row before reading
+  song order. Concurrent duplicates return 400 rather than a database error.
+  Separate playlists can still be edited independently.
+
+### Verify web playlist editing
+
+1. Run `make flutter-web` with the backend available and the API URL configured.
+2. On Playlists, use **+** to create a playlist. Test a preset and uploaded cover.
+3. Use a Premium account for a public playlist, or a permitted private playlist.
+4. Add songs; drag their handles to reorder; use **Remove song** and confirm.
+5. Edit the playlist settings and cover, invite collaborators, and test deletion.
+6. Open the playlist as an authorized user in a second browser. Changes should
+   appear live. Test simultaneous adds and moves without duplicate positions.
+7. Confirm Free accounts cannot edit public songs and uninvited accounts cannot
+   access private playlists.
+
+Regression checks: `python manage.py test playlists` includes PostgreSQL
+threaded API tests for concurrent additions, duplicate additions, opposite moves,
+and mixed add/move/remove. `flutter test test/playlist_picked_cover_test.dart`
+checks byte-based previews, which do not require a native filesystem path.
 
 ## How to run it
 
@@ -46,6 +59,12 @@ doesn't currently have a way to pick different values per platform (it's
 a single `.env` asset baked in at build time) — worth a `--dart-define`
 based override if this becomes a recurring annoyance, but out of scope
 here.
+
+## Historical implementation notes
+
+The notes below describe the original web rollout and its verification at that
+time. References below to read-only playlists, mobile-only playlist controls,
+and native File-based playlist covers are superseded by the current scope above.
 
 ## Plugins/packages: what broke on web, and the fix
 
