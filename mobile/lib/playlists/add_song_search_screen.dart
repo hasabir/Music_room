@@ -1,3 +1,5 @@
+import 'package:mobile/core/responsive/responsive.dart';
+
 import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -274,66 +276,69 @@ class _AddSongSearchScreenState extends State<AddSongSearchScreen> {
       },
       child: Scaffold(
         backgroundColor: _AddSongColors.background,
-        body: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(_addedSongs),
-                      icon: const Icon(
-                        Icons.arrow_back_rounded,
-                        color: _AddSongColors.body,
+        body: ResponsiveContent(
+          maxWidth: 720,
+          child: SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(_addedSongs),
+                        icon: const Icon(
+                          Icons.arrow_back_rounded,
+                          color: _AddSongColors.body,
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        autofocus: true,
-                        onChanged: _onQueryChanged,
-                        style: const TextStyle(color: _AddSongColors.body),
-                        decoration: InputDecoration(
-                          hintText: _searchByArtist
-                              ? 'Search for an artist...'
-                              : 'Search for a song to add...',
-                          hintStyle: const TextStyle(
-                            color: _AddSongColors.muted,
-                          ),
-                          prefixIcon: const Icon(
-                            Icons.search_rounded,
-                            color: _AddSongColors.tertiary,
-                          ),
-                          filled: true,
-                          fillColor: _AddSongColors.card,
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: 14,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(20),
-                            borderSide: BorderSide.none,
+                      Expanded(
+                        child: TextField(
+                          controller: _controller,
+                          autofocus: true,
+                          onChanged: _onQueryChanged,
+                          style: const TextStyle(color: _AddSongColors.body),
+                          decoration: InputDecoration(
+                            hintText: _searchByArtist
+                                ? 'Search for an artist...'
+                                : 'Search for a song to add...',
+                            hintStyle: const TextStyle(
+                              color: _AddSongColors.muted,
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.search_rounded,
+                              color: _AddSongColors.tertiary,
+                            ),
+                            filled: true,
+                            fillColor: _AddSongColors.card,
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 14,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 16),
-                  child: _SearchModeToggle(
-                    byArtist: _searchByArtist,
-                    onChanged: _onSearchModeChanged,
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Expanded(child: _buildBody()),
-            ],
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 16),
+                    child: _SearchModeToggle(
+                      byArtist: _searchByArtist,
+                      onChanged: _onSearchModeChanged,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(child: _buildBody()),
+              ],
+            ),
           ),
         ),
       ),

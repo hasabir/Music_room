@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -150,71 +151,74 @@ class _EmailVerificationPendingScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _PendingColors.background,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: ListView(
-            children: [
-              const SizedBox(height: 8),
-              _BackButton(onPressed: () => Navigator.of(context).pop()),
-              const SizedBox(height: 32),
-              const Center(child: _VerificationIcon()),
-              const SizedBox(height: 32),
-              const Text(
-                'Check your inbox',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Sora',
-                  fontWeight: FontWeight.w800,
-                  fontSize: 32,
-                  height: 1.1,
-                  color: _PendingColors.title,
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'We sent a 6-digit verification code to your email. '
-                'Enter it below to activate your account.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  height: 1.5,
-                  color: _PendingColors.description,
-                ),
-              ),
-              const SizedBox(height: 32),
-              _CodeField(controller: _codeController),
-              const SizedBox(height: 24),
-              if (_statusMessage != null) ...[
-                Text(
-                  _statusMessage!,
+      body: ResponsiveContent(
+        maxWidth: 560,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: ListView(
+              children: [
+                const SizedBox(height: 8),
+                _BackButton(onPressed: () => Navigator.of(context).pop()),
+                const SizedBox(height: 32),
+                const Center(child: _VerificationIcon()),
+                const SizedBox(height: 32),
+                const Text(
+                  'Check your inbox',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 14,
-                    color: _statusIsError
-                        ? _PendingColors.errorText
-                        : _PendingColors.successText,
+                    fontFamily: 'Sora',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 32,
+                    height: 1.1,
+                    color: _PendingColors.title,
                   ),
                 ),
                 const SizedBox(height: 16),
+                const Text(
+                  'We sent a 6-digit verification code to your email. '
+                  'Enter it below to activate your account.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    height: 1.5,
+                    color: _PendingColors.description,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                _CodeField(controller: _codeController),
+                const SizedBox(height: 24),
+                if (_statusMessage != null) ...[
+                  Text(
+                    _statusMessage!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: _statusIsError
+                          ? _PendingColors.errorText
+                          : _PendingColors.successText,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                _PrimaryButton(
+                  label: 'Verify Code',
+                  icon: Icons.check_circle_outline,
+                  isLoading: _isCheckingVerification,
+                  onPressed: _isResending ? null : _onVerifyCode,
+                ),
+                const SizedBox(height: 16),
+                _SecondaryButton(
+                  label: 'Resend Email',
+                  icon: Icons.refresh,
+                  isLoading: _isResending,
+                  onPressed: _isCheckingVerification ? null : _onResend,
+                ),
+                const SizedBox(height: 32),
+                const _StatusIndicator(),
+                const SizedBox(height: 24),
               ],
-              _PrimaryButton(
-                label: 'Verify Code',
-                icon: Icons.check_circle_outline,
-                isLoading: _isCheckingVerification,
-                onPressed: _isResending ? null : _onVerifyCode,
-              ),
-              const SizedBox(height: 16),
-              _SecondaryButton(
-                label: 'Resend Email',
-                icon: Icons.refresh,
-                isLoading: _isResending,
-                onPressed: _isCheckingVerification ? null : _onResend,
-              ),
-              const SizedBox(height: 32),
-              const _StatusIndicator(),
-              const SizedBox(height: 24),
-            ],
+            ),
           ),
         ),
       ),

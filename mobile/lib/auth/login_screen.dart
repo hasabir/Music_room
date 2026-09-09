@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -169,78 +170,83 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _LoginColors.background,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              children: [
-                const SizedBox(height: 8),
-                _BackButton(onPressed: () => Navigator.of(context).pop()),
-                const SizedBox(height: 24),
-                const _Title(),
-                const SizedBox(height: 12),
-                const _Description(),
-                const SizedBox(height: 32),
-                _LabeledField(
-                  label: 'EMAIL ADDRESS',
-                  hint: 'name@example.com',
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Email is required';
-                    }
-                    if (!value.contains('@') || !value.contains('.')) {
-                      return 'Enter a valid email';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-                _LabeledField(
-                  label: 'PASSWORD',
-                  hint: 'Enter your password',
-                  controller: _passwordController,
-                  obscureText: !_isPasswordVisible,
-                  suffixIcon: _VisibilityToggle(
-                    isVisible: _isPasswordVisible,
-                    onPressed: () => setState(
-                      () => _isPasswordVisible = !_isPasswordVisible,
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Password is required';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                _ForgotPasswordLink(onPressed: _onForgotPassword),
-                if (_errorMessage != null) ...[
+      body: ResponsiveContent(
+        maxWidth: 560,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                children: [
                   const SizedBox(height: 8),
-                  _ErrorMessage(message: _errorMessage!),
-                ],
-                const SizedBox(height: 20),
-                _LogInButton(
-                  onPressed: _isSubmitting ? null : _onLogIn,
-                  isLoading: _isSubmitting,
-                ),
-                // Mobile-only — see the matching comment in welcome_screen.dart.
-                if (!kIsWeb) ...[
-                  const SizedBox(height: 20),
-                  const _OrDivider(),
-                  const SizedBox(height: 20),
-                  _GoogleButton(
-                    onPressed: _isSubmitting ? null : () => _onContinueWithGoogle(),
+                  _BackButton(onPressed: () => Navigator.of(context).pop()),
+                  const SizedBox(height: 24),
+                  const _Title(),
+                  const SizedBox(height: 12),
+                  const _Description(),
+                  const SizedBox(height: 32),
+                  _LabeledField(
+                    label: 'EMAIL ADDRESS',
+                    hint: 'name@example.com',
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Email is required';
+                      }
+                      if (!value.contains('@') || !value.contains('.')) {
+                        return 'Enter a valid email';
+                      }
+                      return null;
+                    },
                   ),
+                  const SizedBox(height: 20),
+                  _LabeledField(
+                    label: 'PASSWORD',
+                    hint: 'Enter your password',
+                    controller: _passwordController,
+                    obscureText: !_isPasswordVisible,
+                    suffixIcon: _VisibilityToggle(
+                      isVisible: _isPasswordVisible,
+                      onPressed: () => setState(
+                        () => _isPasswordVisible = !_isPasswordVisible,
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Password is required';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _ForgotPasswordLink(onPressed: _onForgotPassword),
+                  if (_errorMessage != null) ...[
+                    const SizedBox(height: 8),
+                    _ErrorMessage(message: _errorMessage!),
+                  ],
+                  const SizedBox(height: 20),
+                  _LogInButton(
+                    onPressed: _isSubmitting ? null : _onLogIn,
+                    isLoading: _isSubmitting,
+                  ),
+                  // Mobile-only — see the matching comment in welcome_screen.dart.
+                  if (!kIsWeb) ...[
+                    const SizedBox(height: 20),
+                    const _OrDivider(),
+                    const SizedBox(height: 20),
+                    _GoogleButton(
+                      onPressed: _isSubmitting
+                          ? null
+                          : () => _onContinueWithGoogle(),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  _CreateAccountPrompt(onPressed: _onCreateAccount),
+                  const SizedBox(height: 24),
                 ],
-                const SizedBox(height: 24),
-                _CreateAccountPrompt(onPressed: _onCreateAccount),
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
           ),
         ),
@@ -548,13 +554,15 @@ class _GoogleButton extends StatelessWidget {
           children: [
             Image.asset('assets/images/google_logo.png', width: 20, height: 20),
             const SizedBox(width: 12),
-            const Text(
-              'Continue with Google',
-              style: TextStyle(
-                fontFamily: 'Sora',
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-                color: Colors.white,
+            const Flexible(
+              child: Text(
+                'Continue with Google',
+                style: TextStyle(
+                  fontFamily: 'Sora',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  color: Colors.white,
+                ),
               ),
             ),
           ],

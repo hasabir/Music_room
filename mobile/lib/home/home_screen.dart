@@ -205,9 +205,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _onCreateEvent() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const CreateEventScreen()));
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const CreateEventScreen()));
     await _load();
   }
 
@@ -244,9 +243,8 @@ class _HomeScreenState extends State<HomeScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _respondingEventIds.remove(event.id));
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -290,39 +288,42 @@ class _HomeScreenState extends State<HomeScreen> {
       onTabSelected: (tab) => navigateToTab(context, AppTab.home, tab),
       backgroundColor: HomeColors.background,
       floatingActionButton: _CreateEventFab(onTap: _onCreateEvent),
-      body: SafeArea(
-        child: _loadError != null
-            ? HomeErrorPanel(message: _loadError!, onRetry: _load)
-            : RefreshIndicator(
-                onRefresh: _load,
-                color: HomeColors.headline,
-                backgroundColor: HomeColors.card,
-                child: ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.only(top: 8, bottom: 110),
-                  children: [
-                    _loading
-                        ? const HomeHeaderSkeleton()
-                        : _Header(
-                            greetingName: _greetingName(),
-                            profile: _profile,
-                            onTapAvatar: _onOpenProfile,
-                          ),
-                    const SizedBox(height: 28),
-                    const HomeSectionHeader(title: 'Your Events'),
-                    _buildYourEvents(),
-                    if (_pendingInvites != null &&
-                        _pendingInvites!.isNotEmpty) ...[
+      body: ResponsiveContent(
+        maxWidth: 1440,
+        child: SafeArea(
+          child: _loadError != null
+              ? HomeErrorPanel(message: _loadError!, onRetry: _load)
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  color: HomeColors.headline,
+                  backgroundColor: HomeColors.card,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(top: 8, bottom: 110),
+                    children: [
+                      _loading
+                          ? const HomeHeaderSkeleton()
+                          : _Header(
+                              greetingName: _greetingName(),
+                              profile: _profile,
+                              onTapAvatar: _onOpenProfile,
+                            ),
                       const SizedBox(height: 28),
-                      const HomeSectionHeader(title: 'Pending Invitations'),
-                      _buildPendingInvites(),
+                      const HomeSectionHeader(title: 'Your Events'),
+                      _buildYourEvents(),
+                      if (_pendingInvites != null &&
+                          _pendingInvites!.isNotEmpty) ...[
+                        const SizedBox(height: 28),
+                        const HomeSectionHeader(title: 'Pending Invitations'),
+                        _buildPendingInvites(),
+                      ],
+                      const SizedBox(height: 28),
+                      const HomeSectionHeader(title: 'Discover'),
+                      _buildDiscover(),
                     ],
-                    const SizedBox(height: 28),
-                    const HomeSectionHeader(title: 'Discover'),
-                    _buildDiscover(),
-                  ],
+                  ),
                 ),
-              ),
+        ),
       ),
     );
   }

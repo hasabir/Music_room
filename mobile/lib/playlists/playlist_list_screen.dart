@@ -198,85 +198,93 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       currentTab: AppTab.playlist,
       onTabSelected: (tab) => navigateToTab(context, AppTab.playlist, tab),
       backgroundColor: _PlaylistColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _ListHeader(onCreate: _onCreatePlaylist),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _TabSwitcher(
-                tab: _tab,
-                onChanged: (tab) => setState(() => _tab = tab),
+      body: ResponsiveContent(
+        maxWidth: 1440,
+        child: SafeArea(
+          child: Column(
+            children: [
+              _ListHeader(onCreate: _onCreatePlaylist),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _TabSwitcher(
+                  tab: _tab,
+                  onChanged: (tab) => setState(() => _tab = tab),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: FutureBuilder<_ListData>(
-                future: _dataFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(
-                        color: _PlaylistColors.headline,
-                      ),
-                    );
-                  }
+              const SizedBox(height: 8),
+              Expanded(
+                child: FutureBuilder<_ListData>(
+                  future: _dataFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: _PlaylistColors.headline,
+                        ),
+                      );
+                    }
 
-                  if (snapshot.hasError || !snapshot.hasData) {
-                    final message = snapshot.error is ApiException
-                        ? (snapshot.error as ApiException).message
-                        : 'Could not load playlists.';
-                    return _ErrorState(message: message, onRetry: _refresh);
-                  }
+                    if (snapshot.hasError || !snapshot.hasData) {
+                      final message = snapshot.error is ApiException
+                          ? (snapshot.error as ApiException).message
+                          : 'Could not load playlists.';
+                      return _ErrorState(message: message, onRetry: _refresh);
+                    }
 
-                  final data = snapshot.data!;
-                  final username = data.authUser?.username ?? '';
-                  final visible = data.playlists.where((p) {
-                    final mine = _isMine(p, username);
-                    return switch (_tab) {
-                      _PlaylistTab.mine => mine,
-                      _PlaylistTab.joined => !mine && _isJoined(p),
-                      _PlaylistTab.discover => !mine && !_isJoined(p),
-                    };
-                  }).toList();
+                    final data = snapshot.data!;
+                    final username = data.authUser?.username ?? '';
+                    final visible = data.playlists.where((p) {
+                      final mine = _isMine(p, username);
+                      return switch (_tab) {
+                        _PlaylistTab.mine => mine,
+                        _PlaylistTab.joined => !mine && _isJoined(p),
+                        _PlaylistTab.discover => !mine && !_isJoined(p),
+                      };
+                    }).toList();
 
-                  return RefreshIndicator(
-                    onRefresh: _refresh,
-                    color: _PlaylistColors.headline,
-                    backgroundColor: _PlaylistColors.card,
-                    child: visible.isEmpty
-                        ? ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 40, 16, 24),
-                            children: [
-                              _EmptyState(
-                                tab: _tab,
-                                onCreate: _tab == _PlaylistTab.mine
-                                    ? _onCreatePlaylist
-                                    : null,
+                    return RefreshIndicator(
+                      onRefresh: _refresh,
+                      color: _PlaylistColors.headline,
+                      backgroundColor: _PlaylistColors.card,
+                      child: visible.isEmpty
+                          ? ListView(
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                40,
+                                16,
+                                24,
                               ),
-                            ],
-                          )
-                        : ResponsiveCardGrid(
-                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                            spacing: 12,
-                            scrollPhysics:
-                                const AlwaysScrollableScrollPhysics(),
-                            children: [
-                              for (final playlist in visible)
-                                _PlaylistHeroCard(
-                                  playlist: playlist,
-                                  isOwner: playlist.owner == username,
-                                  onTap: () => _onOpenPlaylist(playlist),
-                                  onDelete: () => _onDeletePlaylist(playlist),
+                              children: [
+                                _EmptyState(
+                                  tab: _tab,
+                                  onCreate: _tab == _PlaylistTab.mine
+                                      ? _onCreatePlaylist
+                                      : null,
                                 ),
-                            ],
-                          ),
-                  );
-                },
+                              ],
+                            )
+                          : ResponsiveCardGrid(
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                              spacing: 12,
+                              scrollPhysics:
+                                  const AlwaysScrollableScrollPhysics(),
+                              children: [
+                                for (final playlist in visible)
+                                  _PlaylistHeroCard(
+                                    playlist: playlist,
+                                    isOwner: playlist.owner == username,
+                                    onTap: () => _onOpenPlaylist(playlist),
+                                    onDelete: () => _onDeletePlaylist(playlist),
+                                  ),
+                              ],
+                            ),
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -489,11 +497,11 @@ class _PlaylistHeroCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
                     children: [
                       VisibilityBadge(visibility: playlist.visibility),
-                      const SizedBox(width: 8),
                       EditPermissionBadge(
                         editPermission: playlist.editPermission,
                       ),

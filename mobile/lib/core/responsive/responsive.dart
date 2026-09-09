@@ -17,6 +17,56 @@ class Breakpoints {
 bool isDesktopWidth(BuildContext context) =>
     MediaQuery.sizeOf(context).width >= Breakpoints.desktop;
 
+/// Keeps forms and detail pages readable without imposing a minimum width.
+/// The child retains bounded height so its own lists can scroll normally.
+class ResponsiveContent extends StatelessWidget {
+  const ResponsiveContent({
+    super.key,
+    required this.child,
+    this.maxWidth = 720,
+  });
+
+  final Widget child;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.topCenter,
+    child: ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: SizedBox(width: double.infinity, child: child),
+    ),
+  );
+}
+
+/// A small hero/action column that fills tall windows and scrolls in short
+/// windows, including when the keyboard reduces the available height.
+class ResponsiveScrollColumn extends StatelessWidget {
+  const ResponsiveScrollColumn({
+    super.key,
+    required this.children,
+    this.crossAxisAlignment = CrossAxisAlignment.center,
+  });
+
+  final List<Widget> children;
+  final CrossAxisAlignment crossAxisAlignment;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => SingleChildScrollView(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: constraints.maxHeight),
+        child: IntrinsicHeight(
+          child: Column(
+            crossAxisAlignment: crossAxisAlignment,
+            children: children,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 /// Wraps a screen's `body` with Music Room's bottom tab bar on narrow
 /// (phone) layouts, or a [NavigationRail] down the left edge on wide
 /// (desktop/web) layouts — the same four [AppTab] destinations either way,
@@ -70,26 +120,36 @@ class ResponsiveScaffold extends StatelessWidget {
       floatingActionButton: floatingActionButton,
       body: Row(
         children: [
-          NavigationRail(
-            selectedIndex: _items.indexWhere((i) => i.tab == currentTab),
-            onDestinationSelected: (index) =>
-                onTabSelected(_items[index].tab),
-            labelType: NavigationRailLabelType.all,
-            backgroundColor: const Color(0xFF16151F),
-            selectedIconTheme: const IconThemeData(color: Color(0xFFF5F4FF)),
-            selectedLabelTextStyle: const TextStyle(
-              color: Color(0xFFF5F4FF),
-              fontWeight: FontWeight.w700,
-            ),
-            unselectedIconTheme: const IconThemeData(color: Color(0xFF8F8DA3)),
-            unselectedLabelTextStyle: const TextStyle(color: Color(0xFF8F8DA3)),
-            destinations: [
-              for (final item in _items)
-                NavigationRailDestination(
-                  icon: Icon(item.icon),
-                  label: Text(item.label),
+          SingleChildScrollView(
+            child: IntrinsicHeight(
+              child: NavigationRail(
+                selectedIndex: _items.indexWhere((i) => i.tab == currentTab),
+                onDestinationSelected: (index) =>
+                    onTabSelected(_items[index].tab),
+                labelType: NavigationRailLabelType.all,
+                backgroundColor: const Color(0xFF16151F),
+                selectedIconTheme: const IconThemeData(
+                  color: Color(0xFFF5F4FF),
                 ),
-            ],
+                selectedLabelTextStyle: const TextStyle(
+                  color: Color(0xFFF5F4FF),
+                  fontWeight: FontWeight.w700,
+                ),
+                unselectedIconTheme: const IconThemeData(
+                  color: Color(0xFF8F8DA3),
+                ),
+                unselectedLabelTextStyle: const TextStyle(
+                  color: Color(0xFF8F8DA3),
+                ),
+                destinations: [
+                  for (final item in _items)
+                    NavigationRailDestination(
+                      icon: Icon(item.icon),
+                      label: Text(item.label),
+                    ),
+                ],
+              ),
+            ),
           ),
           const VerticalDivider(width: 1, color: Color(0xFF2A2935)),
           Expanded(child: body),
@@ -139,7 +199,7 @@ class ResponsiveCardGrid extends StatelessWidget {
         // Wrap child's width is fixed once computed and can't shrink to
         // fit the space padding then reclaims, unlike a Row's Expanded.
         final availableWidth = constraints.maxWidth - padding.horizontal;
-        final columns = (availableWidth / minCardWidth)
+        final columns = ((availableWidth + spacing) / (minCardWidth + spacing))
             .floor()
             .clamp(1, maxColumns);
 
@@ -153,8 +213,7 @@ class ResponsiveCardGrid extends StatelessWidget {
           );
         }
 
-        final cardWidth =
-            (availableWidth - spacing * (columns - 1)) / columns;
+        final cardWidth = (availableWidth - spacing * (columns - 1)) / columns;
         return ListView(
           padding: padding,
           physics: scrollPhysics,

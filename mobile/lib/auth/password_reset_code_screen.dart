@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -140,70 +141,73 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _CodeColors.background,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: ListView(
-            children: [
-              const SizedBox(height: 8),
-              _BackButton(onPressed: () => Navigator.of(context).pop()),
-              const SizedBox(height: 32),
-              const Center(child: _CodeIcon()),
-              const SizedBox(height: 32),
-              const Text(
-                'Check your inbox',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Sora',
-                  fontWeight: FontWeight.w800,
-                  fontSize: 32,
-                  height: 1.1,
-                  color: _CodeColors.title,
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'We sent a 6-digit reset code to your email. Enter it '
-                'below to continue.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  height: 1.5,
-                  color: _CodeColors.description,
-                ),
-              ),
-              const SizedBox(height: 32),
-              _CodeField(controller: _codeController),
-              const SizedBox(height: 24),
-              if (_statusMessage != null) ...[
-                Text(
-                  _statusMessage!,
+      body: ResponsiveContent(
+        maxWidth: 560,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: ListView(
+              children: [
+                const SizedBox(height: 8),
+                _BackButton(onPressed: () => Navigator.of(context).pop()),
+                const SizedBox(height: 32),
+                const Center(child: _CodeIcon()),
+                const SizedBox(height: 32),
+                const Text(
+                  'Check your inbox',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 14,
-                    color: _statusIsError
-                        ? _CodeColors.errorText
-                        : _CodeColors.successText,
+                    fontFamily: 'Sora',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 32,
+                    height: 1.1,
+                    color: _CodeColors.title,
                   ),
                 ),
                 const SizedBox(height: 16),
+                const Text(
+                  'We sent a 6-digit reset code to your email. Enter it '
+                  'below to continue.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    height: 1.5,
+                    color: _CodeColors.description,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                _CodeField(controller: _codeController),
+                const SizedBox(height: 24),
+                if (_statusMessage != null) ...[
+                  Text(
+                    _statusMessage!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: _statusIsError
+                          ? _CodeColors.errorText
+                          : _CodeColors.successText,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                _PrimaryButton(
+                  label: 'Continue',
+                  isLoading: _isVerifying,
+                  onPressed: _isResending ? null : _onContinue,
+                ),
+                const SizedBox(height: 16),
+                _SecondaryButton(
+                  label: 'Resend Email',
+                  icon: Icons.refresh,
+                  isLoading: _isResending,
+                  onPressed: _isVerifying ? null : _onResend,
+                ),
+                const SizedBox(height: 32),
+                const _StatusIndicator(),
+                const SizedBox(height: 24),
               ],
-              _PrimaryButton(
-                label: 'Continue',
-                isLoading: _isVerifying,
-                onPressed: _isResending ? null : _onContinue,
-              ),
-              const SizedBox(height: 16),
-              _SecondaryButton(
-                label: 'Resend Email',
-                icon: Icons.refresh,
-                isLoading: _isResending,
-                onPressed: _isVerifying ? null : _onResend,
-              ),
-              const SizedBox(height: 32),
-              const _StatusIndicator(),
-              const SizedBox(height: 24),
-            ],
+            ),
           ),
         ),
       ),

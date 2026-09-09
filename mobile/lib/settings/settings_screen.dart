@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/auth_api.dart';
@@ -28,7 +29,11 @@ class _SettingsColors {
 /// from the caller rather than re-fetching, since Profile just loaded
 /// both.
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, required this.profile, required this.authUser});
+  const SettingsScreen({
+    super.key,
+    required this.profile,
+    required this.authUser,
+  });
 
   final UserProfile profile;
   final AuthUser authUser;
@@ -42,14 +47,17 @@ class SettingsScreen extends StatelessWidget {
   Future<void> _onEditProfile(BuildContext context) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => EditProfileScreen(profile: profile, email: authUser.email),
+        builder: (_) =>
+            EditProfileScreen(profile: profile, email: authUser.email),
       ),
     );
   }
 
   void _onConnectedAccounts(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ConnectedAccountsScreen(authUser: authUser)),
+      MaterialPageRoute(
+        builder: (_) => ConnectedAccountsScreen(authUser: authUser),
+      ),
     );
   }
 
@@ -63,14 +71,15 @@ class SettingsScreen extends StatelessWidget {
     if (authUser.registrationMethod == 'google') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Google accounts sign in through Google, not a Music Room password.'),
+          content: Text(
+            'Google accounts sign in through Google, not a Music Room password.',
+          ),
         ),
       );
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const UpdatePasswordScreen()),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const UpdatePasswordScreen()));
   }
 
   void _onVerificationStatus(BuildContext context) {
@@ -113,106 +122,124 @@ class SettingsScreen extends StatelessWidget {
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: _SettingsColors.card,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: _SettingsColors.border),
-            ),
-            child: Row(
-              children: [
-                ClipOval(
-                  child: SizedBox(
-                    width: 60,
-                    height: 60,
-                    child: ProfileAvatarImage(
-                      avatar: profile.avatar,
-                      avatarType: profile.avatarType,
-                      fallback: const ColoredBox(
-                        color: _SettingsColors.border,
-                        child: Icon(Icons.person_rounded, color: _SettingsColors.muted, size: 30),
+      body: ResponsiveContent(
+        maxWidth: 720,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _SettingsColors.card,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _SettingsColors.border),
+              ),
+              child: Row(
+                children: [
+                  ClipOval(
+                    child: SizedBox(
+                      width: 60,
+                      height: 60,
+                      child: ProfileAvatarImage(
+                        avatar: profile.avatar,
+                        avatarType: profile.avatarType,
+                        fallback: const ColoredBox(
+                          color: _SettingsColors.border,
+                          child: Icon(
+                            Icons.person_rounded,
+                            color: _SettingsColors.muted,
+                            size: 30,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _displayName,
-                        style: const TextStyle(
-                          fontFamily: 'Sora',
-                          fontWeight: FontWeight.w700,
-                          fontSize: 17,
-                          color: _SettingsColors.body,
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _displayName,
+                          style: const TextStyle(
+                            fontFamily: 'Sora',
+                            fontWeight: FontWeight.w700,
+                            fontSize: 17,
+                            color: _SettingsColors.body,
+                          ),
                         ),
-                      ),
-                      
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                IconButton(
-                  onPressed: () => _onEditProfile(context),
-                  icon: const Icon(Icons.edit_rounded, color: _SettingsColors.headline, size: 18),
-                ),
-              ],
+                  IconButton(
+                    onPressed: () => _onEditProfile(context),
+                    icon: const Icon(
+                      Icons.edit_rounded,
+                      color: _SettingsColors.headline,
+                      size: 18,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-          _SettingsRow(
-            icon: Icons.workspace_premium_outlined,
-            title: 'Subscription',
-            subtitle: authUser.isPremium ? 'Premium' : 'Free',
-            subtitleColor: authUser.isPremium ? _SettingsColors.verified : null,
-            onTap: () => _onSubscription(context),
-          ),
-          _SettingsRow(
-            icon: Icons.account_circle_outlined,
-            title: 'Connected Accounts',
-            subtitle: authUser.registrationMethod == 'google' ? 'Google' : 'Email settings',
-            onTap: () => _onConnectedAccounts(context),
-          ),
-          _SettingsRow(
-            icon: Icons.key_rounded,
-            title: 'Change Password',
-            subtitle: 'Update security credentials',
-            onTap: () => _onChangePassword(context),
-          ),
-          // _SettingsRow(
-          //   icon: Icons.verified_rounded,
-          //   title: 'Verification Status',
-          //   subtitle: authUser.isEmailVerified ? 'Verified' : 'Not verified — tap to verify',
-          //   subtitleColor: authUser.isEmailVerified ? _SettingsColors.verified : null,
-          //   onTap: () => _onVerificationStatus(context),
-          // ),
-          // _SettingsRow(
-          //   icon: Icons.tune_rounded,
-          //   title: 'Backend Config',
-          //   subtitle: ApiConfig.baseUrl,
-          //   onTap: null,
-          // ),
-          const SizedBox(height: 32),
-          Center(
-            child: TextButton.icon(
-              onPressed: () => _onLogout(context),
-              icon: const Icon(Icons.logout_rounded, color: _SettingsColors.logout, size: 18),
-              label: const Text(
-                'Logout',
-                style: TextStyle(
-                  fontFamily: 'Sora',
-                  fontWeight: FontWeight.w700,
+            const SizedBox(height: 20),
+            _SettingsRow(
+              icon: Icons.workspace_premium_outlined,
+              title: 'Subscription',
+              subtitle: authUser.isPremium ? 'Premium' : 'Free',
+              subtitleColor: authUser.isPremium
+                  ? _SettingsColors.verified
+                  : null,
+              onTap: () => _onSubscription(context),
+            ),
+            _SettingsRow(
+              icon: Icons.account_circle_outlined,
+              title: 'Connected Accounts',
+              subtitle: authUser.registrationMethod == 'google'
+                  ? 'Google'
+                  : 'Email settings',
+              onTap: () => _onConnectedAccounts(context),
+            ),
+            _SettingsRow(
+              icon: Icons.key_rounded,
+              title: 'Change Password',
+              subtitle: 'Update security credentials',
+              onTap: () => _onChangePassword(context),
+            ),
+            // _SettingsRow(
+            //   icon: Icons.verified_rounded,
+            //   title: 'Verification Status',
+            //   subtitle: authUser.isEmailVerified ? 'Verified' : 'Not verified — tap to verify',
+            //   subtitleColor: authUser.isEmailVerified ? _SettingsColors.verified : null,
+            //   onTap: () => _onVerificationStatus(context),
+            // ),
+            // _SettingsRow(
+            //   icon: Icons.tune_rounded,
+            //   title: 'Backend Config',
+            //   subtitle: ApiConfig.baseUrl,
+            //   onTap: null,
+            // ),
+            const SizedBox(height: 32),
+            Center(
+              child: TextButton.icon(
+                onPressed: () => _onLogout(context),
+                icon: const Icon(
+                  Icons.logout_rounded,
                   color: _SettingsColors.logout,
+                  size: 18,
+                ),
+                label: const Text(
+                  'Logout',
+                  style: TextStyle(
+                    fontFamily: 'Sora',
+                    fontWeight: FontWeight.w700,
+                    color: _SettingsColors.logout,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -279,7 +306,10 @@ class _SettingsRow extends StatelessWidget {
                 ),
               ),
               if (onTap != null)
-                const Icon(Icons.chevron_right_rounded, color: _SettingsColors.muted),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: _SettingsColors.muted,
+                ),
             ],
           ),
         ),

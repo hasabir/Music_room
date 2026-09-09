@@ -127,7 +127,8 @@ class _ProfilePreviewSheetState extends State<ProfilePreviewSheet> {
       await action();
     } on ApiException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
       }
     } finally {
       if (mounted) setState(() => _isActing = false);
@@ -185,136 +186,147 @@ class _ProfilePreviewSheetState extends State<ProfilePreviewSheet> {
   Widget build(BuildContext context) {
     return SafeArea(
       top: false,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          24,
-          24,
-          24,
-          24 + MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: FutureBuilder<OtherUserProfile>(
-          future: _profileFuture,
-          builder: (context, snapshot) {
-            final profile = snapshot.data;
-            final name = (profile?.displayName.isNotEmpty ?? false)
-                ? profile!.displayName
-                : widget.initialName;
-            final username = (profile?.username.isNotEmpty ?? false)
-                ? profile!.username
-                : (widget.initialUsername ?? '');
-            final avatar = profile?.avatar ?? widget.initialAvatar;
-            final avatarType =
-                profile?.avatarType ?? widget.initialAvatarType ?? profileAvatarTypePreset;
-            final isLoading = snapshot.connectionState == ConnectionState.waiting;
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            24,
+            24,
+            24,
+            24 + MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: FutureBuilder<OtherUserProfile>(
+            future: _profileFuture,
+            builder: (context, snapshot) {
+              final profile = snapshot.data;
+              final name = (profile?.displayName.isNotEmpty ?? false)
+                  ? profile!.displayName
+                  : widget.initialName;
+              final username = (profile?.username.isNotEmpty ?? false)
+                  ? profile!.username
+                  : (widget.initialUsername ?? '');
+              final avatar = profile?.avatar ?? widget.initialAvatar;
+              final avatarType =
+                  profile?.avatarType ??
+                  widget.initialAvatarType ??
+                  profileAvatarTypePreset;
+              final isLoading =
+                  snapshot.connectionState == ConnectionState.waiting;
 
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 92,
-                  height: 92,
-                  padding: const EdgeInsets.all(3),
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [_PreviewColors.tertiary, _PreviewColors.headline],
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 92,
+                    height: 92,
+                    padding: const EdgeInsets.all(3),
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [
+                          _PreviewColors.tertiary,
+                          _PreviewColors.headline,
+                        ],
+                      ),
                     ),
-                  ),
-                  child: ClipOval(
-                    child: ProfileAvatarImage(
-                      avatar: avatar,
-                      avatarType: avatarType,
-                      fallback: const ColoredBox(
-                        color: _PreviewColors.border,
-                        child: Icon(
-                          Icons.person_rounded,
-                          color: _PreviewColors.muted,
-                          size: 40,
+                    child: ClipOval(
+                      child: ProfileAvatarImage(
+                        avatar: avatar,
+                        avatarType: avatarType,
+                        fallback: const ColoredBox(
+                          color: _PreviewColors.border,
+                          child: Icon(
+                            Icons.person_rounded,
+                            color: _PreviewColors.muted,
+                            size: 40,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  name.isEmpty ? 'Unknown' : name,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontFamily: 'Sora',
-                    fontWeight: FontWeight.w800,
-                    fontSize: 20,
-                    color: _PreviewColors.body,
-                  ),
-                ),
-                if (username.isNotEmpty) ...[
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 14),
                   Text(
-                    '@$username',
-                    style: const TextStyle(fontSize: 13, color: _PreviewColors.muted),
+                    name.isEmpty ? 'Unknown' : name,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontFamily: 'Sora',
+                      fontWeight: FontWeight.w800,
+                      fontSize: 20,
+                      color: _PreviewColors.body,
+                    ),
                   ),
-                ],
-                const SizedBox(height: 16),
-                if (isLoading)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 10),
-                    child: SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: _PreviewColors.tertiary,
-                      ),
-                    ),
-                  )
-                else if (snapshot.hasError)
-                  const Text(
-                    'Could not load this profile.',
-                    style: TextStyle(color: _PreviewColors.muted),
-                  )
-                else ...[
-                  if (_relationshipStatus != null)
-                    RelationshipActionRow(
-                      status: _relationshipStatus!,
-                      isActing: _isActing,
-                      onAdd: _onAdd,
-                      onRemove: _onRemove,
-                      onCancel: _onCancel,
-                      onAccept: _onAccept,
-                      onDecline: _onDecline,
-                    ),
-                  if ((profile?.bio ?? '').isNotEmpty) ...[
-                    const SizedBox(height: 14),
+                  if (username.isNotEmpty) ...[
+                    const SizedBox(height: 2),
                     Text(
-                      profile!.bio,
-                      textAlign: TextAlign.center,
+                      '@$username',
                       style: const TextStyle(
-                        fontSize: 13.5,
-                        height: 1.4,
-                        color: _PreviewColors.description,
+                        fontSize: 13,
+                        color: _PreviewColors.muted,
                       ),
                     ),
                   ],
-                ],
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _openFullProfile(name),
-                    icon: const Icon(Icons.person_rounded, size: 18),
-                    label: const Text('View Full Profile'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _PreviewColors.tertiary,
-                      side: const BorderSide(color: _PreviewColors.tertiary),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                  const SizedBox(height: 16),
+                  if (isLoading)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _PreviewColors.tertiary,
+                        ),
+                      ),
+                    )
+                  else if (snapshot.hasError)
+                    const Text(
+                      'Could not load this profile.',
+                      style: TextStyle(color: _PreviewColors.muted),
+                    )
+                  else ...[
+                    if (_relationshipStatus != null)
+                      RelationshipActionRow(
+                        status: _relationshipStatus!,
+                        isActing: _isActing,
+                        onAdd: _onAdd,
+                        onRemove: _onRemove,
+                        onCancel: _onCancel,
+                        onAccept: _onAccept,
+                        onDecline: _onDecline,
+                      ),
+                    if ((profile?.bio ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      Text(
+                        profile!.bio,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          height: 1.4,
+                          color: _PreviewColors.description,
+                        ),
+                      ),
+                    ],
+                  ],
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openFullProfile(name),
+                      icon: const Icon(Icons.person_rounded, size: 18),
+                      label: const Text('View Full Profile'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _PreviewColors.tertiary,
+                        side: const BorderSide(color: _PreviewColors.tertiary),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
       ),
     );

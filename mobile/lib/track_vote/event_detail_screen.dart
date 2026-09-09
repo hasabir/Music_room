@@ -114,7 +114,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   bool get _hasJoinedEvent {
     final event = _event;
     if (event == null) return true;
-    return _isHost || event.isMember || event.visibility == eventVisibilityPrivate;
+    return _isHost ||
+        event.isMember ||
+        event.visibility == eventVisibilityPrivate;
   }
 
   var _isJoiningEvent = false;
@@ -157,7 +159,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     // Leaving only ever stops what *this device* renders — it never
     // mutates the event's shared state, which keeps moving forward for
     // everyone else regardless (see DECISIONS.md).
-    if (_playback.state.value.trackKey?.startsWith('event:${widget.eventId}:') ??
+    if (_playback.state.value.trackKey?.startsWith(
+          'event:${widget.eventId}:',
+        ) ??
         false) {
       unawaited(_playback.stop());
     }
@@ -291,7 +295,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   /// *close enough* to the venue is left to the backend's existing
   /// `can_user_vote` distance check — this only ever resolves and hands
   /// off a coordinate, it doesn't itself decide "too far".
-  Future<({double latitude, double longitude})?> _voterCoordinates(Event event) async {
+  Future<({double latitude, double longitude})?> _voterCoordinates(
+    Event event,
+  ) async {
     if (!event.locationRestrictionEnabled) return null;
 
     final location = _myProfile?.location.trim() ?? '';
@@ -346,7 +352,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       // above rather than letting it go uncaught.
       reason = error.message;
     }
-    if (mounted && reason != null) setState(() => _voteRestrictionReason = reason);
+    if (mounted && reason != null) {
+      setState(() => _voteRestrictionReason = reason);
+    }
   }
 
   String _playbackKey(int? songId) => 'event:${widget.eventId}:$songId';
@@ -547,12 +555,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (sheetContext) => _VotingRequirementsSheet(
-        event: event,
-        onTryAgain: () {
-          Navigator.pop(sheetContext);
-          setState(() => _voteRestrictionReason = null);
-        },
+      builder: (sheetContext) => SingleChildScrollView(
+        child: _VotingRequirementsSheet(
+          event: event,
+          onTryAgain: () {
+            Navigator.pop(sheetContext);
+            setState(() => _voteRestrictionReason = null);
+          },
+        ),
       ),
     );
   }
@@ -627,15 +637,17 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (sheetContext) => _EventMenuSheet(
-        onManageGuests: () {
-          Navigator.pop(sheetContext);
-          _openGuestManagement();
-        },
-        onOpenSettings: () {
-          Navigator.pop(sheetContext);
-          _openEventSettings();
-        },
+      builder: (sheetContext) => SingleChildScrollView(
+        child: _EventMenuSheet(
+          onManageGuests: () {
+            Navigator.pop(sheetContext);
+            _openGuestManagement();
+          },
+          onOpenSettings: () {
+            Navigator.pop(sheetContext);
+            _openEventSettings();
+          },
+        ),
       ),
     );
   }
@@ -645,7 +657,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     if (_isPrivateAccessDenied) return const PrivateEventAccessDeniedScreen();
     return Scaffold(
       backgroundColor: _EventColors.background,
-      body: SafeArea(child: _buildBody()),
+      body: ResponsiveContent(
+        maxWidth: 1000,
+        child: SafeArea(child: _buildBody()),
+      ),
     );
   }
 
@@ -672,10 +687,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     // Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md).
     // `null` limit means Premium (or not yet loaded) — unlimited either way.
     final isPremium = _authUser?.isPremium ?? false;
-    final atSuggestionLimit = !isPremium &&
+    final atSuggestionLimit =
+        !isPremium &&
         event.mySuggestionLimit != null &&
         event.mySuggestionCount >= event.mySuggestionLimit!;
-    final atVoteLimit = !isPremium &&
+    final atVoteLimit =
+        !isPremium &&
         event.myVoteLimit != null &&
         event.myVoteCount >= event.myVoteLimit!;
 
@@ -686,7 +703,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       child: ValueListenableBuilder<PlaybackState>(
         valueListenable: _playback.state,
         builder: (context, playbackState, _) {
-          final isPlayingHere = playing != null &&
+          final isPlayingHere =
+              playing != null &&
               playbackState.trackKey == _playbackKey(playing.id);
 
           // Everything about the event itself: title, host, description,
@@ -723,23 +741,25 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   color: _EventColors.tertiary,
                 ),
                 const SizedBox(width: 4),
-                Text.rich(
-                  TextSpan(
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: _EventColors.muted,
-                    ),
-                    children: [
-                      const TextSpan(text: 'Hosted by '),
-                      TextSpan(
-                        text: event.host,
-                        style: const TextStyle(
-                          fontFamily: 'Sora',
-                          fontWeight: FontWeight.w700,
-                          color: _EventColors.tertiary,
-                        ),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: _EventColors.muted,
                       ),
-                    ],
+                      children: [
+                        const TextSpan(text: 'Hosted by '),
+                        TextSpan(
+                          text: event.host,
+                          style: const TextStyle(
+                            fontFamily: 'Sora',
+                            fontWeight: FontWeight.w700,
+                            color: _EventColors.tertiary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -748,10 +768,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               const SizedBox(height: 6),
               Text(
                 event.description,
-                style: const TextStyle(
-                  color: _EventColors.muted,
-                  fontSize: 13,
-                ),
+                style: const TextStyle(color: _EventColors.muted, fontSize: 13),
               ),
             ],
             const SizedBox(height: 14),
@@ -840,8 +857,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 event.status == eventStatusDeleted
                     ? 'This event has been deleted by the host.'
                     : event.status == eventStatusCanceled
-                        ? 'This event has been canceled.'
-                        : 'This event is closed — no new tracks can be suggested.',
+                    ? 'This event has been canceled.'
+                    : 'This event is closed — no new tracks can be suggested.',
                 style: const TextStyle(
                   fontSize: 12.5,
                   color: _EventColors.muted,
@@ -865,7 +882,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.how_to_reg_rounded, size: 20),
-                  label: Text(_isJoiningEvent ? 'Joining…' : 'Join to suggest a track'),
+                  label: Text(
+                    _isJoiningEvent ? 'Joining…' : 'Join to suggest a track',
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _EventColors.tertiary,
                     foregroundColor: const Color(0xFF0E0E15),
@@ -887,7 +906,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 child: OutlinedButton.icon(
                   onPressed: () => _openSubscriptionScreen(),
                   icon: const Icon(Icons.workspace_premium_rounded, size: 20),
-                  label: const Text('Suggestion limit reached — Upgrade to Premium'),
+                  label: const Text(
+                    'Suggestion limit reached — Upgrade to Premium',
+                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: _EventColors.muted,
                     side: const BorderSide(color: _EventColors.cardBorder),
@@ -920,7 +941,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     '${event.mySuggestionCount}/${event.mySuggestionLimit} suggestions used',
-                    style: const TextStyle(fontSize: 11, color: _EventColors.muted),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: _EventColors.muted,
+                    ),
                   ),
                 ),
             ],
@@ -938,8 +962,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   // it must never be disabled by the cap. Unlike
                   // isVotingRestricted (reactive, uniform across every
                   // row), this is proactive and per-row on purpose.
-                  isReadOnly: isVotingRestricted || (atVoteLimit && !entry.hasVoted),
-                  isPlaying: playbackState.trackKey == _playbackKey(entry.id) &&
+                  isReadOnly:
+                      isVotingRestricted || (atVoteLimit && !entry.hasVoted),
+                  isPlaying:
+                      playbackState.trackKey == _playbackKey(entry.id) &&
                       playbackState.isPlaying,
                   onVote: () => _toggleVote(entry),
                 ),
@@ -1044,8 +1070,8 @@ class _CoverHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final preset = EventCoverPreset.byId(event.coverPreset);
     return SizedBox(
-      height: MediaQuery.sizeOf(context).height * 0.3,
-      width: MediaQuery.sizeOf(context).width,
+      height: (MediaQuery.sizeOf(context).height * 0.3).clamp(220.0, 380.0),
+      width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -1198,13 +1224,25 @@ class _EventMenuSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
-            leading: const Icon(Icons.group_rounded, color: _EventColors.tertiary),
-            title: const Text('Manage guests', style: TextStyle(color: _EventColors.body)),
+            leading: const Icon(
+              Icons.group_rounded,
+              color: _EventColors.tertiary,
+            ),
+            title: const Text(
+              'Manage guests',
+              style: TextStyle(color: _EventColors.body),
+            ),
             onTap: onManageGuests,
           ),
           ListTile(
-            leading: const Icon(Icons.settings_rounded, color: _EventColors.tertiary),
-            title: const Text('Event settings', style: TextStyle(color: _EventColors.body)),
+            leading: const Icon(
+              Icons.settings_rounded,
+              color: _EventColors.tertiary,
+            ),
+            title: const Text(
+              'Event settings',
+              style: TextStyle(color: _EventColors.body),
+            ),
             onTap: onOpenSettings,
           ),
         ],
@@ -1256,7 +1294,9 @@ class _LikeButton extends StatelessWidget {
           children: [
             Icon(
               hasLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-              color: hasLiked ? EventBadgeColors.statusCanceled : _EventColors.muted,
+              color: hasLiked
+                  ? EventBadgeColors.statusCanceled
+                  : _EventColors.muted,
               size: 24,
             ),
             const SizedBox(height: 2),
@@ -1266,7 +1306,9 @@ class _LikeButton extends StatelessWidget {
                 fontFamily: 'Sora',
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: hasLiked ? EventBadgeColors.statusCanceled : _EventColors.muted,
+                color: hasLiked
+                    ? EventBadgeColors.statusCanceled
+                    : _EventColors.muted,
               ),
             ),
           ],
@@ -1308,7 +1350,11 @@ class _ParticipantsSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final names = attendees
-        .map((a) => a.memberDisplayName.isNotEmpty ? a.memberDisplayName : a.memberEmail)
+        .map(
+          (a) => a.memberDisplayName.isNotEmpty
+              ? a.memberDisplayName
+              : a.memberEmail,
+        )
         .toList();
     final isFull = participantCount >= maxParticipants;
     return Container(
@@ -1346,7 +1392,9 @@ class _ParticipantsSummaryCard extends StatelessWidget {
                       fontFamily: 'Sora',
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
-                      color: isFull ? EventBadgeColors.statusCanceled : _EventColors.body,
+                      color: isFull
+                          ? EventBadgeColors.statusCanceled
+                          : _EventColors.body,
                     ),
                   ),
                   if (isFull) ...[
@@ -1525,7 +1573,10 @@ class _ParticipantsSheetState extends State<_ParticipantsSheet> {
                 decoration: InputDecoration(
                   hintText: 'Search participants',
                   hintStyle: const TextStyle(color: _EventColors.muted),
-                  prefixIcon: const Icon(Icons.search_rounded, color: _EventColors.tertiary),
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    color: _EventColors.tertiary,
+                  ),
                   filled: true,
                   fillColor: _EventColors.background,
                   border: OutlineInputBorder(
@@ -1538,64 +1589,71 @@ class _ParticipantsSheetState extends State<_ParticipantsSheet> {
               Expanded(
                 child: _tab == 0
                     ? (joined.isEmpty
-                        ? const _EmptyParticipants(message: 'No one has joined yet.')
-                        : ListView.separated(
-                            itemCount: joined.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: 10),
-                            itemBuilder: (context, index) {
-                              final entry = joined[index];
-                              final name = entry.memberDisplayName.isNotEmpty
-                                  ? entry.memberDisplayName
-                                  : entry.memberEmail;
-                              return _ParticipantRow(
-                                name: name,
-                                username: entry.memberUsername,
-                                avatar: entry.memberAvatar,
-                                avatarType: entry.memberAvatarType,
-                                onTap: () => showProfilePreview(
-                                  context,
-                                  userId: entry.member,
-                                  currentUserId: widget.currentUserId,
-                                  initialName: name,
-                                  initialUsername: entry.memberUsername,
-                                  initialAvatar: entry.memberAvatar,
-                                  initialAvatarType: entry.memberAvatarType,
-                                ),
-                                onRemove: widget.isHost
-                                    ? () => _confirmAndRemoveAttendee(entry)
-                                    : null,
-                              );
-                            },
-                          ))
+                          ? const _EmptyParticipants(
+                              message: 'No one has joined yet.',
+                            )
+                          : ListView.separated(
+                              itemCount: joined.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(height: 10),
+                              itemBuilder: (context, index) {
+                                final entry = joined[index];
+                                final name = entry.memberDisplayName.isNotEmpty
+                                    ? entry.memberDisplayName
+                                    : entry.memberEmail;
+                                return _ParticipantRow(
+                                  name: name,
+                                  username: entry.memberUsername,
+                                  avatar: entry.memberAvatar,
+                                  avatarType: entry.memberAvatarType,
+                                  onTap: () => showProfilePreview(
+                                    context,
+                                    userId: entry.member,
+                                    currentUserId: widget.currentUserId,
+                                    initialName: name,
+                                    initialUsername: entry.memberUsername,
+                                    initialAvatar: entry.memberAvatar,
+                                    initialAvatarType: entry.memberAvatarType,
+                                  ),
+                                  onRemove: widget.isHost
+                                      ? () => _confirmAndRemoveAttendee(entry)
+                                      : null,
+                                );
+                              },
+                            ))
                     : (invited.isEmpty
-                        ? const _EmptyParticipants(message: 'No one has been invited yet.')
-                        : ListView.separated(
-                            itemCount: invited.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: 10),
-                            itemBuilder: (context, index) {
-                              final entry = invited[index];
-                              final name = entry.guestDisplayName.isNotEmpty
-                                  ? entry.guestDisplayName
-                                  : entry.guestEmail;
-                              return _ParticipantRow(
-                                name: name,
-                                username: entry.guestUsername,
-                                avatar: entry.guestAvatar,
-                                avatarType: entry.guestAvatarType,
-                                onTap: () => showProfilePreview(
-                                  context,
-                                  userId: entry.guest,
-                                  currentUserId: widget.currentUserId,
-                                  initialName: name,
-                                  initialUsername: entry.guestUsername,
-                                  initialAvatar: entry.guestAvatar,
-                                  initialAvatarType: entry.guestAvatarType,
-                                ),
-                                onRemove:
-                                    widget.isHost ? () => _confirmAndRemoveGuest(entry) : null,
-                              );
-                            },
-                          )),
+                          ? const _EmptyParticipants(
+                              message: 'No one has been invited yet.',
+                            )
+                          : ListView.separated(
+                              itemCount: invited.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(height: 10),
+                              itemBuilder: (context, index) {
+                                final entry = invited[index];
+                                final name = entry.guestDisplayName.isNotEmpty
+                                    ? entry.guestDisplayName
+                                    : entry.guestEmail;
+                                return _ParticipantRow(
+                                  name: name,
+                                  username: entry.guestUsername,
+                                  avatar: entry.guestAvatar,
+                                  avatarType: entry.guestAvatarType,
+                                  onTap: () => showProfilePreview(
+                                    context,
+                                    userId: entry.guest,
+                                    currentUserId: widget.currentUserId,
+                                    initialName: name,
+                                    initialUsername: entry.guestUsername,
+                                    initialAvatar: entry.guestAvatar,
+                                    initialAvatarType: entry.guestAvatarType,
+                                  ),
+                                  onRemove: widget.isHost
+                                      ? () => _confirmAndRemoveGuest(entry)
+                                      : null,
+                                );
+                              },
+                            )),
               ),
               if (widget.isHost) ...[
                 const SizedBox(height: 12),
@@ -1638,16 +1696,22 @@ class _ParticipantsSheetState extends State<_ParticipantsSheet> {
   }
 
   Future<void> _confirmAndRemoveAttendee(EventMembership entry) async {
-    final name = entry.memberDisplayName.isNotEmpty ? entry.memberDisplayName : entry.memberEmail;
+    final name = entry.memberDisplayName.isNotEmpty
+        ? entry.memberDisplayName
+        : entry.memberEmail;
     if (!await _confirmRemoveFromEvent(context, name)) return;
     await widget.onRemoveAttendee(entry);
     if (mounted) {
-      setState(() => _attendees = _attendees.where((a) => a.id != entry.id).toList());
+      setState(
+        () => _attendees = _attendees.where((a) => a.id != entry.id).toList(),
+      );
     }
   }
 
   Future<void> _confirmAndRemoveGuest(EventGuest entry) async {
-    final name = entry.guestDisplayName.isNotEmpty ? entry.guestDisplayName : entry.guestEmail;
+    final name = entry.guestDisplayName.isNotEmpty
+        ? entry.guestDisplayName
+        : entry.guestEmail;
     if (!await _confirmRemoveFromEvent(context, name)) return;
     await widget.onRemoveGuest(entry);
     if (mounted) {
@@ -1676,11 +1740,17 @@ Future<bool> _confirmRemoveFromEvent(BuildContext context, String name) async {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel', style: TextStyle(color: _EventColors.muted)),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(color: _EventColors.muted),
+          ),
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Remove', style: TextStyle(color: Color(0xFFFFB4AB))),
+          child: const Text(
+            'Remove',
+            style: TextStyle(color: Color(0xFFFFB4AB)),
+          ),
         ),
       ],
     ),
@@ -1800,7 +1870,11 @@ class _ParticipantRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
-            _ParticipantAvatar(name: name, avatar: avatar, avatarType: avatarType),
+            _ParticipantAvatar(
+              name: name,
+              avatar: avatar,
+              avatarType: avatarType,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1810,7 +1884,10 @@ class _ParticipantRow extends StatelessWidget {
                     name.isEmpty ? 'Unknown' : name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700, color: _EventColors.body),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: _EventColors.body,
+                    ),
                   ),
                   if (username.isNotEmpty) ...[
                     const SizedBox(height: 2),
@@ -1818,7 +1895,10 @@ class _ParticipantRow extends StatelessWidget {
                       '@$username',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: _EventColors.muted),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: _EventColors.muted,
+                      ),
                     ),
                   ],
                 ],
@@ -1827,7 +1907,11 @@ class _ParticipantRow extends StatelessWidget {
             if (onRemove != null)
               IconButton(
                 onPressed: onRemove,
-                icon: const Icon(Icons.more_vert_rounded, color: _EventColors.muted, size: 20),
+                icon: const Icon(
+                  Icons.more_vert_rounded,
+                  color: _EventColors.muted,
+                  size: 20,
+                ),
                 tooltip: 'Remove from event',
               ),
           ],
@@ -1840,7 +1924,11 @@ class _ParticipantRow extends StatelessWidget {
 /// The real profile photo when [avatar] is set, falling back to the
 /// initials-based [_Avatar] otherwise — same 30x30 footprint either way.
 class _ParticipantAvatar extends StatelessWidget {
-  const _ParticipantAvatar({required this.name, required this.avatar, required this.avatarType});
+  const _ParticipantAvatar({
+    required this.name,
+    required this.avatar,
+    required this.avatarType,
+  });
   final String name;
   final String? avatar;
   final String avatarType;
@@ -1890,7 +1978,9 @@ class _NowPlayingCard extends StatelessWidget {
     if (song == null) return const _EmptyNowPlaying();
     final progress = duration == Duration.zero
         ? 0.0
-        : (position.inMilliseconds / duration.inMilliseconds).clamp(0, 1).toDouble();
+        : (position.inMilliseconds / duration.inMilliseconds)
+              .clamp(0, 1)
+              .toDouble();
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1908,7 +1998,11 @@ class _NowPlayingCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Center(
-            child: _AlbumArt(size: 112, url: song.song.albumArtUrl, isPlaying: isPlaying),
+            child: _AlbumArt(
+              size: 112,
+              url: song.song.albumArtUrl,
+              isPlaying: isPlaying,
+            ),
           ),
           const SizedBox(height: 22),
           Text(
@@ -1948,7 +2042,9 @@ class _NowPlayingCard extends StatelessWidget {
                 style: const TextStyle(fontSize: 11, color: _EventColors.muted),
               ),
               Text(
-                duration != Duration.zero ? _formatTime(duration) : _duration(song.song.durationSeconds),
+                duration != Duration.zero
+                    ? _formatTime(duration)
+                    : _duration(song.song.durationSeconds),
                 style: const TextStyle(fontSize: 11, color: _EventColors.muted),
               ),
             ],
@@ -2012,7 +2108,11 @@ class _AlbumArt extends StatelessWidget {
                 color: Colors.black.withValues(alpha: 0.55),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.graphic_eq_rounded, color: _EventColors.tertiary, size: size * .22),
+              child: Icon(
+                Icons.graphic_eq_rounded,
+                color: _EventColors.tertiary,
+                size: size * .22,
+              ),
             ),
           ),
         ],
@@ -2301,7 +2401,8 @@ class _VotingRequirementsSheet extends StatefulWidget {
   final VoidCallback onTryAgain;
 
   @override
-  State<_VotingRequirementsSheet> createState() => _VotingRequirementsSheetState();
+  State<_VotingRequirementsSheet> createState() =>
+      _VotingRequirementsSheetState();
 }
 
 class _VotingRequirementsSheetState extends State<_VotingRequirementsSheet> {
@@ -2317,7 +2418,9 @@ class _VotingRequirementsSheetState extends State<_VotingRequirementsSheet> {
     super.initState();
     final latitude = widget.event.venueCenterLatitude;
     final longitude = widget.event.venueCenterLongitude;
-    if (widget.event.locationRestrictionEnabled && latitude != null && longitude != null) {
+    if (widget.event.locationRestrictionEnabled &&
+        latitude != null &&
+        longitude != null) {
       _isResolvingVenue = true;
       unawaited(_resolveVenueLabel(latitude, longitude));
     }
@@ -2445,66 +2548,71 @@ class PrivateEventAccessDeniedScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: _EventColors.background,
-    body: SafeArea(
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(24, 30, 24, 26),
-            decoration: BoxDecoration(
-              color: _EventColors.card,
-              borderRadius: BorderRadius.circular(40),
-              border: Border.all(color: _EventColors.cardBorder),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircleAvatar(
-                  radius: 43,
-                  backgroundColor: Color(0xFF39282D),
-                  child: Icon(
-                    Icons.lock_rounded,
-                    size: 42,
-                    color: Color(0xFFFFB4AB),
-                  ),
+    body: ResponsiveContent(
+      maxWidth: 1000,
+      child: SafeArea(
+        child: SingleChildScrollView(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(24, 30, 24, 26),
+                decoration: BoxDecoration(
+                  color: _EventColors.card,
+                  borderRadius: BorderRadius.circular(40),
+                  border: Border.all(color: _EventColors.cardBorder),
                 ),
-                const SizedBox(height: 28),
-                const Text(
-                  'Private Event',
-                  style: TextStyle(
-                    fontFamily: 'Sora',
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: _EventColors.body,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'This event is private — ask the host to invite you to join the session.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 15,
-                    height: 1.45,
-                    color: _EventColors.muted,
-                  ),
-                ),
-                const SizedBox(height: 28),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    label: const Text('Return to Landing'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _EventColors.tertiary,
-                      foregroundColor: const Color(0xFF15151C),
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      shape: const StadiumBorder(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircleAvatar(
+                      radius: 43,
+                      backgroundColor: Color(0xFF39282D),
+                      child: Icon(
+                        Icons.lock_rounded,
+                        size: 42,
+                        color: Color(0xFFFFB4AB),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 28),
+                    const Text(
+                      'Private Event',
+                      style: TextStyle(
+                        fontFamily: 'Sora',
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: _EventColors.body,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'This event is private — ask the host to invite you to join the session.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 15,
+                        height: 1.45,
+                        color: _EventColors.muted,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        label: const Text('Return to Landing'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _EventColors.tertiary,
+                          foregroundColor: const Color(0xFF15151C),
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: const StadiumBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),

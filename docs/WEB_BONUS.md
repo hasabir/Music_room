@@ -12,7 +12,10 @@ backend changes it required, and what was deliberately left out.
   manage collaborators from the browser. The same ownership, invitation and
   Free/Premium rules apply on mobile and web. Public playlist song editing
   requires Premium; private playlists retain their existing permission rules.
-- **Responsive layout:** the existing desktop and narrow-screen layouts remain.
+- **Responsive layout:** all page bodies use centered, bounded content widths.
+  Authentication forms use 560px, settings/editing pages 720px, detail pages
+  1000px, and main tabs up to 1440px. Narrow windows use available width.
+  Navigation switches at 900px; short hero pages and sheets scroll.
 - **Live collaboration:** WebSocket updates remain enabled across clients.
 - **Concurrency:** add/remove/move lock the parent Playlist row before reading
   song order. Concurrent duplicates return 400 rather than a database error.
@@ -461,3 +464,25 @@ dependency for something two built-in widgets already do correctly.
     racing another browser tab is provably no different from two mobile
     clients racing each other.
   - CORS verified with curl against the live backend (see above).
+
+
+## Responsive regression coverage
+
+Run from `mobile`:
+
+```sh
+flutter test test/responsive_pages_test.dart test/responsive_layout_test.dart
+flutter build web
+```
+
+The page matrix covers 37 screens plus the profile preview at 320×568,
+390×844, 768×1024, 1024×360, and 1440×900 logical pixels. It checks the
+initial content and scrolls lists/forms to their ends, using an authenticated
+HTTP fixture, sample playlists/events, and long song/artist names. Audio and
+platform metadata are mocked; no real account or backend is needed.
+
+Additional checks exercise live navigation resizing, card spacing at column
+boundaries, and action reachability with enlarged text and keyboard insets.
+These tests check Flutter layout exceptions and interaction reachability;
+they do not replace browser checks of every permission, error, payment,
+network, or playback state with live data.

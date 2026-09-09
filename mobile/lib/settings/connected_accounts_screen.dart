@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
@@ -36,7 +37,8 @@ class ConnectedAccountsScreen extends StatefulWidget {
   final AuthUser authUser;
 
   @override
-  State<ConnectedAccountsScreen> createState() => _ConnectedAccountsScreenState();
+  State<ConnectedAccountsScreen> createState() =>
+      _ConnectedAccountsScreenState();
 }
 
 class _ConnectedAccountsScreenState extends State<ConnectedAccountsScreen> {
@@ -66,10 +68,12 @@ class _ConnectedAccountsScreenState extends State<ConnectedAccountsScreen> {
       // User backed out of the picker — nothing to report.
     } on GoogleAuthFailed catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     } on ApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     } finally {
       if (mounted) setState(() => _isLinking = false);
     }
@@ -93,11 +97,17 @@ class _ConnectedAccountsScreenState extends State<ConnectedAccountsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: _ConnectedColors.muted)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: _ConnectedColors.muted),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Unlink', style: TextStyle(color: Colors.redAccent)),
+            child: const Text(
+              'Unlink',
+              style: TextStyle(color: Colors.redAccent),
+            ),
           ),
         ],
       ),
@@ -118,7 +128,8 @@ class _ConnectedAccountsScreenState extends State<ConnectedAccountsScreen> {
       ).showSnackBar(const SnackBar(content: Text('Google account unlinked.')));
     } on ApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     } finally {
       if (mounted) setState(() => _isUnlinking = false);
     }
@@ -142,48 +153,51 @@ class _ConnectedAccountsScreenState extends State<ConnectedAccountsScreen> {
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const Text(
-            'Manage how you log in to your Music Room account.',
-            style: TextStyle(color: _ConnectedColors.muted, height: 1.4),
-          ),
-          const SizedBox(height: 20),
-          if (isGoogle)
-            _AccountCard(
-              icon: Icons.g_mobiledata_rounded,
-              title: 'Google Account',
-              subtitle: 'OAUTH PROVIDER',
-              email: _authUser.email,
-              note: 'This is your sign-in method for Music Room.',
-            )
-          else ...[
-            _AccountCard(
-              icon: Icons.mail_outline_rounded,
-              title: 'Email Authentication',
-              subtitle: 'PRIMARY LOGIN',
-              email: _authUser.email,
-              isVerified: _authUser.isEmailVerified,
+      body: ResponsiveContent(
+        maxWidth: 720,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            const Text(
+              'Manage how you log in to your Music Room account.',
+              style: TextStyle(color: _ConnectedColors.muted, height: 1.4),
             ),
-            const SizedBox(height: 14),
-            if (_authUser.hasGoogleLinked)
-              _LinkedGoogleCard(
-                email: _authUser.googleLinkedEmail ?? '',
-                isUnlinking: _isUnlinking,
-                onUnlink: _onUnlinkGoogle,
+            const SizedBox(height: 20),
+            if (isGoogle)
+              _AccountCard(
+                icon: Icons.g_mobiledata_rounded,
+                title: 'Google Account',
+                subtitle: 'OAUTH PROVIDER',
+                email: _authUser.email,
+                note: 'This is your sign-in method for Music Room.',
               )
-            else
-              _LinkGoogleCard(
-                isLinking: _isLinking,
-                // Linking runs the same broken-on-web google_sign_in flow
-                // as signing in — see welcome_screen.dart's doc comment —
-                // so it stays mobile-only here too. Unlinking above is a
-                // plain REST call and works fine on web.
-                onLink: kIsWeb ? null : _onLinkGoogle,
+            else ...[
+              _AccountCard(
+                icon: Icons.mail_outline_rounded,
+                title: 'Email Authentication',
+                subtitle: 'PRIMARY LOGIN',
+                email: _authUser.email,
+                isVerified: _authUser.isEmailVerified,
               ),
+              const SizedBox(height: 14),
+              if (_authUser.hasGoogleLinked)
+                _LinkedGoogleCard(
+                  email: _authUser.googleLinkedEmail ?? '',
+                  isUnlinking: _isUnlinking,
+                  onUnlink: _onUnlinkGoogle,
+                )
+              else
+                _LinkGoogleCard(
+                  isLinking: _isLinking,
+                  // Linking runs the same broken-on-web google_sign_in flow
+                  // as signing in — see welcome_screen.dart's doc comment —
+                  // so it stays mobile-only here too. Unlinking above is a
+                  // plain REST call and works fine on web.
+                  onLink: kIsWeb ? null : _onLinkGoogle,
+                ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -226,34 +240,42 @@ class _AccountCard extends StatelessWidget {
                 child: Icon(icon, color: _ConnectedColors.headline, size: 20),
               ),
               const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontFamily: 'Sora',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                      color: _ConnectedColors.body,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontFamily: 'Sora',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: _ConnectedColors.body,
+                      ),
                     ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.6,
-                      color: _ConnectedColors.muted,
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.6,
+                        color: _ConnectedColors.muted,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
           if (email.isNotEmpty) ...[
             const SizedBox(height: 14),
-            Text(email, style: const TextStyle(color: _ConnectedColors.body, fontSize: 14)),
+            Text(
+              email,
+              style: const TextStyle(
+                color: _ConnectedColors.body,
+                fontSize: 14,
+              ),
+            ),
           ],
           if (isVerified != null) ...[
             const SizedBox(height: 6),
@@ -262,7 +284,9 @@ class _AccountCard extends StatelessWidget {
                 Icon(
                   isVerified! ? Icons.check_circle : Icons.error_outline,
                   size: 16,
-                  color: isVerified! ? _ConnectedColors.verified : _ConnectedColors.muted,
+                  color: isVerified!
+                      ? _ConnectedColors.verified
+                      : _ConnectedColors.muted,
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -271,7 +295,9 @@ class _AccountCard extends StatelessWidget {
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
-                    color: isVerified! ? _ConnectedColors.verified : _ConnectedColors.muted,
+                    color: isVerified!
+                        ? _ConnectedColors.verified
+                        : _ConnectedColors.muted,
                   ),
                 ),
               ],
@@ -279,7 +305,13 @@ class _AccountCard extends StatelessWidget {
           ],
           if (note != null) ...[
             const SizedBox(height: 10),
-            Text(note!, style: const TextStyle(color: _ConnectedColors.muted, fontSize: 12)),
+            Text(
+              note!,
+              style: const TextStyle(
+                color: _ConnectedColors.muted,
+                fontSize: 12,
+              ),
+            ),
           ],
         ],
       ),
@@ -352,7 +384,11 @@ class _LinkGoogleCard extends StatelessWidget {
           const Text(
             'Link any Google account so you can sign in either way — it '
             "doesn't need to match this account's email.",
-            style: TextStyle(color: _ConnectedColors.muted, fontSize: 12, height: 1.4),
+            style: TextStyle(
+              color: _ConnectedColors.muted,
+              fontSize: 12,
+              height: 1.4,
+            ),
           ),
           const SizedBox(height: 14),
           SizedBox(
@@ -363,7 +399,9 @@ class _LinkGoogleCard extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: _ConnectedColors.headline,
                 side: const BorderSide(color: _ConnectedColors.gradientStart),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(23),
+                ),
               ),
               icon: isLinking
                   ? const SizedBox(
@@ -374,14 +412,22 @@ class _LinkGoogleCard extends StatelessWidget {
                         color: _ConnectedColors.headline,
                       ),
                     )
-                  : Icon(onLink == null ? Icons.smartphone_rounded : Icons.link_rounded, size: 18),
+                  : Icon(
+                      onLink == null
+                          ? Icons.smartphone_rounded
+                          : Icons.link_rounded,
+                      size: 18,
+                    ),
               label: Text(
                 isLinking
                     ? 'Linking...'
                     : onLink == null
                     ? 'Available in the mobile app'
                     : 'Link Google Account',
-                style: const TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontFamily: 'Sora',
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -455,7 +501,13 @@ class _LinkedGoogleCard extends StatelessWidget {
           ),
           if (email.isNotEmpty) ...[
             const SizedBox(height: 14),
-            Text(email, style: const TextStyle(color: _ConnectedColors.body, fontSize: 14)),
+            Text(
+              email,
+              style: const TextStyle(
+                color: _ConnectedColors.body,
+                fontSize: 14,
+              ),
+            ),
           ],
           const SizedBox(height: 10),
           const Text(
@@ -471,18 +523,26 @@ class _LinkedGoogleCard extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.redAccent,
                 side: const BorderSide(color: Colors.redAccent),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(23),
+                ),
               ),
               icon: isUnlinking
                   ? const SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.redAccent,
+                      ),
                     )
                   : const Icon(Icons.link_off_rounded, size: 18),
               label: Text(
                 isUnlinking ? 'Unlinking...' : 'Unlink Google Account',
-                style: const TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontFamily: 'Sora',
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),

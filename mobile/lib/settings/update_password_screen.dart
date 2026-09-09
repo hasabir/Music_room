@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/auth_api.dart';
@@ -66,13 +67,15 @@ class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
         newPassword: _newPasswordController.text,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Password updated successfully.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password updated successfully.')),
+      );
       Navigator.of(context).pop();
     } on SessionExpiredException {
       if (!mounted) return;
-      setState(() => _errorMessage = 'Your session has expired. Please sign in again.');
+      setState(
+        () => _errorMessage = 'Your session has expired. Please sign in again.',
+      );
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = error.message);
@@ -89,97 +92,103 @@ class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _UpdateColors.background,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              children: [
-                const SizedBox(height: 8),
-                _BackButton(onPressed: () => Navigator.of(context).pop()),
-                const SizedBox(height: 24),
-                const _Title(),
-                const SizedBox(height: 12),
-                const _Description(),
-                const SizedBox(height: 32),
-                _LabeledField(
-                  label: 'CURRENT PASSWORD',
-                  hint: 'Enter your current password',
-                  controller: _currentPasswordController,
-                  obscureText: !_isCurrentPasswordVisible,
-                  prefixIcon: Icons.lock_outline,
-                  suffixIcon: _VisibilityToggle(
-                    isVisible: _isCurrentPasswordVisible,
-                    onPressed: () => setState(
-                      () => _isCurrentPasswordVisible = !_isCurrentPasswordVisible,
+      body: ResponsiveContent(
+        maxWidth: 720,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                children: [
+                  const SizedBox(height: 8),
+                  _BackButton(onPressed: () => Navigator.of(context).pop()),
+                  const SizedBox(height: 24),
+                  const _Title(),
+                  const SizedBox(height: 12),
+                  const _Description(),
+                  const SizedBox(height: 32),
+                  _LabeledField(
+                    label: 'CURRENT PASSWORD',
+                    hint: 'Enter your current password',
+                    controller: _currentPasswordController,
+                    obscureText: !_isCurrentPasswordVisible,
+                    prefixIcon: Icons.lock_outline,
+                    suffixIcon: _VisibilityToggle(
+                      isVisible: _isCurrentPasswordVisible,
+                      onPressed: () => setState(
+                        () => _isCurrentPasswordVisible =
+                            !_isCurrentPasswordVisible,
+                      ),
                     ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Current password is required';
+                      }
+                      return null;
+                    },
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Current password is required';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-                _LabeledField(
-                  label: 'NEW PASSWORD',
-                  hint: 'Enter your new password',
-                  controller: _newPasswordController,
-                  obscureText: !_isNewPasswordVisible,
-                  prefixIcon: Icons.lock_reset_rounded,
-                  suffixIcon: _VisibilityToggle(
-                    isVisible: _isNewPasswordVisible,
-                    onPressed: () =>
-                        setState(() => _isNewPasswordVisible = !_isNewPasswordVisible),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'New password is required';
-                    }
-                    if (value.length < 8) {
-                      return 'Password must be at least 8 characters';
-                    }
-                    if (value == _currentPasswordController.text) {
-                      return 'New password must be different from the current one';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-                _LabeledField(
-                  label: 'CONFIRM NEW PASSWORD',
-                  hint: 'Repeat your new password',
-                  controller: _confirmPasswordController,
-                  obscureText: !_isConfirmPasswordVisible,
-                  prefixIcon: Icons.restore,
-                  suffixIcon: _VisibilityToggle(
-                    isVisible: _isConfirmPasswordVisible,
-                    onPressed: () => setState(
-                      () => _isConfirmPasswordVisible = !_isConfirmPasswordVisible,
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value != _newPasswordController.text) {
-                      return 'Passwords do not match';
-                    }
-                    return null;
-                  },
-                ),
-                if (_errorMessage != null) ...[
                   const SizedBox(height: 20),
-                  _ErrorMessage(message: _errorMessage!),
+                  _LabeledField(
+                    label: 'NEW PASSWORD',
+                    hint: 'Enter your new password',
+                    controller: _newPasswordController,
+                    obscureText: !_isNewPasswordVisible,
+                    prefixIcon: Icons.lock_reset_rounded,
+                    suffixIcon: _VisibilityToggle(
+                      isVisible: _isNewPasswordVisible,
+                      onPressed: () => setState(
+                        () => _isNewPasswordVisible = !_isNewPasswordVisible,
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'New password is required';
+                      }
+                      if (value.length < 8) {
+                        return 'Password must be at least 8 characters';
+                      }
+                      if (value == _currentPasswordController.text) {
+                        return 'New password must be different from the current one';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  _LabeledField(
+                    label: 'CONFIRM NEW PASSWORD',
+                    hint: 'Repeat your new password',
+                    controller: _confirmPasswordController,
+                    obscureText: !_isConfirmPasswordVisible,
+                    prefixIcon: Icons.restore,
+                    suffixIcon: _VisibilityToggle(
+                      isVisible: _isConfirmPasswordVisible,
+                      onPressed: () => setState(
+                        () => _isConfirmPasswordVisible =
+                            !_isConfirmPasswordVisible,
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value != _newPasswordController.text) {
+                        return 'Passwords do not match';
+                      }
+                      return null;
+                    },
+                  ),
+                  if (_errorMessage != null) ...[
+                    const SizedBox(height: 20),
+                    _ErrorMessage(message: _errorMessage!),
+                  ],
+                  const SizedBox(height: 28),
+                  _UpdatePasswordButton(
+                    onPressed: _isSubmitting ? null : _onUpdatePassword,
+                    isLoading: _isSubmitting,
+                  ),
+                  const SizedBox(height: 16),
+                  _BackToSignInButton(onPressed: _onBackToSignIn),
+                  const SizedBox(height: 24),
                 ],
-                const SizedBox(height: 28),
-                _UpdatePasswordButton(
-                  onPressed: _isSubmitting ? null : _onUpdatePassword,
-                  isLoading: _isSubmitting,
-                ),
-                const SizedBox(height: 16),
-                _BackToSignInButton(onPressed: _onBackToSignIn),
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
           ),
         ),
@@ -201,7 +210,11 @@ class _BackButton extends StatelessWidget {
         onPressed: onPressed,
         padding: EdgeInsets.zero,
         constraints: const BoxConstraints(),
-        icon: const Icon(Icons.arrow_back, color: _UpdateColors.inputText, size: 28),
+        icon: const Icon(
+          Icons.arrow_back,
+          color: _UpdateColors.inputText,
+          size: 28,
+        ),
       ),
     );
   }
@@ -233,7 +246,11 @@ class _Description extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Text(
       'Enter your current password, then choose a new one to protect your account.',
-      style: TextStyle(fontSize: 16, height: 1.5, color: _UpdateColors.description),
+      style: TextStyle(
+        fontSize: 16,
+        height: 1.5,
+        color: _UpdateColors.description,
+      ),
     );
   }
 }
@@ -279,12 +296,22 @@ class _LabeledField extends StatelessWidget {
           style: const TextStyle(fontSize: 16, color: _UpdateColors.inputText),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(fontSize: 16, color: _UpdateColors.hintText),
-            prefixIcon: Icon(prefixIcon, color: _UpdateColors.hintText, size: 20),
+            hintStyle: const TextStyle(
+              fontSize: 16,
+              color: _UpdateColors.hintText,
+            ),
+            prefixIcon: Icon(
+              prefixIcon,
+              color: _UpdateColors.hintText,
+              size: 20,
+            ),
             suffixIcon: suffixIcon,
             filled: true,
             fillColor: _UpdateColors.fieldBackground,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 18,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: const BorderSide(color: _UpdateColors.fieldBorder),
@@ -331,7 +358,10 @@ class _VisibilityToggle extends StatelessWidget {
 }
 
 class _UpdatePasswordButton extends StatelessWidget {
-  const _UpdatePasswordButton({required this.onPressed, this.isLoading = false});
+  const _UpdatePasswordButton({
+    required this.onPressed,
+    this.isLoading = false,
+  });
 
   final VoidCallback? onPressed;
   final bool isLoading;
@@ -400,7 +430,9 @@ class _BackToSignInButton extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           backgroundColor: Colors.transparent,
           side: const BorderSide(color: _UpdateColors.tertiary, width: 1.5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
         ),
         child: const Text(
           'Cancel',
@@ -423,6 +455,9 @@ class _ErrorMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(message, style: const TextStyle(fontSize: 14, color: Colors.redAccent));
+    return Text(
+      message,
+      style: const TextStyle(fontSize: 14, color: Colors.redAccent),
+    );
   }
 }

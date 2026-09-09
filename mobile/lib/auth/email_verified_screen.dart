@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 
 import 'login_screen.dart';
@@ -36,43 +37,46 @@ class EmailVerifiedScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _VerifiedColors.background,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
-              _BackButton(onPressed: () => Navigator.of(context).pop()),
-              const Spacer(flex: 3),
-              const _SuccessIcon(),
-              const SizedBox(height: 32),
-              const Text(
-                'Email verified !',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Sora',
-                  fontWeight: FontWeight.w800,
-                  fontSize: 32,
-                  height: 1.1,
-                  color: _VerifiedColors.title,
+      body: ResponsiveContent(
+        maxWidth: 560,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: ResponsiveScrollColumn(
+              children: [
+                const SizedBox(height: 8),
+                _BackButton(onPressed: () => Navigator.of(context).pop()),
+                const Spacer(flex: 3),
+                const _SuccessIcon(),
+                const SizedBox(height: 32),
+                const Text(
+                  'Email verified !',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Sora',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 32,
+                    height: 1.1,
+                    color: _VerifiedColors.title,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Your email address has been\n'
-                'successfully verified. Your Music Room\n'
-                'account is ready.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  height: 1.5,
-                  color: _VerifiedColors.description,
+                const SizedBox(height: 16),
+                const Text(
+                  'Your email address has been\n'
+                  'successfully verified. Your Music Room\n'
+                  'account is ready.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    height: 1.5,
+                    color: _VerifiedColors.description,
+                  ),
                 ),
-              ),
-              const Spacer(flex: 4),
-              _ContinueButton(onPressed: () => _onContinue(context)),
-              const SizedBox(height: 24),
-            ],
+                const Spacer(flex: 4),
+                _ContinueButton(onPressed: () => _onContinue(context)),
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       ),

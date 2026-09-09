@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/auth_api.dart';
@@ -250,15 +251,18 @@ class _PlaylistCollaboratorsScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _CollaboratorsColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _Header(
-              playlistTitle: widget.playlistTitle,
-              onAdd: _onAddCollaborators,
-            ),
-            Expanded(child: _buildBody()),
-          ],
+      body: ResponsiveContent(
+        maxWidth: 720,
+        child: SafeArea(
+          child: Column(
+            children: [
+              _Header(
+                playlistTitle: widget.playlistTitle,
+                onAdd: _onAddCollaborators,
+              ),
+              Expanded(child: _buildBody()),
+            ],
+          ),
         ),
       ),
     );

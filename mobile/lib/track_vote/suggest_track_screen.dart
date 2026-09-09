@@ -1,3 +1,5 @@
+import 'package:mobile/core/responsive/responsive.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -86,7 +88,8 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
   late int _suggestionCount = widget.initialSuggestionCount;
 
   bool get _atLimit =>
-      widget.suggestionLimit != null && _suggestionCount >= widget.suggestionLimit!;
+      widget.suggestionLimit != null &&
+      _suggestionCount >= widget.suggestionLimit!;
 
   /// `false` searches by title/artist/etc (the default keyword match);
   /// `true` looks the query up as an artist name instead and returns that
@@ -167,7 +170,10 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
 
   Future<void> _search(String query) async {
     try {
-      final results = await _trackApi.searchTracks(query, byArtist: _searchByArtist);
+      final results = await _trackApi.searchTracks(
+        query,
+        byArtist: _searchByArtist,
+      );
       if (!mounted || query != _controller.text) return;
       setState(() {
         _searchResults = results;
@@ -220,7 +226,9 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
       await _signOut();
     } on SuggestionLimitReachedException catch (error) {
       if (mounted) {
-        setState(() => _suggestionCount = widget.suggestionLimit ?? _suggestionCount);
+        setState(
+          () => _suggestionCount = widget.suggestionLimit ?? _suggestionCount,
+        );
       }
       _showSnack(error.message);
     } on ApiException catch (error) {
@@ -249,62 +257,65 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: _SuggestColors.background,
-    body: SafeArea(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(
-                    Icons.arrow_back_rounded,
-                    color: _SuggestColors.body,
+    body: ResponsiveContent(
+      maxWidth: 720,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: _SuggestColors.body,
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    autofocus: true,
-                    onChanged: _onQueryChanged,
-                    style: const TextStyle(color: _SuggestColors.body),
-                    decoration: InputDecoration(
-                      hintText: _searchByArtist
-                          ? 'Search for an artist...'
-                          : 'Search for a song to add...',
-                      hintStyle: const TextStyle(color: _SuggestColors.muted),
-                      prefixIcon: const Icon(
-                        Icons.search_rounded,
-                        color: _SuggestColors.tertiary,
-                      ),
-                      filled: true,
-                      fillColor: _SuggestColors.card,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide.none,
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      autofocus: true,
+                      onChanged: _onQueryChanged,
+                      style: const TextStyle(color: _SuggestColors.body),
+                      decoration: InputDecoration(
+                        hintText: _searchByArtist
+                            ? 'Search for an artist...'
+                            : 'Search for a song to add...',
+                        hintStyle: const TextStyle(color: _SuggestColors.muted),
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          color: _SuggestColors.tertiary,
+                        ),
+                        filled: true,
+                        fillColor: _SuggestColors.card,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: _SearchModeToggle(
-                byArtist: _searchByArtist,
-                onChanged: _onSearchModeChanged,
+                ],
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          if (widget.suggestionLimit != null) _buildLimitBanner(),
-          Expanded(child: _buildBody()),
-        ],
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: _SearchModeToggle(
+                  byArtist: _searchByArtist,
+                  onChanged: _onSearchModeChanged,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (widget.suggestionLimit != null) _buildLimitBanner(),
+            Expanded(child: _buildBody()),
+          ],
+        ),
       ),
     ),
   );

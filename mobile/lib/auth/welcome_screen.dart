@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
@@ -79,45 +80,50 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _WelcomeColors.background,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Spacer(flex: 3),
-              const _Headline(),
-              const SizedBox(height: 16),
-              const _Description(),
-              const Spacer(flex: 4),
-              if (_errorMessage != null) ...[
-                _ErrorMessage(message: _errorMessage!),
-                const SizedBox(height: 12),
-              ],
-              _CreateAccountButton(
-                onPressed: _isSubmitting ? null : _onCreateAccount,
-              ),
-              const SizedBox(height: 12),
-              _LogInButton(onPressed: _isSubmitting ? null : _onLogIn),
-              // Google Sign-In stays mobile-only for now: google_sign_in's
-              // web implementation only returns an ID token on a *second*
-              // sign-in (once a credential is already cached from a prior
-              // silent/One Tap flow) — the very first popup a new web user
-              // sees comes back with no ID token at all, which this app's
-              // backend call requires. See docs/WEB_BONUS.md for the two
-              // real fixes considered (a native Google button, or an
-              // access-token-based backend endpoint) and why this bonus
-              // ships without either for now.
-              if (!kIsWeb) ...[
-                const SizedBox(height: 20),
-                const _OrDivider(),
-                const SizedBox(height: 20),
-                _GoogleButton(
-                  onPressed: _isSubmitting ? null : () => _onContinueWithGoogle(),
+      body: ResponsiveContent(
+        maxWidth: 560,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: ResponsiveScrollColumn(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Spacer(flex: 3),
+                const _Headline(),
+                const SizedBox(height: 16),
+                const _Description(),
+                const Spacer(flex: 4),
+                if (_errorMessage != null) ...[
+                  _ErrorMessage(message: _errorMessage!),
+                  const SizedBox(height: 12),
+                ],
+                _CreateAccountButton(
+                  onPressed: _isSubmitting ? null : _onCreateAccount,
                 ),
+                const SizedBox(height: 12),
+                _LogInButton(onPressed: _isSubmitting ? null : _onLogIn),
+                // Google Sign-In stays mobile-only for now: google_sign_in's
+                // web implementation only returns an ID token on a *second*
+                // sign-in (once a credential is already cached from a prior
+                // silent/One Tap flow) — the very first popup a new web user
+                // sees comes back with no ID token at all, which this app's
+                // backend call requires. See docs/WEB_BONUS.md for the two
+                // real fixes considered (a native Google button, or an
+                // access-token-based backend endpoint) and why this bonus
+                // ships without either for now.
+                if (!kIsWeb) ...[
+                  const SizedBox(height: 20),
+                  const _OrDivider(),
+                  const SizedBox(height: 20),
+                  _GoogleButton(
+                    onPressed: _isSubmitting
+                        ? null
+                        : () => _onContinueWithGoogle(),
+                  ),
+                ],
+                const SizedBox(height: 24),
               ],
-              const SizedBox(height: 24),
-            ],
+            ),
           ),
         ),
       ),
@@ -301,13 +307,15 @@ class _GoogleButton extends StatelessWidget {
           children: [
             Image.asset('assets/images/google_logo.png', width: 20, height: 20),
             const SizedBox(width: 12),
-            const Text(
-              'Continue with Google',
-              style: TextStyle(
-                fontFamily: 'Sora',
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-                color: Colors.white,
+            const Flexible(
+              child: Text(
+                'Continue with Google',
+                style: TextStyle(
+                  fontFamily: 'Sora',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  color: Colors.white,
+                ),
               ),
             ),
           ],

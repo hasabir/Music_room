@@ -1,3 +1,5 @@
+import 'package:mobile/core/responsive/responsive.dart';
+
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -101,39 +103,45 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _SplashColors.surfaceContainerLowest,
-      body: Stack(
-        children: [
-          const Positioned.fill(child: _AmbientGlows()),
-          Positioned.fill(
-            child: AnimatedBuilder(
-              animation: Listenable.merge([_fadeInAnimation, _exitController]),
-              builder: (context, child) {
-                final opacity =
-                    _fadeInAnimation.value * _exitFadeAnimation.value;
-                return Opacity(
-                  opacity: opacity.clamp(0.0, 1.0),
-                  child: Transform.scale(
-                    scale: _exitScaleAnimation.value,
-                    child: child,
-                  ),
-                );
-              },
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const _WordmarkText(),
-                    const SizedBox(height: 16),
-                    const SizedBox(
-                      height: 32,
-                      child: Center(child: _PulseIndicator()),
+      body: ResponsiveContent(
+        maxWidth: 720,
+        child: Stack(
+          children: [
+            const Positioned.fill(child: _AmbientGlows()),
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: Listenable.merge([
+                  _fadeInAnimation,
+                  _exitController,
+                ]),
+                builder: (context, child) {
+                  final opacity =
+                      _fadeInAnimation.value * _exitFadeAnimation.value;
+                  return Opacity(
+                    opacity: opacity.clamp(0.0, 1.0),
+                    child: Transform.scale(
+                      scale: _exitScaleAnimation.value,
+                      child: child,
                     ),
-                  ],
+                  );
+                },
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const _WordmarkText(),
+                      const SizedBox(height: 16),
+                      const SizedBox(
+                        height: 32,
+                        child: Center(child: _PulseIndicator()),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -153,7 +154,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       // Best-effort — a failed/empty reverse geocode just leaves the raw
       // coordinates shown (see the label's fallback below); it never
       // blocks using the location that was already captured.
-      final label = await reverseGeocodeLabel(position.latitude, position.longitude);
+      final label = await reverseGeocodeLabel(
+        position.latitude,
+        position.longitude,
+      );
       if (mounted) setState(() => _venueLabel = label);
     } catch (error) {
       if (!mounted) return;
@@ -190,7 +194,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     if (_timeRestrictionEnabled) {
       if (_votingOpensAt == null || _votingClosesAt == null) {
         setState(
-          () => _error = 'Set a start and end time for the time-restricted vote.',
+          () =>
+              _error = 'Set a start and end time for the time-restricted vote.',
         );
         return;
       }
@@ -216,11 +221,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     // There's no "unlimited" option — a blank field (the host cleared the
     // pre-filled default) falls back to 100, the ceiling itself.
     final maxParticipantsText = _maxParticipantsController.text.trim();
-    final maxParticipants = maxParticipantsText.isEmpty ? 100 : int.tryParse(maxParticipantsText);
-    if (maxParticipants == null || maxParticipants < 2 || maxParticipants > 100) {
-      setState(
-        () => _error = 'Participant limit must be between 2 and 100.',
-      );
+    final maxParticipants = maxParticipantsText.isEmpty
+        ? 100
+        : int.tryParse(maxParticipantsText);
+    if (maxParticipants == null ||
+        maxParticipants < 2 ||
+        maxParticipants > 100) {
+      setState(() => _error = 'Participant limit must be between 2 and 100.');
       return;
     }
 
@@ -238,8 +245,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         votePermission: _votePermission,
         timeRestrictionEnabled: _timeRestrictionEnabled,
         locationRestrictionEnabled: _locationRestrictionEnabled,
-        venueCenterLatitude: _locationRestrictionEnabled ? _venueCenterLatitude : null,
-        venueCenterLongitude: _locationRestrictionEnabled ? _venueCenterLongitude : null,
+        venueCenterLatitude: _locationRestrictionEnabled
+            ? _venueCenterLatitude
+            : null,
+        venueCenterLongitude: _locationRestrictionEnabled
+            ? _venueCenterLongitude
+            : null,
         allowedDistanceMeters: allowedDistanceMeters,
         votingOpensAt: _timeRestrictionEnabled ? _votingOpensAt : null,
         votingClosesAt: _timeRestrictionEnabled ? _votingClosesAt : null,
@@ -262,296 +273,301 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _CreateEventColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 8, 16, 0),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      color: _CreateEventColors.body,
+      body: ResponsiveContent(
+        maxWidth: 720,
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 8, 16, 0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: _CreateEventColors.body,
+                      ),
                     ),
-                  ),
-                  const Text(
-                    'Music Room',
-                    style: TextStyle(
-                      fontFamily: 'Sora',
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                      color: _CreateEventColors.body,
+                    const Text(
+                      'Music Room',
+                      style: TextStyle(
+                        fontFamily: 'Sora',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: _CreateEventColors.body,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                children: [
-                  const Text(
-                    'Create Event',
-                    style: TextStyle(
-                      fontFamily: 'Sora',
-                      fontWeight: FontWeight.w800,
-                      fontSize: 28,
-                      color: _CreateEventColors.body,
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                  children: [
+                    const Text(
+                      'Create Event',
+                      style: TextStyle(
+                        fontFamily: 'Sora',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 28,
+                        color: _CreateEventColors.body,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Set the vibe and choose how your guests can vote.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: _CreateEventColors.muted,
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Set the vibe and choose how your guests can vote.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: _CreateEventColors.muted,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 28),
-                  const _FieldLabel('EVENT NAME'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _titleController,
-                    autofocus: true,
-                    style: const TextStyle(color: _CreateEventColors.body),
-                    decoration: _fieldDecoration(
-                      'e.g. Neon Horizon Underground',
+                    const SizedBox(height: 28),
+                    const _FieldLabel('EVENT NAME'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _titleController,
+                      autofocus: true,
+                      style: const TextStyle(color: _CreateEventColors.body),
+                      decoration: _fieldDecoration(
+                        'e.g. Neon Horizon Underground',
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  const _FieldLabel('DESCRIPTION'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _descriptionController,
-                    minLines: 3,
-                    maxLines: 5,
-                    style: const TextStyle(color: _CreateEventColors.body),
-                    decoration: _fieldDecoration(
-                      'Describe the vibe, the music, and what to expect...',
+                    const SizedBox(height: 20),
+                    const _FieldLabel('DESCRIPTION'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _descriptionController,
+                      minLines: 3,
+                      maxLines: 5,
+                      style: const TextStyle(color: _CreateEventColors.body),
+                      decoration: _fieldDecoration(
+                        'Describe the vibe, the music, and what to expect...',
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  const _FieldLabel('COVER'),
-                  const SizedBox(height: 8),
-                  _EventCoverPicker(
-                    selectedPreset: _coverPreset,
-                    onSelected: (preset) =>
-                        setState(() => _coverPreset = preset),
-                  ),
-                  const SizedBox(height: 24),
-                  const _FieldLabel('VISIBILITY'),
-                  const SizedBox(height: 8),
-                  _SegmentedChoice(
-                    options: const {
-                      eventVisibilityPublic: 'Public',
-                      eventVisibilityPrivate: 'Private',
-                    },
-                    value: _visibility,
-                    onChanged: (value) => setState(() {
-                      _visibility = value;
-                      // Once private, only the host and invited guests can
-                      // even see the event at all (can_user_see_event), so
-                      // "everyone can vote" and "invited only" describe the
-                      // exact same audience — the choice is meaningless
-                      // and the section below is hidden entirely. Reset it
-                      // back to the default so a later switch to public
-                      // doesn't surface a stale "invited only" nobody
-                      // actually chose while this was hidden.
-                      if (value == eventVisibilityPrivate) {
-                        _votePermission = eventVotePermissionEveryone;
-                      }
-                    }),
-                  ),
-                  if (_visibility == eventVisibilityPublic) ...[
                     const SizedBox(height: 24),
-                    const _FieldLabel('WHO CAN VOTE'),
+                    const _FieldLabel('COVER'),
+                    const SizedBox(height: 8),
+                    _EventCoverPicker(
+                      selectedPreset: _coverPreset,
+                      onSelected: (preset) =>
+                          setState(() => _coverPreset = preset),
+                    ),
+                    const SizedBox(height: 24),
+                    const _FieldLabel('VISIBILITY'),
                     const SizedBox(height: 8),
                     _SegmentedChoice(
                       options: const {
-                        eventVotePermissionEveryone: 'Everyone can vote',
-                        eventVotePermissionInvitedOnly: 'Invited only',
+                        eventVisibilityPublic: 'Public',
+                        eventVisibilityPrivate: 'Private',
                       },
-                      value: _votePermission,
-                      onChanged: (value) =>
-                          setState(() => _votePermission = value),
+                      value: _visibility,
+                      onChanged: (value) => setState(() {
+                        _visibility = value;
+                        // Once private, only the host and invited guests can
+                        // even see the event at all (can_user_see_event), so
+                        // "everyone can vote" and "invited only" describe the
+                        // exact same audience — the choice is meaningless
+                        // and the section below is hidden entirely. Reset it
+                        // back to the default so a later switch to public
+                        // doesn't surface a stale "invited only" nobody
+                        // actually chose while this was hidden.
+                        if (value == eventVisibilityPrivate) {
+                          _votePermission = eventVotePermissionEveryone;
+                        }
+                      }),
                     ),
-                  ],
-                  const SizedBox(height: 24),
-                  const _FieldLabel('VOTING RESTRICTIONS'),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Optional, and independent of each other and of who '
-                    'can vote above — turn on either, both, or neither.',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: _CreateEventColors.muted,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _RestrictionToggle(
-                    icon: Icons.schedule_rounded,
-                    title: 'Time window',
-                    subtitle: 'Only allow voting between a start and end time.',
-                    value: _timeRestrictionEnabled,
-                    onChanged: (value) =>
-                        setState(() => _timeRestrictionEnabled = value),
-                  ),
-                  if (_timeRestrictionEnabled) ...[
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _DateTimeField(
-                            label: 'VOTING_OPENS_AT',
-                            value: _votingOpensAt,
-                            onTap: () => _pickDateTime(isStart: true),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _DateTimeField(
-                            label: 'VOTING_CLOSES_AT',
-                            value: _votingClosesAt,
-                            onTap: () => _pickDateTime(isStart: false),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  _RestrictionToggle(
-                    icon: Icons.location_on_rounded,
-                    title: 'Venue location',
-                    subtitle: 'Only allow voting within a radius of the venue.',
-                    value: _locationRestrictionEnabled,
-                    onChanged: (value) =>
-                        setState(() => _locationRestrictionEnabled = value),
-                  ),
-                  if (_locationRestrictionEnabled) ...[
-                    const SizedBox(height: 16),
-                    const _FieldLabel('ALLOWED_DISTANCE_METERS'),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _radiusController,
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(color: _CreateEventColors.body),
-                      decoration: _fieldDecoration('e.g. 200'),
-                    ),
-                    const SizedBox(height: 20),
-                    const _FieldLabel(
-                      'VENUE_CENTER_LATITUDE / VENUE_CENTER_LONGITUDE',
-                    ),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: _isLocating ? null : _useCurrentLocation,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: _CreateEventColors.tertiary,
-                        side: const BorderSide(
-                          color: _CreateEventColors.tertiary,
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
+                    if (_visibility == eventVisibilityPublic) ...[
+                      const SizedBox(height: 24),
+                      const _FieldLabel('WHO CAN VOTE'),
+                      const SizedBox(height: 8),
+                      _SegmentedChoice(
+                        options: const {
+                          eventVotePermissionEveryone: 'Everyone can vote',
+                          eventVotePermissionInvitedOnly: 'Invited only',
+                        },
+                        value: _votePermission,
+                        onChanged: (value) =>
+                            setState(() => _votePermission = value),
                       ),
-                      icon: _isLocating
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: _CreateEventColors.tertiary,
-                              ),
-                            )
-                          : const Icon(Icons.my_location_rounded, size: 18),
-                      label: Text(_venueButtonLabel()),
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-                  const _FieldLabel('PARTICIPANT LIMIT'),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Cap on combined invited guests + joined members, '
-                    'between 2 and 100. There\'s no "unlimited" option.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _CreateEventColors.muted,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _maxParticipantsController,
-                    keyboardType: TextInputType.number,
-                    style: const TextStyle(color: _CreateEventColors.body),
-                    decoration: _fieldDecoration('100'),
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 16),
+                    ],
+                    const SizedBox(height: 24),
+                    const _FieldLabel('VOTING RESTRICTIONS'),
+                    const SizedBox(height: 4),
                     Text(
-                      _error!,
+                      'Optional, and independent of each other and of who '
+                      'can vote above — turn on either, both, or neither.',
                       style: const TextStyle(
-                        color: Colors.redAccent,
-                        fontSize: 13,
+                        fontSize: 12,
+                        color: _CreateEventColors.muted,
                       ),
                     ),
-                  ],
-                  const SizedBox(height: 32),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
-                        gradient: const LinearGradient(
-                          colors: [
-                            _CreateEventColors.gradientStart,
-                            _CreateEventColors.gradientEnd,
-                          ],
-                        ),
+                    const SizedBox(height: 10),
+                    _RestrictionToggle(
+                      icon: Icons.schedule_rounded,
+                      title: 'Time window',
+                      subtitle:
+                          'Only allow voting between a start and end time.',
+                      value: _timeRestrictionEnabled,
+                      onChanged: (value) =>
+                          setState(() => _timeRestrictionEnabled = value),
+                    ),
+                    if (_timeRestrictionEnabled) ...[
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _DateTimeField(
+                              label: 'VOTING_OPENS_AT',
+                              value: _votingOpensAt,
+                              onTap: () => _pickDateTime(isStart: true),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _DateTimeField(
+                              label: 'VOTING_CLOSES_AT',
+                              value: _votingClosesAt,
+                              onTap: () => _pickDateTime(isStart: false),
+                            ),
+                          ),
+                        ],
                       ),
-                      child: ElevatedButton(
-                        onPressed: _isSubmitting ? null : _submit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          foregroundColor: Colors.white,
+                    ],
+                    const SizedBox(height: 16),
+                    _RestrictionToggle(
+                      icon: Icons.location_on_rounded,
+                      title: 'Venue location',
+                      subtitle:
+                          'Only allow voting within a radius of the venue.',
+                      value: _locationRestrictionEnabled,
+                      onChanged: (value) =>
+                          setState(() => _locationRestrictionEnabled = value),
+                    ),
+                    if (_locationRestrictionEnabled) ...[
+                      const SizedBox(height: 16),
+                      const _FieldLabel('ALLOWED_DISTANCE_METERS'),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _radiusController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: _CreateEventColors.body),
+                        decoration: _fieldDecoration('e.g. 200'),
+                      ),
+                      const SizedBox(height: 20),
+                      const _FieldLabel(
+                        'VENUE_CENTER_LATITUDE / VENUE_CENTER_LONGITUDE',
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _isLocating ? null : _useCurrentLocation,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _CreateEventColors.tertiary,
+                          side: const BorderSide(
+                            color: _CreateEventColors.tertiary,
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
+                            borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        child: _isSubmitting
+                        icon: _isLocating
                             ? const SizedBox(
-                                width: 20,
-                                height: 20,
+                                width: 16,
+                                height: 16,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color: _CreateEventColors.tertiary,
                                 ),
                               )
-                            : const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    'Create Event',
-                                    style: TextStyle(
-                                      fontFamily: 'Sora',
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Icon(Icons.add_rounded, size: 20),
-                                ],
-                              ),
+                            : const Icon(Icons.my_location_rounded, size: 18),
+                        label: Text(_venueButtonLabel()),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    const _FieldLabel('PARTICIPANT LIMIT'),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Cap on combined invited guests + joined members, '
+                      'between 2 and 100. There\'s no "unlimited" option.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _CreateEventColors.muted,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _maxParticipantsController,
+                      keyboardType: TextInputType.number,
+                      style: const TextStyle(color: _CreateEventColors.body),
+                      decoration: _fieldDecoration('100'),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        _error!,
+                        style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          gradient: const LinearGradient(
+                            colors: [
+                              _CreateEventColors.gradientStart,
+                              _CreateEventColors.gradientEnd,
+                            ],
+                          ),
+                        ),
+                        child: ElevatedButton(
+                          onPressed: _isSubmitting ? null : _submit,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                          ),
+                          child: _isSubmitting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      'Create Event',
+                                      style: TextStyle(
+                                        fontFamily: 'Sora',
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Icon(Icons.add_rounded, size: 20),
+                                  ],
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

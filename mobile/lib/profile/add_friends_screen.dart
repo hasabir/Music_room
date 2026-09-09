@@ -1,3 +1,5 @@
+import 'package:mobile/core/responsive/responsive.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -104,7 +106,10 @@ class _AddFriendsScreenState extends State<AddFriendsScreen> {
   Future<void> _onAdd(SearchUser user) async {
     try {
       await _profileApi.sendFriendRequest(user.id);
-      _updateResult(user.id, (u) => u.copyWith(relationshipStatus: RelationshipStatus.pendingSent));
+      _updateResult(
+        user.id,
+        (u) => u.copyWith(relationshipStatus: RelationshipStatus.pendingSent),
+      );
       _showSnack('Friend request sent');
     } on ApiException catch (error) {
       _showSnack(error.message);
@@ -116,7 +121,10 @@ class _AddFriendsScreenState extends State<AddFriendsScreen> {
     if (friendshipId == null) return;
     try {
       await _profileApi.acceptFriendRequest(friendshipId);
-      _updateResult(user.id, (u) => u.copyWith(relationshipStatus: RelationshipStatus.friends));
+      _updateResult(
+        user.id,
+        (u) => u.copyWith(relationshipStatus: RelationshipStatus.friends),
+      );
     } on ApiException catch (error) {
       _showSnack(error.message);
     }
@@ -127,7 +135,10 @@ class _AddFriendsScreenState extends State<AddFriendsScreen> {
     if (friendshipId == null) return;
     try {
       await _profileApi.rejectFriendRequest(friendshipId);
-      _updateResult(user.id, (u) => u.copyWith(relationshipStatus: RelationshipStatus.none));
+      _updateResult(
+        user.id,
+        (u) => u.copyWith(relationshipStatus: RelationshipStatus.none),
+      );
     } on ApiException catch (error) {
       _showSnack(error.message);
     }
@@ -149,50 +160,64 @@ class _AddFriendsScreenState extends State<AddFriendsScreen> {
 
   void _showSnack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _AddFriendsColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.arrow_back_rounded, color: _AddFriendsColors.body),
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      autofocus: true,
-                      onChanged: _onQueryChanged,
-                      style: const TextStyle(color: _AddFriendsColors.body),
-                      decoration: InputDecoration(
-                        hintText: 'Search for users...',
-                        hintStyle: const TextStyle(color: _AddFriendsColors.muted),
-                        prefixIcon: const Icon(Icons.search_rounded, color: _AddFriendsColors.tertiary),
-                        filled: true,
-                        fillColor: _AddFriendsColors.card,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide.none,
+      body: ResponsiveContent(
+        maxWidth: 720,
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: _AddFriendsColors.body,
+                      ),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        autofocus: true,
+                        onChanged: _onQueryChanged,
+                        style: const TextStyle(color: _AddFriendsColors.body),
+                        decoration: InputDecoration(
+                          hintText: 'Search for users...',
+                          hintStyle: const TextStyle(
+                            color: _AddFriendsColors.muted,
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.search_rounded,
+                            color: _AddFriendsColors.tertiary,
+                          ),
+                          filled: true,
+                          fillColor: _AddFriendsColors.card,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 14,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            borderSide: BorderSide.none,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(child: _buildBody()),
-          ],
+              const SizedBox(height: 8),
+              Expanded(child: _buildBody()),
+            ],
+          ),
         ),
       ),
     );
@@ -200,24 +225,37 @@ class _AddFriendsScreenState extends State<AddFriendsScreen> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: _AddFriendsColors.headline));
+      return const Center(
+        child: CircularProgressIndicator(color: _AddFriendsColors.headline),
+      );
     }
 
     if (_error != null) {
       return Center(
-        child: Text(_error!, style: const TextStyle(color: _AddFriendsColors.muted)),
+        child: Text(
+          _error!,
+          style: const TextStyle(color: _AddFriendsColors.muted),
+        ),
       );
     }
 
     final results = _results;
     if (results == null) {
       return const Center(
-        child: Text('Search by name or email to find people.', style: TextStyle(color: _AddFriendsColors.muted)),
+        child: Text(
+          'Search by name or email to find people.',
+          style: TextStyle(color: _AddFriendsColors.muted),
+        ),
       );
     }
 
     if (results.isEmpty) {
-      return const Center(child: Text('No users found.', style: TextStyle(color: _AddFriendsColors.muted)));
+      return const Center(
+        child: Text(
+          'No users found.',
+          style: TextStyle(color: _AddFriendsColors.muted),
+        ),
+      );
     }
 
     return ListView.separated(
@@ -297,12 +335,19 @@ class _SearchResultRow extends StatelessWidget {
 
   Widget _trailing() {
     return switch (user.relationshipStatus) {
-      RelationshipStatus.none => _GradientPillButton(label: 'Add', onTap: onAdd),
+      RelationshipStatus.none => _GradientPillButton(
+        label: 'Add',
+        onTap: onAdd,
+      ),
       RelationshipStatus.pendingSent => const _OutlinedPill(label: 'Requested'),
       RelationshipStatus.friends => const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.check_circle_rounded, size: 14, color: _AddFriendsColors.muted),
+          Icon(
+            Icons.check_circle_rounded,
+            size: 14,
+            color: _AddFriendsColors.muted,
+          ),
           SizedBox(width: 4),
           Text(
             'FRIENDS',
@@ -321,7 +366,10 @@ class _SearchResultRow extends StatelessWidget {
         children: [
           TextButton(
             onPressed: onDecline,
-            child: const Text('Decline', style: TextStyle(color: _AddFriendsColors.muted)),
+            child: const Text(
+              'Decline',
+              style: TextStyle(color: _AddFriendsColors.muted),
+            ),
           ),
           _GradientPillButton(label: 'Accept', onTap: onAccept),
         ],
@@ -400,12 +448,19 @@ class _GradientPillButton extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
           gradient: const LinearGradient(
-            colors: [_AddFriendsColors.gradientStart, _AddFriendsColors.gradientEnd],
+            colors: [
+              _AddFriendsColors.gradientStart,
+              _AddFriendsColors.gradientEnd,
+            ],
           ),
         ),
         child: Text(
           label,
-          style: const TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700, color: Colors.white),
+          style: const TextStyle(
+            fontFamily: 'Sora',
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
         ),
       ),
     );

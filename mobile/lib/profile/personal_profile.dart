@@ -166,82 +166,87 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
       currentTab: AppTab.profile,
       onTabSelected: (tab) => navigateToTab(context, AppTab.profile, tab),
       backgroundColor: _ProfileColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _TopBar(onSettingsTap: _onSettings),
-            Expanded(
-              child: FutureBuilder<_ProfileData>(
-                future: _dataFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(
-                        color: _ProfileColors.headline,
+      body: ResponsiveContent(
+        maxWidth: 1440,
+        child: SafeArea(
+          child: Column(
+            children: [
+              _TopBar(onSettingsTap: _onSettings),
+              Expanded(
+                child: FutureBuilder<_ProfileData>(
+                  future: _dataFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: _ProfileColors.headline,
+                        ),
+                      );
+                    }
+
+                    if (snapshot.hasError || !snapshot.hasData) {
+                      final message = snapshot.error is ApiException
+                          ? (snapshot.error as ApiException).message
+                          : 'Could not load your profile.';
+                      return _ErrorState(message: message, onRetry: _refresh);
+                    }
+
+                    _currentData = snapshot.data;
+                    final data = snapshot.data!;
+
+                    return RefreshIndicator(
+                      onRefresh: _refresh,
+                      color: _ProfileColors.headline,
+                      backgroundColor: _ProfileColors.card,
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        children: [
+                          _ProfileCard(
+                            profile: data.profile,
+                            authUser: data.authUser,
+                            onEditProfile: () => _onEditProfile(
+                              data.profile,
+                              data.authUser.email,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _FriendsCard(
+                            count: data.friends.length,
+                            onTap: _onFriends,
+                          ),
+                          const SizedBox(height: 16),
+                          _StatsRow(
+                            likes: data.profile.likesReceivedCount,
+                            playlists: data.profile.playlistsCount,
+                          ),
+                          const SizedBox(height: 24),
+                          const _DetailsLabel(),
+                          const SizedBox(height: 10),
+                          _DetailsCard(
+                            profile: data.profile,
+                            email: data.authUser.email,
+                          ),
+                          const SizedBox(height: 16),
+                          _VibeSignatureCard(
+                            genres: data.profile.favoriteGenres,
+                            privacy: _privacyFor(
+                              data.profile.fieldVisibility['favorite_genres']!,
+                            ),
+                            onEdit: () => _onMusicPreferences(data.profile),
+                          ),
+                          const SizedBox(height: 24),
+                          _ProfileContentTabs(
+                            playlists: data.playlists,
+                            currentUsername: data.authUser.username,
+                          ),
+                        ],
                       ),
                     );
-                  }
-
-                  if (snapshot.hasError || !snapshot.hasData) {
-                    final message = snapshot.error is ApiException
-                        ? (snapshot.error as ApiException).message
-                        : 'Could not load your profile.';
-                    return _ErrorState(message: message, onRetry: _refresh);
-                  }
-
-                  _currentData = snapshot.data;
-                  final data = snapshot.data!;
-
-                  return RefreshIndicator(
-                    onRefresh: _refresh,
-                    color: _ProfileColors.headline,
-                    backgroundColor: _ProfileColors.card,
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      children: [
-                        _ProfileCard(
-                          profile: data.profile,
-                          authUser: data.authUser,
-                          onEditProfile: () =>
-                              _onEditProfile(data.profile, data.authUser.email),
-                        ),
-                        const SizedBox(height: 16),
-                        _FriendsCard(
-                          count: data.friends.length,
-                          onTap: _onFriends,
-                        ),
-                        const SizedBox(height: 16),
-                        _StatsRow(
-                          likes: data.profile.likesReceivedCount,
-                          playlists: data.profile.playlistsCount,
-                        ),
-                        const SizedBox(height: 24),
-                        const _DetailsLabel(),
-                        const SizedBox(height: 10),
-                        _DetailsCard(
-                          profile: data.profile,
-                          email: data.authUser.email,
-                        ),
-                        const SizedBox(height: 16),
-                        _VibeSignatureCard(
-                          genres: data.profile.favoriteGenres,
-                          privacy: _privacyFor(
-                            data.profile.fieldVisibility['favorite_genres']!,
-                          ),
-                          onEdit: () => _onMusicPreferences(data.profile),
-                        ),
-                        const SizedBox(height: 24),
-                        _ProfileContentTabs(
-                          playlists: data.playlists,
-                          currentUsername: data.authUser.username,
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1033,21 +1038,22 @@ class _ProfileContentTabsState extends State<_ProfileContentTabs> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Wrap(
+          spacing: 20,
+          runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             _TabButton(
               label: 'Playlists',
               isSelected: _tab == _ProfileContentTab.playlists,
               onTap: () => setState(() => _tab = _ProfileContentTab.playlists),
             ),
-            const SizedBox(width: 20),
             _TabButton(
               label: 'Events Hosted',
               isSelected: _tab == _ProfileContentTab.eventsHosted,
               onTap: () =>
                   setState(() => _tab = _ProfileContentTab.eventsHosted),
             ),
-            const Spacer(),
             const Icon(Icons.sort_rounded, color: _ProfileColors.muted),
           ],
         ),
@@ -1172,11 +1178,11 @@ class _PlaylistCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
                     children: [
                       VisibilityBadge(visibility: playlist.visibility),
-                      const SizedBox(width: 8),
                       EditPermissionBadge(
                         editPermission: playlist.editPermission,
                       ),

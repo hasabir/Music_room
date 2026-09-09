@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api/api_client.dart';
@@ -76,14 +77,19 @@ class _EventSettingsScreenState extends State<EventSettingsScreen> {
     final value = text.isEmpty ? 100 : int.tryParse(text);
     if (value == null || value < 2 || value > 100) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a whole number between 2 and 100.')),
+        const SnackBar(
+          content: Text('Enter a whole number between 2 and 100.'),
+        ),
       );
       return;
     }
 
     setState(() => _isSaving = true);
     try {
-      final updated = await _eventApi.updateEvent(widget.eventId, maxParticipants: value);
+      final updated = await _eventApi.updateEvent(
+        widget.eventId,
+        maxParticipants: value,
+      );
       if (!mounted) return;
       setState(() {
         _event = updated;
@@ -96,9 +102,8 @@ class _EventSettingsScreenState extends State<EventSettingsScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _isSaving = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -124,9 +129,8 @@ class _EventSettingsScreenState extends State<EventSettingsScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _isSaving = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -175,28 +179,29 @@ class _EventSettingsScreenState extends State<EventSettingsScreen> {
 
     setState(() => _isSaving = true);
     try {
-      final updated = await _eventApi.updateEvent(widget.eventId, status: status);
+      final updated = await _eventApi.updateEvent(
+        widget.eventId,
+        status: status,
+      );
       if (!mounted) return;
       setState(() {
         _event = updated;
         _isSaving = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_confirmationMessage(status))));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(_confirmationMessage(status))));
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _isSaving = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
   String _confirmationMessage(String status) => switch (status) {
-    eventStatusClosed =>
-      'Event closed — no new tracks can be suggested, but voting and entry stay open.',
-    eventStatusCanceled => 'Event canceled — no one but you can enter it anymore.',
+    eventStatusClosed => 'Event closed — no new tracks can be suggested, but voting and entry stay open.',
+    eventStatusCanceled =>
+      'Event canceled — no one but you can enter it anymore.',
     _ => 'Event reopened.',
   };
 
@@ -237,36 +242,39 @@ class _EventSettingsScreenState extends State<EventSettingsScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: _SettingsColors.background,
-    body: SafeArea(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 8, 16, 8),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(
-                    Icons.arrow_back_rounded,
-                    color: _SettingsColors.body,
-                  ),
-                ),
-                const Expanded(
-                  child: Text(
-                    'Event Settings',
-                    style: TextStyle(
-                      fontFamily: 'Sora',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
+    body: ResponsiveContent(
+      maxWidth: 720,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 8, 16, 8),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
                       color: _SettingsColors.body,
                     ),
                   ),
-                ),
-              ],
+                  const Expanded(
+                    child: Text(
+                      'Event Settings',
+                      style: TextStyle(
+                        fontFamily: 'Sora',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: _SettingsColors.body,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Expanded(child: _buildBody()),
-        ],
+            Expanded(child: _buildBody()),
+          ],
+        ),
       ),
     ),
   );
@@ -308,7 +316,8 @@ class _EventSettingsScreenState extends State<EventSettingsScreen> {
         _StatusOptionCard(
           icon: Icons.podcasts_rounded,
           title: 'Live',
-          description: 'Open as normal — anyone with access can enter, '
+          description:
+              'Open as normal — anyone with access can enter, '
               'suggest tracks, and vote.',
           color: _SettingsColors.tertiary,
           isSelected: event.status == eventStatusLive,
@@ -319,7 +328,8 @@ class _EventSettingsScreenState extends State<EventSettingsScreen> {
         _StatusOptionCard(
           icon: Icons.lock_clock_rounded,
           title: 'Closed',
-          description: 'Entry and voting stay open, but no one can suggest '
+          description:
+              'Entry and voting stay open, but no one can suggest '
               'new tracks anymore.',
           color: const Color(0xFFFBBF24),
           isSelected: event.status == eventStatusClosed,
@@ -330,7 +340,8 @@ class _EventSettingsScreenState extends State<EventSettingsScreen> {
         _StatusOptionCard(
           icon: Icons.block_rounded,
           title: 'Canceled',
-          description: 'Nobody can enter anymore, even guests or members '
+          description:
+              'Nobody can enter anymore, even guests or members '
               'who already joined. Only you keep access.',
           color: _SettingsColors.danger,
           isSelected: event.status == eventStatusCanceled,
@@ -370,7 +381,10 @@ class _EventSettingsScreenState extends State<EventSettingsScreen> {
                   hintStyle: const TextStyle(color: _SettingsColors.muted),
                   filled: true,
                   fillColor: _SettingsColors.card,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: const BorderSide(color: _SettingsColors.border),
@@ -381,7 +395,9 @@ class _EventSettingsScreenState extends State<EventSettingsScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: _SettingsColors.tertiary),
+                    borderSide: const BorderSide(
+                      color: _SettingsColors.tertiary,
+                    ),
                   ),
                 ),
               ),

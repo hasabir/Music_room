@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api/api_client.dart';
@@ -77,59 +78,62 @@ class _VerificationExpiredScreenState extends State<VerificationExpiredScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _ExpiredColors.background,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
-              _BackButton(onPressed: () => Navigator.of(context).pop()),
-              const Spacer(flex: 3),
-              const _ErrorIcon(),
-              const SizedBox(height: 32),
-              const Text(
-                'Verification link\nexpired',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Sora',
-                  fontWeight: FontWeight.w800,
-                  fontSize: 32,
-                  height: 1.15,
-                  color: _ExpiredColors.title,
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'This verification link is no longer valid.\n'
-                'Request a new verification email to\n'
-                'continue.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  height: 1.5,
-                  color: _ExpiredColors.description,
-                ),
-              ),
-              const Spacer(flex: 4),
-              if (_errorMessage != null) ...[
-                Text(
-                  _errorMessage!,
+      body: ResponsiveContent(
+        maxWidth: 560,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: ResponsiveScrollColumn(
+              children: [
+                const SizedBox(height: 8),
+                _BackButton(onPressed: () => Navigator.of(context).pop()),
+                const Spacer(flex: 3),
+                const _ErrorIcon(),
+                const SizedBox(height: 32),
+                const Text(
+                  'Verification link\nexpired',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: _ExpiredColors.errorText,
+                  style: TextStyle(
+                    fontFamily: 'Sora',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 32,
+                    height: 1.15,
+                    color: _ExpiredColors.title,
                   ),
                 ),
                 const SizedBox(height: 16),
+                const Text(
+                  'This verification link is no longer valid.\n'
+                  'Request a new verification email to\n'
+                  'continue.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    height: 1.5,
+                    color: _ExpiredColors.description,
+                  ),
+                ),
+                const Spacer(flex: 4),
+                if (_errorMessage != null) ...[
+                  Text(
+                    _errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: _ExpiredColors.errorText,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                _SendNewEmailButton(
+                  onPressed: _isResending ? null : _onSendNewEmail,
+                  isLoading: _isResending,
+                ),
+                const SizedBox(height: 16),
+                _BackToSignInButton(onPressed: _onBackToSignIn),
+                const SizedBox(height: 24),
               ],
-              _SendNewEmailButton(
-                onPressed: _isResending ? null : _onSendNewEmail,
-                isLoading: _isResending,
-              ),
-              const SizedBox(height: 16),
-              _BackToSignInButton(onPressed: _onBackToSignIn),
-              const SizedBox(height: 24),
-            ],
+            ),
           ),
         ),
       ),

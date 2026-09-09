@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/auth_api.dart';
@@ -83,7 +84,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   }
 
   Future<void> _onAddFriends() async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AddFriendsScreen()));
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const AddFriendsScreen()));
     _load();
   }
 
@@ -114,7 +116,9 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     try {
       await _profileApi.rejectFriendRequest(request.id);
       if (!mounted) return;
-      setState(() => _received = _received.where((r) => r.id != request.id).toList());
+      setState(
+        () => _received = _received.where((r) => r.id != request.id).toList(),
+      );
     } on ApiException catch (error) {
       _showError(error.message);
     }
@@ -150,7 +154,9 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     try {
       await _profileApi.removeFriend(friend.id);
       if (!mounted) return;
-      setState(() => _friends = _friends.where((f) => f.id != friend.id).toList());
+      setState(
+        () => _friends = _friends.where((f) => f.id != friend.id).toList(),
+      );
     } on ApiException catch (error) {
       _showError(error.message);
     }
@@ -158,7 +164,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
 
   void _showError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -167,63 +174,70 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
 
     return Scaffold(
       backgroundColor: _ConnectionsColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _Header(onAddFriends: _onAddFriends),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _TabSwitcher(
-                tab: _tab,
-                pendingCount: pendingCount,
-                onChanged: (tab) => setState(() => _tab = tab),
-              ),
-            ),
-            if (_tab == _ConnectionsTab.friends) ...[
-              const SizedBox(height: 12),
+      body: ResponsiveContent(
+        maxWidth: 720,
+        child: SafeArea(
+          child: Column(
+            children: [
+              _Header(onAddFriends: _onAddFriends),
+              const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _SearchField(onChanged: (q) => setState(() => _searchQuery = q)),
+                child: _TabSwitcher(
+                  tab: _tab,
+                  pendingCount: pendingCount,
+                  onChanged: (tab) => setState(() => _tab = tab),
+                ),
+              ),
+              if (_tab == _ConnectionsTab.friends) ...[
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _SearchField(
+                    onChanged: (q) => setState(() => _searchQuery = q),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Expanded(
+                child: Builder(
+                  builder: (context) {
+                    if (_isLoading) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: _ConnectionsColors.headline,
+                        ),
+                      );
+                    }
+
+                    if (_error != null) {
+                      return _ErrorState(onRetry: _load);
+                    }
+
+                    return RefreshIndicator(
+                      onRefresh: _load,
+                      color: _ConnectionsColors.headline,
+                      backgroundColor: _ConnectionsColors.card,
+                      child: _tab == _ConnectionsTab.friends
+                          ? _FriendsList(
+                              friends: _filteredFriends(_friends),
+                              onRemove: _onRemoveFriend,
+                              onTap: _onViewFriend,
+                            )
+                          : _RequestsList(
+                              received: _received,
+                              sent: _sent,
+                              onAccept: _onAccept,
+                              onReject: _onReject,
+                              onTapReceived: _onViewRequest,
+                              onTapSent: _onViewRequest,
+                            ),
+                    );
+                  },
+                ),
               ),
             ],
-            const SizedBox(height: 8),
-            Expanded(
-              child: Builder(
-                builder: (context) {
-                  if (_isLoading) {
-                    return const Center(
-                      child: CircularProgressIndicator(color: _ConnectionsColors.headline),
-                    );
-                  }
-
-                  if (_error != null) {
-                    return _ErrorState(onRetry: _load);
-                  }
-
-                  return RefreshIndicator(
-                    onRefresh: _load,
-                    color: _ConnectionsColors.headline,
-                    backgroundColor: _ConnectionsColors.card,
-                    child: _tab == _ConnectionsTab.friends
-                        ? _FriendsList(
-                            friends: _filteredFriends(_friends),
-                            onRemove: _onRemoveFriend,
-                            onTap: _onViewFriend,
-                          )
-                        : _RequestsList(
-                            received: _received,
-                            sent: _sent,
-                            onAccept: _onAccept,
-                            onReject: _onReject,
-                            onTapReceived: _onViewRequest,
-                            onTapSent: _onViewRequest,
-                          ),
-                  );
-                },
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -232,7 +246,9 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   List<Friend> _filteredFriends(List<Friend> friends) {
     if (_searchQuery.trim().isEmpty) return friends;
     final query = _searchQuery.trim().toLowerCase();
-    return friends.where((friend) => friend.fullName.toLowerCase().contains(query)).toList();
+    return friends
+        .where((friend) => friend.fullName.toLowerCase().contains(query))
+        .toList();
   }
 }
 
@@ -251,7 +267,10 @@ class _Header extends StatelessWidget {
         children: [
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.arrow_back_rounded, color: _ConnectionsColors.body),
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+              color: _ConnectionsColors.body,
+            ),
           ),
           const Expanded(
             child: Text(
@@ -279,7 +298,11 @@ class _Header extends StatelessWidget {
 }
 
 class _TabSwitcher extends StatelessWidget {
-  const _TabSwitcher({required this.tab, required this.pendingCount, required this.onChanged});
+  const _TabSwitcher({
+    required this.tab,
+    required this.pendingCount,
+    required this.onChanged,
+  });
 
   final _ConnectionsTab tab;
   final int pendingCount;
@@ -289,7 +312,10 @@ class _TabSwitcher extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: _ConnectionsColors.card, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: _ConnectionsColors.card,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Row(
         children: [
           Expanded(
@@ -346,17 +372,26 @@ class _TabButton extends StatelessWidget {
                 fontFamily: 'Sora',
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
-                color: isSelected ? _ConnectionsColors.body : _ConnectionsColors.muted,
+                color: isSelected
+                    ? _ConnectionsColors.body
+                    : _ConnectionsColors.muted,
               ),
             ),
             if (badgeCount > 0) ...[
               const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: const BoxDecoration(color: _ConnectionsColors.badge, shape: BoxShape.circle),
+                decoration: const BoxDecoration(
+                  color: _ConnectionsColors.badge,
+                  shape: BoxShape.circle,
+                ),
                 child: Text(
                   '$badgeCount',
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ],
@@ -380,11 +415,17 @@ class _SearchField extends StatelessWidget {
       decoration: InputDecoration(
         hintText: 'Search friends...',
         hintStyle: const TextStyle(color: _ConnectionsColors.muted),
-        prefixIcon: const Icon(Icons.search_rounded, color: _ConnectionsColors.muted),
+        prefixIcon: const Icon(
+          Icons.search_rounded,
+          color: _ConnectionsColors.muted,
+        ),
         filled: true,
         fillColor: _ConnectionsColors.card,
         contentPadding: const EdgeInsets.symmetric(vertical: 14),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: BorderSide.none,
+        ),
       ),
     );
   }
@@ -409,7 +450,10 @@ class _ErrorState extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            OutlinedButton(onPressed: () => onRetry(), child: const Text('Retry')),
+            OutlinedButton(
+              onPressed: () => onRetry(),
+              child: const Text('Retry'),
+            ),
           ],
         ),
       ),
@@ -418,7 +462,11 @@ class _ErrorState extends StatelessWidget {
 }
 
 class _FriendsList extends StatelessWidget {
-  const _FriendsList({required this.friends, required this.onRemove, required this.onTap});
+  const _FriendsList({
+    required this.friends,
+    required this.onRemove,
+    required this.onTap,
+  });
 
   final List<Friend> friends;
   final ValueChanged<Friend> onRemove;
@@ -427,7 +475,9 @@ class _FriendsList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (friends.isEmpty) {
-      return const _EmptyState(message: 'No friends yet — tap + to find people.');
+      return const _EmptyState(
+        message: 'No friends yet — tap + to find people.',
+      );
     }
 
     return ListView.separated(
@@ -441,7 +491,11 @@ class _FriendsList extends StatelessWidget {
 }
 
 class _FriendRow extends StatelessWidget {
-  const _FriendRow({required this.friend, required this.onRemove, required this.onTap});
+  const _FriendRow({
+    required this.friend,
+    required this.onRemove,
+    required this.onTap,
+  });
 
   final Friend friend;
   final ValueChanged<Friend> onRemove;
@@ -465,7 +519,9 @@ class _FriendRow extends StatelessWidget {
               child: Row(
                 children: [
                   _Avatar(
-                    letter: friend.firstName.isNotEmpty ? friend.firstName[0].toUpperCase() : '?',
+                    letter: friend.firstName.isNotEmpty
+                        ? friend.firstName[0].toUpperCase()
+                        : '?',
                     avatar: friend.avatar,
                     avatarType: friend.avatarType,
                   ),
@@ -487,11 +543,17 @@ class _FriendRow extends StatelessWidget {
           ),
           PopupMenuButton<void>(
             color: _ConnectionsColors.card,
-            icon: const Icon(Icons.more_vert_rounded, color: _ConnectionsColors.muted),
+            icon: const Icon(
+              Icons.more_vert_rounded,
+              color: _ConnectionsColors.muted,
+            ),
             itemBuilder: (context) => [
               PopupMenuItem(
                 onTap: () => onRemove(friend),
-                child: const Text('Remove friend', style: TextStyle(color: _ConnectionsColors.body)),
+                child: const Text(
+                  'Remove friend',
+                  style: TextStyle(color: _ConnectionsColors.body),
+                ),
               ),
             ],
           ),
@@ -629,7 +691,10 @@ class _ReceivedRequestRow extends StatelessWidget {
           ),
           TextButton(
             onPressed: () => onReject(request),
-            child: const Text('Decline', style: TextStyle(color: _ConnectionsColors.muted)),
+            child: const Text(
+              'Decline',
+              style: TextStyle(color: _ConnectionsColors.muted),
+            ),
           ),
           const SizedBox(width: 4),
           _GradientPillButton(label: 'Accept', onTap: () => onAccept(request)),
@@ -722,7 +787,11 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({required this.letter, required this.avatar, required this.avatarType});
+  const _Avatar({
+    required this.letter,
+    required this.avatar,
+    required this.avatarType,
+  });
 
   final String letter;
   final String? avatar;
@@ -756,7 +825,10 @@ class _AvatarFallback extends StatelessWidget {
       backgroundColor: _ConnectionsColors.border,
       child: Text(
         letter,
-        style: const TextStyle(color: _ConnectionsColors.headline, fontWeight: FontWeight.w700),
+        style: const TextStyle(
+          color: _ConnectionsColors.headline,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -778,12 +850,19 @@ class _GradientPillButton extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
           gradient: const LinearGradient(
-            colors: [_ConnectionsColors.gradientStart, _ConnectionsColors.gradientEnd],
+            colors: [
+              _ConnectionsColors.gradientStart,
+              _ConnectionsColors.gradientEnd,
+            ],
           ),
         ),
         child: Text(
           label,
-          style: const TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700, color: Colors.white),
+          style: const TextStyle(
+            fontFamily: 'Sora',
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
         ),
       ),
     );

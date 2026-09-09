@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -93,78 +94,81 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _ChangeColors.background,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              children: [
-                const SizedBox(height: 8),
-                _BackButton(onPressed: () => Navigator.of(context).pop()),
-                const SizedBox(height: 24),
-                const _Title(),
-                const SizedBox(height: 12),
-                const _Description(),
-                const SizedBox(height: 32),
-                _LabeledField(
-                  label: 'NEW PASSWORD',
-                  hint: 'Enter your new password',
-                  controller: _passwordController,
-                  obscureText: !_isPasswordVisible,
-                  prefixIcon: Icons.lock_outline,
-                  suffixIcon: _VisibilityToggle(
-                    isVisible: _isPasswordVisible,
-                    onPressed: () => setState(
-                      () => _isPasswordVisible = !_isPasswordVisible,
+      body: ResponsiveContent(
+        maxWidth: 560,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                children: [
+                  const SizedBox(height: 8),
+                  _BackButton(onPressed: () => Navigator.of(context).pop()),
+                  const SizedBox(height: 24),
+                  const _Title(),
+                  const SizedBox(height: 12),
+                  const _Description(),
+                  const SizedBox(height: 32),
+                  _LabeledField(
+                    label: 'NEW PASSWORD',
+                    hint: 'Enter your new password',
+                    controller: _passwordController,
+                    obscureText: !_isPasswordVisible,
+                    prefixIcon: Icons.lock_outline,
+                    suffixIcon: _VisibilityToggle(
+                      isVisible: _isPasswordVisible,
+                      onPressed: () => setState(
+                        () => _isPasswordVisible = !_isPasswordVisible,
+                      ),
                     ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Password is required';
+                      }
+                      if (value.length < 8) {
+                        return 'Password must be at least 8 characters';
+                      }
+                      return null;
+                    },
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Password is required';
-                    }
-                    if (value.length < 8) {
-                      return 'Password must be at least 8 characters';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-                _LabeledField(
-                  label: 'CONFIRM NEW PASSWORD',
-                  hint: 'Repeat your new password',
-                  controller: _confirmPasswordController,
-                  obscureText: !_isConfirmPasswordVisible,
-                  prefixIcon: Icons.restore,
-                  suffixIcon: _VisibilityToggle(
-                    isVisible: _isConfirmPasswordVisible,
-                    onPressed: () => setState(
-                      () => _isConfirmPasswordVisible =
-                          !_isConfirmPasswordVisible,
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value != _passwordController.text) {
-                      return 'Passwords do not match';
-                    }
-                    return null;
-                  },
-                ),
-                if (_errorMessage != null) ...[
                   const SizedBox(height: 20),
-                  _ErrorMessage(message: _errorMessage!),
+                  _LabeledField(
+                    label: 'CONFIRM NEW PASSWORD',
+                    hint: 'Repeat your new password',
+                    controller: _confirmPasswordController,
+                    obscureText: !_isConfirmPasswordVisible,
+                    prefixIcon: Icons.restore,
+                    suffixIcon: _VisibilityToggle(
+                      isVisible: _isConfirmPasswordVisible,
+                      onPressed: () => setState(
+                        () => _isConfirmPasswordVisible =
+                            !_isConfirmPasswordVisible,
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value != _passwordController.text) {
+                        return 'Passwords do not match';
+                      }
+                      return null;
+                    },
+                  ),
+                  if (_errorMessage != null) ...[
+                    const SizedBox(height: 20),
+                    _ErrorMessage(message: _errorMessage!),
+                  ],
+                  const SizedBox(height: 28),
+                  _UpdatePasswordButton(
+                    onPressed: _isSubmitting ? null : _onUpdatePassword,
+                    isLoading: _isSubmitting,
+                  ),
+                  const SizedBox(height: 16),
+                  _BackToSignInButton(onPressed: _onBackToSignIn),
+                  const SizedBox(height: 32),
+                  _LogInPrompt(onPressed: _onBackToSignIn),
+                  const SizedBox(height: 24),
                 ],
-                const SizedBox(height: 28),
-                _UpdatePasswordButton(
-                  onPressed: _isSubmitting ? null : _onUpdatePassword,
-                  isLoading: _isSubmitting,
-                ),
-                const SizedBox(height: 16),
-                _BackToSignInButton(onPressed: _onBackToSignIn),
-                const SizedBox(height: 32),
-                _LogInPrompt(onPressed: _onBackToSignIn),
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
           ),
         ),

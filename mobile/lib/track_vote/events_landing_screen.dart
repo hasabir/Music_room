@@ -153,84 +153,93 @@ class _EventsLandingScreenState extends State<EventsLandingScreen> {
       currentTab: AppTab.vote,
       onTabSelected: (tab) => navigateToTab(context, AppTab.vote, tab),
       backgroundColor: _EventColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _ListHeader(onCreate: _onCreateEvent),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _TabSwitcher(
-                tab: _tab,
-                onChanged: (tab) => setState(() => _tab = tab),
+      body: ResponsiveContent(
+        maxWidth: 1440,
+        child: SafeArea(
+          child: Column(
+            children: [
+              _ListHeader(onCreate: _onCreateEvent),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _TabSwitcher(
+                  tab: _tab,
+                  onChanged: (tab) => setState(() => _tab = tab),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: FutureBuilder<_ListData>(
-                future: _dataFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(
-                        color: _EventColors.headline,
-                      ),
-                    );
-                  }
+              const SizedBox(height: 8),
+              Expanded(
+                child: FutureBuilder<_ListData>(
+                  future: _dataFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: _EventColors.headline,
+                        ),
+                      );
+                    }
 
-                  if (snapshot.hasError || !snapshot.hasData) {
-                    final message = snapshot.error is ApiException
-                        ? (snapshot.error as ApiException).message
-                        : 'Could not load events.';
-                    return _ErrorState(message: message, onRetry: _refresh);
-                  }
+                    if (snapshot.hasError || !snapshot.hasData) {
+                      final message = snapshot.error is ApiException
+                          ? (snapshot.error as ApiException).message
+                          : 'Could not load events.';
+                      return _ErrorState(message: message, onRetry: _refresh);
+                    }
 
-                  final data = snapshot.data!;
-                  final username = data.authUser?.username ?? '';
-                  final visible = data.events.where((e) {
-                    final mine = _isMine(e, username);
-                    return switch (_tab) {
-                      _EventTab.mine => mine,
-                      _EventTab.joined => !mine && _isJoined(e),
-                      _EventTab.discover => !mine && !_isJoined(e),
-                    };
-                  }).toList();
+                    final data = snapshot.data!;
+                    final username = data.authUser?.username ?? '';
+                    final visible = data.events.where((e) {
+                      final mine = _isMine(e, username);
+                      return switch (_tab) {
+                        _EventTab.mine => mine,
+                        _EventTab.joined => !mine && _isJoined(e),
+                        _EventTab.discover => !mine && !_isJoined(e),
+                      };
+                    }).toList();
 
-                  return RefreshIndicator(
-                    onRefresh: _refresh,
-                    color: _EventColors.headline,
-                    backgroundColor: _EventColors.card,
-                    child: visible.isEmpty
-                        ? ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 40, 16, 24),
-                            children: [
-                              _EmptyState(
-                                tab: _tab,
-                                onCreate: _tab == _EventTab.mine
-                                    ? _onCreateEvent
-                                    : null,
+                    return RefreshIndicator(
+                      onRefresh: _refresh,
+                      color: _EventColors.headline,
+                      backgroundColor: _EventColors.card,
+                      child: visible.isEmpty
+                          ? ListView(
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                40,
+                                16,
+                                24,
                               ),
-                            ],
-                          )
-                        : ResponsiveCardGrid(
-                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                            spacing: 16,
-                            scrollPhysics: const AlwaysScrollableScrollPhysics(),
-                            children: [
-                              for (final event in visible)
-                                _EventHeroCard(
-                                  event: event,
-                                  showJoinButton: _tab == _EventTab.discover,
-                                  onTap: () => _onOpenEvent(event),
-                                  onJoin: () => _onJoinEvent(event),
+                              children: [
+                                _EmptyState(
+                                  tab: _tab,
+                                  onCreate: _tab == _EventTab.mine
+                                      ? _onCreateEvent
+                                      : null,
                                 ),
-                            ],
-                          ),
-                  );
-                },
+                              ],
+                            )
+                          : ResponsiveCardGrid(
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                              spacing: 16,
+                              scrollPhysics:
+                                  const AlwaysScrollableScrollPhysics(),
+                              children: [
+                                for (final event in visible)
+                                  _EventHeroCard(
+                                    event: event,
+                                    showJoinButton: _tab == _EventTab.discover,
+                                    onTap: () => _onOpenEvent(event),
+                                    onJoin: () => _onJoinEvent(event),
+                                  ),
+                              ],
+                            ),
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -434,7 +443,10 @@ class _EventHeroCard extends StatelessWidget {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          colors: [Colors.black.withValues(alpha: 0.06), Colors.black.withValues(alpha: 0.28)],
+                          colors: [
+                            Colors.black.withValues(alpha: 0.06),
+                            Colors.black.withValues(alpha: 0.28),
+                          ],
                         ),
                       ),
                     ),
@@ -558,7 +570,9 @@ class _EventHeroCard extends StatelessWidget {
                         : [
                             EventVisibilityBadge(visibility: event.visibility),
                             EventStatusBadge(status: event.status),
-                            EventLicenseBadge(votePermission: event.votePermission),
+                            EventLicenseBadge(
+                              votePermission: event.votePermission,
+                            ),
                             if (event.timeRestrictionEnabled)
                               const EventTimeRestrictionBadge(),
                             if (event.locationRestrictionEnabled)
@@ -568,12 +582,12 @@ class _EventHeroCard extends StatelessWidget {
                   const SizedBox(height: 12),
                   Text(
                     switch (event.status) {
-                      eventStatusClosed =>
-                        'This event is closed — no new tracks can be suggested.',
+                      eventStatusClosed => 'This event is closed — no new tracks can be suggested.',
                       eventStatusCanceled => 'This event has been canceled.',
-                      _ => event.votingIsOpen
-                          ? '${event.songCount} songs queued — voting is live'
-                          : 'Waiting for songs — need at least 2 to start voting',
+                      _ =>
+                        event.votingIsOpen
+                            ? '${event.songCount} songs queued — voting is live'
+                            : 'Waiting for songs — need at least 2 to start voting',
                     },
                     style: const TextStyle(
                       fontSize: 12.5,
@@ -602,7 +616,8 @@ class _EventHeroCard extends StatelessWidget {
 }
 
 String _eventCoverAsset(String preset) =>
-    EventCoverPreset.byId(preset)?.assetPath ?? EventCoverPreset.party.assetPath;
+    EventCoverPreset.byId(preset)?.assetPath ??
+    EventCoverPreset.party.assetPath;
 
 class _EventCoverFallback extends StatelessWidget {
   const _EventCoverFallback();
@@ -616,7 +631,9 @@ class _EventCoverFallback extends StatelessWidget {
         colors: [_EventColors.gradientStart, _EventColors.gradientEnd],
       ),
     ),
-    child: const Center(child: Icon(Icons.graphic_eq_rounded, color: Colors.white, size: 56)),
+    child: const Center(
+      child: Icon(Icons.graphic_eq_rounded, color: Colors.white, size: 56),
+    ),
   );
 }
 

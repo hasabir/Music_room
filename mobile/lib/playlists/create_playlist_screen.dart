@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -149,180 +150,185 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _CreatePlaylistColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 20, 0),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      color: _CreatePlaylistColors.body,
+      body: ResponsiveContent(
+        maxWidth: 720,
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 20, 0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: _CreatePlaylistColors.body,
+                      ),
                     ),
-                  ),
-                  const Text(
-                    'Music Room',
-                    style: TextStyle(
-                      fontFamily: 'Sora',
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                      color: _CreatePlaylistColors.body,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                children: [
-                  const Text(
-                    'Create Playlist',
-                    style: TextStyle(
-                      fontFamily: 'Sora',
-                      fontWeight: FontWeight.w800,
-                      fontSize: 28,
-                      color: _CreatePlaylistColors.body,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Define the vibe and set the rules for your new room.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: _CreatePlaylistColors.muted,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  const _FieldLabel('PLAYLIST NAME'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _titleController,
-                    autofocus: true,
-                    style: const TextStyle(color: _CreatePlaylistColors.body),
-                    decoration: _fieldDecoration('e.g. Late Night Drives'),
-                  ),
-                  const SizedBox(height: 20),
-                  const _FieldLabel('DESCRIPTION'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _descriptionController,
-                    minLines: 3,
-                    maxLines: 5,
-                    style: const TextStyle(color: _CreatePlaylistColors.body),
-                    decoration: _fieldDecoration('Describe the mood...'),
-                  ),
-                  const SizedBox(height: 24),
-                  const _FieldLabel('COVER'),
-                  const SizedBox(height: 8),
-                  _CoverPicker(
-                    coverPreset: _coverPreset,
-                    customImage: _customCoverImage,
-                    onPickCustomImage: _pickCustomCoverImage,
-                    onSelectPreset: _selectCoverPreset,
-                  ),
-                  const SizedBox(height: 24),
-                  const _FieldLabel('VISIBILITY'),
-                  const SizedBox(height: 8),
-                  _SegmentedChoice(
-                    options: const {
-                      playlistVisibilityPublic: 'Public',
-                      playlistVisibilityPrivate: 'Private',
-                    },
-                    value: _visibility,
-                    onChanged: _onVisibilityChanged,
-                  ),
-                  const SizedBox(height: 24),
-                  const _FieldLabel('WHO CAN EDIT'),
-                  const SizedBox(height: 8),
-                  Text(
-                    _visibility == playlistVisibilityPrivate
-                        ? "It's private, so only you and the people you invite can see it at all — pick who "
-                              'among you can also make changes.'
-                        : 'Anyone can see a public playlist. Choose whether anyone can also edit it, or just '
-                              'people you invite.',
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      color: _CreatePlaylistColors.muted,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _SegmentedChoice(
-                    options: _editPermissionOptions,
-                    value: _editPermission,
-                    onChanged: (value) =>
-                        setState(() => _editPermission = value),
-                    vertical: true,
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      _error!,
-                      style: const TextStyle(
-                        color: Colors.redAccent,
-                        fontSize: 13,
+                    const Text(
+                      'Music Room',
+                      style: TextStyle(
+                        fontFamily: 'Sora',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: _CreatePlaylistColors.body,
                       ),
                     ),
                   ],
-                  const SizedBox(height: 32),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
-                        gradient: const LinearGradient(
-                          colors: [
-                            _CreatePlaylistColors.gradientStart,
-                            _CreatePlaylistColors.gradientEnd,
-                          ],
-                        ),
-                      ),
-                      child: ElevatedButton(
-                        onPressed: _isSubmitting ? null : _submit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                        ),
-                        child: _isSubmitting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    'Create Playlist',
-                                    style: TextStyle(
-                                      fontFamily: 'Sora',
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Icon(Icons.add_rounded, size: 20),
-                                ],
-                              ),
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                  children: [
+                    const Text(
+                      'Create Playlist',
+                      style: TextStyle(
+                        fontFamily: 'Sora',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 28,
+                        color: _CreatePlaylistColors.body,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Define the vibe and set the rules for your new room.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: _CreatePlaylistColors.muted,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    const _FieldLabel('PLAYLIST NAME'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _titleController,
+                      autofocus: true,
+                      style: const TextStyle(color: _CreatePlaylistColors.body),
+                      decoration: _fieldDecoration('e.g. Late Night Drives'),
+                    ),
+                    const SizedBox(height: 20),
+                    const _FieldLabel('DESCRIPTION'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _descriptionController,
+                      minLines: 3,
+                      maxLines: 5,
+                      style: const TextStyle(color: _CreatePlaylistColors.body),
+                      decoration: _fieldDecoration('Describe the mood...'),
+                    ),
+                    const SizedBox(height: 24),
+                    const _FieldLabel('COVER'),
+                    const SizedBox(height: 8),
+                    _CoverPicker(
+                      coverPreset: _coverPreset,
+                      customImage: _customCoverImage,
+                      onPickCustomImage: _pickCustomCoverImage,
+                      onSelectPreset: _selectCoverPreset,
+                    ),
+                    const SizedBox(height: 24),
+                    const _FieldLabel('VISIBILITY'),
+                    const SizedBox(height: 8),
+                    _SegmentedChoice(
+                      options: const {
+                        playlistVisibilityPublic: 'Public',
+                        playlistVisibilityPrivate: 'Private',
+                      },
+                      value: _visibility,
+                      onChanged: _onVisibilityChanged,
+                    ),
+                    const SizedBox(height: 24),
+                    const _FieldLabel('WHO CAN EDIT'),
+                    const SizedBox(height: 8),
+                    Text(
+                      _visibility == playlistVisibilityPrivate
+                          ? "It's private, so only you and the people you invite can see it at all — pick who "
+                                'among you can also make changes.'
+                          : 'Anyone can see a public playlist. Choose whether anyone can also edit it, or just '
+                                'people you invite.',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: _CreatePlaylistColors.muted,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    _SegmentedChoice(
+                      options: _editPermissionOptions,
+                      value: _editPermission,
+                      onChanged: (value) =>
+                          setState(() => _editPermission = value),
+                      vertical: true,
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        _error!,
+                        style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          gradient: const LinearGradient(
+                            colors: [
+                              _CreatePlaylistColors.gradientStart,
+                              _CreatePlaylistColors.gradientEnd,
+                            ],
+                          ),
+                        ),
+                        child: ElevatedButton(
+                          onPressed: _isSubmitting ? null : _submit,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                          ),
+                          child: _isSubmitting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        'Create Playlist',
+                                        style: TextStyle(
+                                          fontFamily: 'Sora',
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Icon(Icons.add_rounded, size: 20),
+                                  ],
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

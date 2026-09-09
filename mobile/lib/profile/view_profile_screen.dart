@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api/api_client.dart';
@@ -92,7 +93,8 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
       await action();
     } on ApiException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
       }
     } finally {
       if (mounted) setState(() => _isActing = false);
@@ -132,89 +134,99 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _ViewProfileColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _Header(title: 'View Profile'),
-            Expanded(
-              child: FutureBuilder<OtherUserProfile>(
-                future: _profileFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(color: _ViewProfileColors.headline),
-                    );
-                  }
+      body: ResponsiveContent(
+        maxWidth: 1000,
+        child: SafeArea(
+          child: Column(
+            children: [
+              _Header(title: 'View Profile'),
+              Expanded(
+                child: FutureBuilder<OtherUserProfile>(
+                  future: _profileFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: _ViewProfileColors.headline,
+                        ),
+                      );
+                    }
 
-                  if (snapshot.hasError || !snapshot.hasData) {
-                    return Center(
-                      child: Text(
-                        'Could not load this profile.',
-                        style: const TextStyle(color: _ViewProfileColors.muted),
-                      ),
-                    );
-                  }
+                    if (snapshot.hasError || !snapshot.hasData) {
+                      return Center(
+                        child: Text(
+                          'Could not load this profile.',
+                          style: const TextStyle(
+                            color: _ViewProfileColors.muted,
+                          ),
+                        ),
+                      );
+                    }
 
-                  final profile = snapshot.data!;
-                  final name = profile.displayName.isNotEmpty
-                      ? profile.displayName
-                      : widget.initialFullName;
+                    final profile = snapshot.data!;
+                    final name = profile.displayName.isNotEmpty
+                        ? profile.displayName
+                        : widget.initialFullName;
 
-                  final hasDetails =
-                      (profile.location ?? '').isNotEmpty ||
-                      (profile.favoriteArtist ?? '').isNotEmpty ||
-                      (profile.phoneNumber ?? '').isNotEmpty;
+                    final hasDetails =
+                        (profile.location ?? '').isNotEmpty ||
+                        (profile.favoriteArtist ?? '').isNotEmpty ||
+                        (profile.phoneNumber ?? '').isNotEmpty;
 
-                  return ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    children: [
-                      _ProfileCard(
-                        name: name,
-                        avatar: profile.avatar,
-                        avatarType: profile.avatarType,
-                        bio: profile.bio,
-                        birthday: profile.birthday,
-                        relationshipStatus: _relationshipStatus,
-                        isActing: _isActing,
-                        onAdd: _onAdd,
-                        onRemove: _onRemove,
-                        onCancel: _onCancel,
-                        onAccept: _onAccept,
-                        onDecline: _onDecline,
-                      ),
-                      const SizedBox(height: 16),
-                      _StatsRow(likes: profile.likesReceivedCount, playlists: profile.playlistsCount),
-                      if (hasDetails) ...[
+                    return ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      children: [
+                        _ProfileCard(
+                          name: name,
+                          avatar: profile.avatar,
+                          avatarType: profile.avatarType,
+                          bio: profile.bio,
+                          birthday: profile.birthday,
+                          relationshipStatus: _relationshipStatus,
+                          isActing: _isActing,
+                          onAdd: _onAdd,
+                          onRemove: _onRemove,
+                          onCancel: _onCancel,
+                          onAccept: _onAccept,
+                          onDecline: _onDecline,
+                        ),
                         const SizedBox(height: 16),
-                        const _DetailsLabel(),
-                        const SizedBox(height: 12),
-                        _DetailsCard(
-                          location: profile.location,
-                          favoriteArtist: profile.favoriteArtist,
-                          phoneNumber: profile.phoneNumber,
+                        _StatsRow(
+                          likes: profile.likesReceivedCount,
+                          playlists: profile.playlistsCount,
+                        ),
+                        if (hasDetails) ...[
+                          const SizedBox(height: 16),
+                          const _DetailsLabel(),
+                          const SizedBox(height: 12),
+                          _DetailsCard(
+                            location: profile.location,
+                            favoriteArtist: profile.favoriteArtist,
+                            phoneNumber: profile.phoneNumber,
+                          ),
+                        ],
+                        if (profile.favoriteGenres.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          _VibeSignatureCard(genres: profile.favoriteGenres),
+                        ],
+                        FutureBuilder<List<ActivityEntry>>(
+                          future: _activityFuture,
+                          builder: (context, activitySnapshot) {
+                            final entries = activitySnapshot.data ?? const [];
+                            if (entries.isEmpty) return const SizedBox.shrink();
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 16),
+                              child: _RecentActivityCard(entries: entries),
+                            );
+                          },
                         ),
                       ],
-                      if (profile.favoriteGenres.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        _VibeSignatureCard(genres: profile.favoriteGenres),
-                      ],
-                      FutureBuilder<List<ActivityEntry>>(
-                        future: _activityFuture,
-                        builder: (context, activitySnapshot) {
-                          final entries = activitySnapshot.data ?? const [];
-                          if (entries.isEmpty) return const SizedBox.shrink();
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 16),
-                            child: _RecentActivityCard(entries: entries),
-                          );
-                        },
-                      ),
-                    ],
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -234,7 +246,10 @@ class _Header extends StatelessWidget {
         children: [
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.arrow_back_rounded, color: _ViewProfileColors.body),
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+              color: _ViewProfileColors.body,
+            ),
           ),
           Expanded(
             child: Text(
@@ -300,7 +315,12 @@ class _ProfileCard extends StatelessWidget {
             padding: const EdgeInsets.all(3),
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              gradient: LinearGradient(colors: [_ViewProfileColors.tertiary, _ViewProfileColors.headline]),
+              gradient: LinearGradient(
+                colors: [
+                  _ViewProfileColors.tertiary,
+                  _ViewProfileColors.headline,
+                ],
+              ),
             ),
             child: ClipOval(
               child: ProfileAvatarImage(
@@ -349,11 +369,18 @@ class _ProfileCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.cake_outlined, size: 14, color: _ViewProfileColors.muted),
+                const Icon(
+                  Icons.cake_outlined,
+                  size: 14,
+                  color: _ViewProfileColors.muted,
+                ),
                 const SizedBox(width: 6),
                 Text(
                   formatBirthday(birthday!),
-                  style: const TextStyle(fontSize: 13, color: _ViewProfileColors.muted),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: _ViewProfileColors.muted,
+                  ),
                 ),
               ],
             ),
@@ -427,7 +454,10 @@ class RelationshipActionRow extends StatelessWidget {
         children: [
           TextButton(
             onPressed: isActing ? null : onDecline,
-            child: const Text('Decline', style: TextStyle(color: _ViewProfileColors.muted)),
+            child: const Text(
+              'Decline',
+              style: TextStyle(color: _ViewProfileColors.muted),
+            ),
           ),
           const SizedBox(width: 8),
           _OutlinedActionButton(
@@ -467,7 +497,10 @@ class _OutlinedActionButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       ),
       icon: Icon(icon, size: 18),
-      label: Text(label, style: const TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700)),
+      label: Text(
+        label,
+        style: const TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.w700),
+      ),
     );
   }
 }
@@ -479,7 +512,11 @@ class _AvatarFallback extends StatelessWidget {
   Widget build(BuildContext context) {
     return const ColoredBox(
       color: _ViewProfileColors.chip,
-      child: Icon(Icons.person_rounded, color: _ViewProfileColors.muted, size: 44),
+      child: Icon(
+        Icons.person_rounded,
+        color: _ViewProfileColors.muted,
+        size: 44,
+      ),
     );
   }
 }
@@ -521,9 +558,13 @@ class _StatsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _StatTile(value: '$likes', label: 'LIKES')),
+        Expanded(
+          child: _StatTile(value: '$likes', label: 'LIKES'),
+        ),
         const SizedBox(width: 12),
-        Expanded(child: _StatTile(value: '$playlists', label: 'PLAYLISTS')),
+        Expanded(
+          child: _StatTile(value: '$playlists', label: 'PLAYLISTS'),
+        ),
       ],
     );
   }
@@ -881,29 +922,32 @@ class _ActivityListScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _ViewProfileColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            const _Header(title: 'Recent Activity'),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                itemCount: entries.length,
-                itemBuilder: (context, index) {
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: _ViewProfileColors.card,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: _ViewProfileColors.border),
-                    ),
-                    child: _ActivityRow(entry: entries[index]),
-                  );
-                },
+      body: ResponsiveContent(
+        maxWidth: 1000,
+        child: SafeArea(
+          child: Column(
+            children: [
+              const _Header(title: 'Recent Activity'),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) {
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: _ViewProfileColors.card,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: _ViewProfileColors.border),
+                      ),
+                      child: _ActivityRow(entry: entries[index]),
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -988,7 +1032,10 @@ class _ActivityRow extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 timeLabel,
-                style: const TextStyle(fontSize: 12, color: _ViewProfileColors.muted),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: _ViewProfileColors.muted,
+                ),
               ),
             ],
           ),

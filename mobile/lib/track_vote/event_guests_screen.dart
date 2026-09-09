@@ -1,3 +1,5 @@
+import 'package:mobile/core/responsive/responsive.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -141,73 +143,76 @@ class _EventGuestsScreenState extends State<EventGuestsScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: _GuestColors.background,
-    body: SafeArea(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 8, 16, 8),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(
-                    Icons.arrow_back_rounded,
-                    color: _GuestColors.body,
-                  ),
-                ),
-                const Expanded(
-                  child: Text(
-                    'Manage Guests',
-                    style: TextStyle(
-                      fontFamily: 'Sora',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
+    body: ResponsiveContent(
+      maxWidth: 720,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 8, 16, 8),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
                       color: _GuestColors.body,
                     ),
                   ),
-                ),
-              ],
+                  const Expanded(
+                    child: Text(
+                      'Manage Guests',
+                      style: TextStyle(
+                        fontFamily: 'Sora',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: _GuestColors.body,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(
-              controller: _searchController,
-              autofocus: true,
-              onChanged: _onQueryChanged,
-              style: const TextStyle(color: _GuestColors.body),
-              decoration: InputDecoration(
-                hintText: 'Find a friend to invite...',
-                hintStyle: const TextStyle(color: _GuestColors.muted),
-                prefixIcon: const Icon(
-                  Icons.search_rounded,
-                  color: _GuestColors.tertiary,
-                ),
-                suffixIcon: _isSearching
-                    ? const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: _GuestColors.tertiary,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                onChanged: _onQueryChanged,
+                style: const TextStyle(color: _GuestColors.body),
+                decoration: InputDecoration(
+                  hintText: 'Find a friend to invite...',
+                  hintStyle: const TextStyle(color: _GuestColors.muted),
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    color: _GuestColors.tertiary,
+                  ),
+                  suffixIcon: _isSearching
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: _GuestColors.tertiary,
+                            ),
                           ),
-                        ),
-                      )
-                    : null,
-                filled: true,
-                fillColor: _GuestColors.card,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: _GuestColors.card,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 14),
-          Expanded(child: _buildBody()),
-        ],
+            const SizedBox(height: 14),
+            Expanded(child: _buildBody()),
+          ],
+        ),
       ),
     ),
   );

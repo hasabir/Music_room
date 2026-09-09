@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -134,118 +135,123 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _RegisterColors.background,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              children: [
-                const SizedBox(height: 8),
-                _BackButton(onPressed: () => Navigator.of(context).pop()),
-                const SizedBox(height: 24),
-                const _Title(),
-                const SizedBox(height: 12),
-                const _Description(),
-                const SizedBox(height: 32),
-                _LabeledField(
-                  label: 'FIRST NAME',
-                  hint: 'Enter your first name',
-                  controller: _firstNameController,
-                  textCapitalization: TextCapitalization.words,
-                  validator: (value) => (value == null || value.trim().isEmpty)
-                      ? 'First name is required'
-                      : null,
-                ),
-                const SizedBox(height: 20),
-                _LabeledField(
-                  label: 'LAST NAME',
-                  hint: 'Enter your last name',
-                  controller: _lastNameController,
-                  textCapitalization: TextCapitalization.words,
-                  validator: (value) => (value == null || value.trim().isEmpty)
-                      ? 'Last name is required'
-                      : null,
-                ),
-                const SizedBox(height: 20),
-                _LabeledField(
-                  label: 'EMAIL ADDRESS',
-                  hint: 'name@example.com',
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Email is required';
-                    }
-                    if (!value.contains('@') || !value.contains('.')) {
-                      return 'Enter a valid email';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-                _LabeledField(
-                  label: 'PASSWORD',
-                  hint: 'Create a password',
-                  controller: _passwordController,
-                  obscureText: !_isPasswordVisible,
-                  suffixIcon: _VisibilityToggle(
-                    isVisible: _isPasswordVisible,
-                    onPressed: () => setState(
-                      () => _isPasswordVisible = !_isPasswordVisible,
-                    ),
+      body: ResponsiveContent(
+        maxWidth: 560,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                children: [
+                  const SizedBox(height: 8),
+                  _BackButton(onPressed: () => Navigator.of(context).pop()),
+                  const SizedBox(height: 24),
+                  const _Title(),
+                  const SizedBox(height: 12),
+                  const _Description(),
+                  const SizedBox(height: 32),
+                  _LabeledField(
+                    label: 'FIRST NAME',
+                    hint: 'Enter your first name',
+                    controller: _firstNameController,
+                    textCapitalization: TextCapitalization.words,
+                    validator: (value) =>
+                        (value == null || value.trim().isEmpty)
+                        ? 'First name is required'
+                        : null,
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Password is required';
-                    }
-                    if (value.length < 8) {
-                      return 'Password must be at least 8 characters';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-                _LabeledField(
-                  label: 'CONFIRM PASSWORD',
-                  hint: 'Repeat your password',
-                  controller: _confirmPasswordController,
-                  obscureText: !_isConfirmPasswordVisible,
-                  suffixIcon: _VisibilityToggle(
-                    isVisible: _isConfirmPasswordVisible,
-                    onPressed: () => setState(
-                      () => _isConfirmPasswordVisible =
-                          !_isConfirmPasswordVisible,
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value != _passwordController.text) {
-                      return 'Passwords do not match';
-                    }
-                    return null;
-                  },
-                ),
-                if (_errorMessage != null) ...[
                   const SizedBox(height: 20),
-                  _ErrorMessage(message: _errorMessage!),
+                  _LabeledField(
+                    label: 'LAST NAME',
+                    hint: 'Enter your last name',
+                    controller: _lastNameController,
+                    textCapitalization: TextCapitalization.words,
+                    validator: (value) =>
+                        (value == null || value.trim().isEmpty)
+                        ? 'Last name is required'
+                        : null,
+                  ),
+                  const SizedBox(height: 20),
+                  _LabeledField(
+                    label: 'EMAIL ADDRESS',
+                    hint: 'name@example.com',
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Email is required';
+                      }
+                      if (!value.contains('@') || !value.contains('.')) {
+                        return 'Enter a valid email';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  _LabeledField(
+                    label: 'PASSWORD',
+                    hint: 'Create a password',
+                    controller: _passwordController,
+                    obscureText: !_isPasswordVisible,
+                    suffixIcon: _VisibilityToggle(
+                      isVisible: _isPasswordVisible,
+                      onPressed: () => setState(
+                        () => _isPasswordVisible = !_isPasswordVisible,
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Password is required';
+                      }
+                      if (value.length < 8) {
+                        return 'Password must be at least 8 characters';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  _LabeledField(
+                    label: 'CONFIRM PASSWORD',
+                    hint: 'Repeat your password',
+                    controller: _confirmPasswordController,
+                    obscureText: !_isConfirmPasswordVisible,
+                    suffixIcon: _VisibilityToggle(
+                      isVisible: _isConfirmPasswordVisible,
+                      onPressed: () => setState(
+                        () => _isConfirmPasswordVisible =
+                            !_isConfirmPasswordVisible,
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value != _passwordController.text) {
+                        return 'Passwords do not match';
+                      }
+                      return null;
+                    },
+                  ),
+                  if (_errorMessage != null) ...[
+                    const SizedBox(height: 20),
+                    _ErrorMessage(message: _errorMessage!),
+                  ],
+                  const SizedBox(height: 28),
+                  _CreateAccountButton(
+                    onPressed: _isSubmitting ? null : _onCreateAccount,
+                    isLoading: _isSubmitting,
+                  ),
+                  const SizedBox(height: 20),
+                  const _OrDivider(),
+                  const SizedBox(height: 20),
+                  _GoogleButton(
+                    onPressed: _isSubmitting
+                        ? null
+                        : () => _onContinueWithGoogle(),
+                  ),
+                  const SizedBox(height: 24),
+                  _LogInPrompt(onPressed: _onLogIn),
+                  const SizedBox(height: 24),
                 ],
-                const SizedBox(height: 28),
-                _CreateAccountButton(
-                  onPressed: _isSubmitting ? null : _onCreateAccount,
-                  isLoading: _isSubmitting,
-                ),
-                const SizedBox(height: 20),
-                const _OrDivider(),
-                const SizedBox(height: 20),
-                _GoogleButton(
-                  onPressed: _isSubmitting
-                      ? null
-                      : () => _onContinueWithGoogle(),
-                ),
-                const SizedBox(height: 24),
-                _LogInPrompt(onPressed: _onLogIn),
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
           ),
         ),
@@ -535,13 +541,15 @@ class _GoogleButton extends StatelessWidget {
           children: [
             Image.asset('assets/images/google_logo.png', width: 20, height: 20),
             const SizedBox(width: 12),
-            const Text(
-              'Continue with Google',
-              style: TextStyle(
-                fontFamily: 'Sora',
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-                color: Colors.white,
+            const Flexible(
+              child: Text(
+                'Continue with Google',
+                style: TextStyle(
+                  fontFamily: 'Sora',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  color: Colors.white,
+                ),
               ),
             ),
           ],

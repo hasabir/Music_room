@@ -46,11 +46,13 @@ class AppBottomNav extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               for (final item in _items)
-                _NavItem(
-                  icon: item.icon,
-                  label: item.label,
-                  isSelected: item.tab == currentTab,
-                  onTap: () => onTabSelected(item.tab),
+                Expanded(
+                  child: _NavItem(
+                    icon: item.icon,
+                    label: item.label,
+                    isSelected: item.tab == currentTab,
+                    onTap: () => onTabSelected(item.tab),
+                  ),
                 ),
             ],
           ),
@@ -82,7 +84,7 @@ class _NavItem extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? _NavColors.activePill : Colors.transparent,
           borderRadius: BorderRadius.circular(20),

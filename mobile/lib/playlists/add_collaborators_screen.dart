@@ -1,3 +1,5 @@
+import 'package:mobile/core/responsive/responsive.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -128,55 +130,58 @@ class _AddCollaboratorsScreenState extends State<AddCollaboratorsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _AddCollaboratorsColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      color: _AddCollaboratorsColors.body,
-                    ),
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      autofocus: true,
-                      onChanged: _onQueryChanged,
-                      style: const TextStyle(
+      body: ResponsiveContent(
+        maxWidth: 720,
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(
+                        Icons.arrow_back_rounded,
                         color: _AddCollaboratorsColors.body,
                       ),
-                      decoration: InputDecoration(
-                        hintText: 'Search username to invite...',
-                        hintStyle: const TextStyle(
-                          color: _AddCollaboratorsColors.muted,
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        autofocus: true,
+                        onChanged: _onQueryChanged,
+                        style: const TextStyle(
+                          color: _AddCollaboratorsColors.body,
                         ),
-                        prefixIcon: const Icon(
-                          Icons.search_rounded,
-                          color: _AddCollaboratorsColors.tertiary,
-                        ),
-                        filled: true,
-                        fillColor: _AddCollaboratorsColors.card,
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 14,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide.none,
+                        decoration: InputDecoration(
+                          hintText: 'Search username to invite...',
+                          hintStyle: const TextStyle(
+                            color: _AddCollaboratorsColors.muted,
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.search_rounded,
+                            color: _AddCollaboratorsColors.tertiary,
+                          ),
+                          filled: true,
+                          fillColor: _AddCollaboratorsColors.card,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 14,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            borderSide: BorderSide.none,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(child: _buildBody()),
-          ],
+              const SizedBox(height: 8),
+              Expanded(child: _buildBody()),
+            ],
+          ),
         ),
       ),
     );
@@ -285,7 +290,9 @@ class _SearchResultRow extends StatelessWidget {
                           radius: 22,
                           backgroundColor: _AddCollaboratorsColors.border,
                           child: Text(
-                            user.username.isNotEmpty ? user.username[0].toUpperCase() : '?',
+                            user.username.isNotEmpty
+                                ? user.username[0].toUpperCase()
+                                : '?',
                             style: const TextStyle(
                               color: _AddCollaboratorsColors.headline,
                               fontWeight: FontWeight.w700,

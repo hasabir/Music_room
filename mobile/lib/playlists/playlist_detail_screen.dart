@@ -724,7 +724,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _PlaylistColors.background,
-      body: SafeArea(child: _buildBody()),
+      body: ResponsiveContent(
+        maxWidth: 1000,
+        child: SafeArea(child: _buildBody()),
+      ),
     );
   }
 

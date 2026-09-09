@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -40,7 +41,9 @@ class ResetPasswordScreen extends StatefulWidget {
 
 class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
-  late final _emailController = TextEditingController(text: widget.initialEmail);
+  late final _emailController = TextEditingController(
+    text: widget.initialEmail,
+  );
   final _authApi = AuthApi();
 
   bool _isSubmitting = false;
@@ -91,50 +94,53 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _ResetColors.background,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              children: [
-                const SizedBox(height: 8),
-                _BackButton(onPressed: () => Navigator.of(context).pop()),
-                const SizedBox(height: 24),
-                const _Title(),
-                const SizedBox(height: 12),
-                const _Description(),
-                const SizedBox(height: 32),
-                _LabeledField(
-                  label: 'EMAIL ADDRESS',
-                  hint: 'name@example.com',
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Email is required';
-                    }
-                    if (!value.contains('@') || !value.contains('.')) {
-                      return 'Enter a valid email';
-                    }
-                    return null;
-                  },
-                ),
-                if (_errorMessage != null) ...[
-                  const SizedBox(height: 20),
-                  _ErrorMessage(message: _errorMessage!),
+      body: ResponsiveContent(
+        maxWidth: 560,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                children: [
+                  const SizedBox(height: 8),
+                  _BackButton(onPressed: () => Navigator.of(context).pop()),
+                  const SizedBox(height: 24),
+                  const _Title(),
+                  const SizedBox(height: 12),
+                  const _Description(),
+                  const SizedBox(height: 32),
+                  _LabeledField(
+                    label: 'EMAIL ADDRESS',
+                    hint: 'name@example.com',
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Email is required';
+                      }
+                      if (!value.contains('@') || !value.contains('.')) {
+                        return 'Enter a valid email';
+                      }
+                      return null;
+                    },
+                  ),
+                  if (_errorMessage != null) ...[
+                    const SizedBox(height: 20),
+                    _ErrorMessage(message: _errorMessage!),
+                  ],
+                  const SizedBox(height: 28),
+                  _SendResetLinkButton(
+                    onPressed: _isSubmitting ? null : _onSendResetLink,
+                    isLoading: _isSubmitting,
+                  ),
+                  const SizedBox(height: 16),
+                  _BackToSignInButton(onPressed: _onBackToSignIn),
+                  const SizedBox(height: 32),
+                  _LogInPrompt(onPressed: _onBackToSignIn),
+                  const SizedBox(height: 24),
                 ],
-                const SizedBox(height: 28),
-                _SendResetLinkButton(
-                  onPressed: _isSubmitting ? null : _onSendResetLink,
-                  isLoading: _isSubmitting,
-                ),
-                const SizedBox(height: 16),
-                _BackToSignInButton(onPressed: _onBackToSignIn),
-                const SizedBox(height: 32),
-                _LogInPrompt(onPressed: _onBackToSignIn),
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
           ),
         ),

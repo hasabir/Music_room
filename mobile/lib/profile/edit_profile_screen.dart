@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
@@ -185,8 +186,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 'Take a photo',
                 style: TextStyle(color: _EditColors.body),
               ),
-              onTap: () =>
-                  Navigator.of(context).pop(_AvatarEditChoice.camera),
+              onTap: () => Navigator.of(context).pop(_AvatarEditChoice.camera),
             ),
             ListTile(
               leading: const Icon(
@@ -197,8 +197,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 'Choose from gallery',
                 style: TextStyle(color: _EditColors.body),
               ),
-              onTap: () =>
-                  Navigator.of(context).pop(_AvatarEditChoice.gallery),
+              onTap: () => Navigator.of(context).pop(_AvatarEditChoice.gallery),
             ),
             ListTile(
               leading: const Icon(
@@ -430,102 +429,105 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _EditColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _Header(
-              title: 'Edit Profile',
-              onBack: () => Navigator.of(context).pop(_latestProfile),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                children: [
-                  Center(
-                    child: _AvatarEditor(
-                      avatar: _latestProfile.avatar,
-                      avatarType: _latestProfile.avatarType,
-                      isUploading: _isUploadingPhoto,
-                      onEdit: _onEditPhoto,
+      body: ResponsiveContent(
+        maxWidth: 720,
+        child: SafeArea(
+          child: Column(
+            children: [
+              _Header(
+                title: 'Edit Profile',
+                onBack: () => Navigator.of(context).pop(_latestProfile),
+              ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                  children: [
+                    Center(
+                      child: _AvatarEditor(
+                        avatar: _latestProfile.avatar,
+                        avatarType: _latestProfile.avatarType,
+                        isUploading: _isUploadingPhoto,
+                        onEdit: _onEditPhoto,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  const _SectionDivider(
-                    icon: Icons.public_rounded,
-                    label: 'PUBLIC',
-                    color: _EditColors.publicBadge,
-                  ),
-                  const SizedBox(height: 16),
-                  _FieldsCard(
-                    children: _joinWithSpacing([
-                      _EditField(
-                        label: 'USERNAME',
-                        controller: _usernameController,
-                        icon: Icons.alternate_email_rounded,
-                      ),
-                      _EditField(
-                        label: 'DISPLAY NAME',
-                        controller: _displayNameController,
-                        icon: Icons.person_outline_rounded,
-                      ),
-                      ..._rowsForTier('public'),
-                    ]),
-                  ),
-                  const SizedBox(height: 24),
-                  const _SectionDivider(
-                    icon: Icons.people_outline_rounded,
-                    label: 'FRIENDS ONLY',
-                    color: _EditColors.friendsBadge,
-                  ),
-                  const SizedBox(height: 16),
-                  _FieldsCard(
-                    children: _rowsForTier('friends').isEmpty
-                        ? const [
-                            Text(
-                              'No fields are set to Friends Only.',
-                              style: TextStyle(
-                                fontFamily: 'Sora',
-                                fontSize: 13,
-                                color: _EditColors.muted,
-                              ),
-                            ),
-                          ]
-                        : _joinWithSpacing(_rowsForTier('friends')),
-                  ),
-                  const SizedBox(height: 24),
-                  const _SectionDivider(
-                    icon: Icons.lock_outline_rounded,
-                    label: 'PRIVATE',
-                    color: _EditColors.privateBadge,
-                  ),
-                  const SizedBox(height: 16),
-                  _FieldsCard(
-                    children: _joinWithSpacing([
-                      _ReadOnlyField(
-                        label: 'EMAIL ADDRESS',
-                        value: widget.email,
-                        icon: Icons.mail_outline_rounded,
-                      ),
-                      ..._rowsForTier('private'),
-                    ]),
-                  ),
-                  if (_error != null) ...[
+                    const SizedBox(height: 24),
+                    const _SectionDivider(
+                      icon: Icons.public_rounded,
+                      label: 'PUBLIC',
+                      color: _EditColors.publicBadge,
+                    ),
                     const SizedBox(height: 16),
-                    Text(
-                      _error!,
-                      style: const TextStyle(color: _EditColors.error),
+                    _FieldsCard(
+                      children: _joinWithSpacing([
+                        _EditField(
+                          label: 'USERNAME',
+                          controller: _usernameController,
+                          icon: Icons.alternate_email_rounded,
+                        ),
+                        _EditField(
+                          label: 'DISPLAY NAME',
+                          controller: _displayNameController,
+                          icon: Icons.person_outline_rounded,
+                        ),
+                        ..._rowsForTier('public'),
+                      ]),
+                    ),
+                    const SizedBox(height: 24),
+                    const _SectionDivider(
+                      icon: Icons.people_outline_rounded,
+                      label: 'FRIENDS ONLY',
+                      color: _EditColors.friendsBadge,
+                    ),
+                    const SizedBox(height: 16),
+                    _FieldsCard(
+                      children: _rowsForTier('friends').isEmpty
+                          ? const [
+                              Text(
+                                'No fields are set to Friends Only.',
+                                style: TextStyle(
+                                  fontFamily: 'Sora',
+                                  fontSize: 13,
+                                  color: _EditColors.muted,
+                                ),
+                              ),
+                            ]
+                          : _joinWithSpacing(_rowsForTier('friends')),
+                    ),
+                    const SizedBox(height: 24),
+                    const _SectionDivider(
+                      icon: Icons.lock_outline_rounded,
+                      label: 'PRIVATE',
+                      color: _EditColors.privateBadge,
+                    ),
+                    const SizedBox(height: 16),
+                    _FieldsCard(
+                      children: _joinWithSpacing([
+                        _ReadOnlyField(
+                          label: 'EMAIL ADDRESS',
+                          value: widget.email,
+                          icon: Icons.mail_outline_rounded,
+                        ),
+                        ..._rowsForTier('private'),
+                      ]),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        _error!,
+                        style: const TextStyle(color: _EditColors.error),
+                      ),
+                    ],
+                    const SizedBox(height: 28),
+                    _SaveButton(
+                      isSaving: _isSaving,
+                      onPressed: _save,
+                      label: 'Save Changes',
                     ),
                   ],
-                  const SizedBox(height: 28),
-                  _SaveButton(
-                    isSaving: _isSaving,
-                    onPressed: _save,
-                    label: 'Save Changes',
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -678,38 +680,40 @@ class _AvatarPresetGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SafeArea(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Choose an avatar',
-            style: TextStyle(
-              fontFamily: 'Sora',
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: _EditColors.body,
+    child: SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Choose an avatar',
+              style: TextStyle(
+                fontFamily: 'Sora',
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: _EditColors.body,
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 4,
-            mainAxisSpacing: 14,
-            crossAxisSpacing: 14,
-            children: [
-              for (final preset in AvatarPreset.all)
-                _AvatarPresetTile(
-                  preset: preset,
-                  isSelected: preset.id == currentPresetId,
-                  onTap: () => Navigator.of(context).pop(preset.id),
-                ),
-            ],
-          ),
-        ],
+            const SizedBox(height: 16),
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 4,
+              mainAxisSpacing: 14,
+              crossAxisSpacing: 14,
+              children: [
+                for (final preset in AvatarPreset.all)
+                  _AvatarPresetTile(
+                    preset: preset,
+                    isSelected: preset.id == currentPresetId,
+                    onTap: () => Navigator.of(context).pop(preset.id),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -738,9 +742,7 @@ class _AvatarPresetTile extends StatelessWidget {
           width: isSelected ? 3 : 1,
         ),
       ),
-      child: ClipOval(
-        child: Image.asset(preset.assetPath, fit: BoxFit.cover),
-      ),
+      child: ClipOval(child: Image.asset(preset.assetPath, fit: BoxFit.cover)),
     ),
   );
 }

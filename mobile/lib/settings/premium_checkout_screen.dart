@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -117,161 +118,164 @@ class _PremiumCheckoutScreenState extends State<PremiumCheckoutScreen> {
         automaticallyImplyLeading: !_busy && _user == null,
         title: Text(_user == null ? 'Premium checkout' : 'Welcome to Premium'),
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF494BD6), Color(0xFF242444)],
+      body: ResponsiveContent(
+        maxWidth: 720,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: ListView(
+              padding: const EdgeInsets.all(24),
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF494BD6), Color(0xFF242444)],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      _user == null
-                          ? Icons.workspace_premium_rounded
-                          : Icons.check_circle_rounded,
-                      color: const Color(0xFF2FD9F4),
-                      size: 40,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _user == null
-                          ? 'Music Room Premium'
-                          : "You're on Premium!",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Unlimited suggestions & votes\nEdit public playlists',
-                      style: TextStyle(color: Colors.white70, height: 1.6),
-                    ),
-                    const Divider(height: 32, color: Colors.white24),
-                    Text(
-                      _user == null
-                          ? 'Due today: 0.00 • Demo upgrade'
-                          : 'Upgrade complete • No charge made',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              if (_user != null)
-                FilledButton(
-                  onPressed: () => Navigator.of(context).pop(_user),
-                  child: const Text('Continue to Premium'),
-                )
-              else ...[
-                const Text(
-                  'Card details',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Demo checkout — use test details, not a real card. Nothing is charged or saved.\nTry 4242 4242 4242 4242, a future expiry and any 3-digit CVC.',
-                  style: TextStyle(color: Color(0xFF908FA0), height: 1.5),
-                ),
-                const SizedBox(height: 20),
-                Form(
-                  key: _form,
-                  autovalidateMode: AutovalidateMode.onUserInteraction,
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _field(
-                        0,
-                        'Cardholder name',
-                        'Alex Morgan',
-                        (v) => (v ?? '').trim().length < 2
-                            ? 'Enter the cardholder name.'
-                            : null,
+                      Icon(
+                        _user == null
+                            ? Icons.workspace_premium_rounded
+                            : Icons.check_circle_rounded,
+                        color: const Color(0xFF2FD9F4),
+                        size: 40,
                       ),
-                      _field(
-                        1,
-                        'Card number',
-                        '4242 4242 4242 4242',
-                        validateDemoCard,
+                      const SizedBox(height: 16),
+                      Text(
+                        _user == null
+                            ? 'Music Room Premium'
+                            : "You're on Premium!",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _field(
-                              2,
-                              'Expiry date',
-                              'MM/YY',
-                              validateDemoExpiry,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _field(
-                              3,
-                              'CVC',
-                              '123',
-                              (v) => RegExp(r'^\d{3,4}$').hasMatch(v ?? '')
-                                  ? null
-                                  : 'Enter 3 or 4 digits.',
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Unlimited suggestions & votes\nEdit public playlists',
+                        style: TextStyle(color: Colors.white70, height: 1.6),
+                      ),
+                      const Divider(height: 32, color: Colors.white24),
+                      Text(
+                        _user == null
+                            ? 'Due today: 0.00 • Demo upgrade'
+                            : 'Upgrade complete • No charge made',
+                        style: const TextStyle(color: Colors.white),
                       ),
                     ],
                   ),
                 ),
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Text(
-                      _error!,
-                      style: const TextStyle(color: Colors.redAccent),
+                const SizedBox(height: 24),
+                if (_user != null)
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).pop(_user),
+                    child: const Text('Continue to Premium'),
+                  )
+                else ...[
+                  const Text(
+                    'Card details',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                SizedBox(
-                  height: 54,
-                  child: FilledButton(
-                    onPressed: _busy ? null : _submit,
-                    child: _busy
-                        ? const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                              SizedBox(width: 12),
-                              Text('Processing demo payment…'),
-                            ],
-                          )
-                        : const Text('Confirm & activate Premium'),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Demo checkout — use test details, not a real card. Nothing is charged or saved.\nTry 4242 4242 4242 4242, a future expiry and any 3-digit CVC.',
+                    style: TextStyle(color: Color(0xFF908FA0), height: 1.5),
                   ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'No recurring payments. Switch back to Free in Settings.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Color(0xFF908FA0), fontSize: 12),
-                ),
+                  const SizedBox(height: 20),
+                  Form(
+                    key: _form,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                    child: Column(
+                      children: [
+                        _field(
+                          0,
+                          'Cardholder name',
+                          'Alex Morgan',
+                          (v) => (v ?? '').trim().length < 2
+                              ? 'Enter the cardholder name.'
+                              : null,
+                        ),
+                        _field(
+                          1,
+                          'Card number',
+                          '4242 4242 4242 4242',
+                          validateDemoCard,
+                        ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _field(
+                                2,
+                                'Expiry date',
+                                'MM/YY',
+                                validateDemoExpiry,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _field(
+                                3,
+                                'CVC',
+                                '123',
+                                (v) => RegExp(r'^\d{3,4}$').hasMatch(v ?? '')
+                                    ? null
+                                    : 'Enter 3 or 4 digits.',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(color: Colors.redAccent),
+                      ),
+                    ),
+                  SizedBox(
+                    height: 54,
+                    child: FilledButton(
+                      onPressed: _busy ? null : _submit,
+                      child: _busy
+                          ? const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Text('Processing demo payment…'),
+                              ],
+                            )
+                          : const Text('Confirm & activate Premium'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'No recurring payments. Switch back to Free in Settings.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFF908FA0), fontSize: 12),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

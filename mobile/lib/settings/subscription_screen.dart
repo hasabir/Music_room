@@ -1,3 +1,4 @@
+import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/auth_api.dart';
@@ -137,65 +138,100 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          _TierCard(isPremium: isPremium),
-          const SizedBox(height: 20),
-          const Text(
-            'WHAT PREMIUM UNLOCKS',
-            style: TextStyle(
-              fontFamily: 'Sora',
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.6,
-              color: _SubscriptionColors.muted,
+      body: ResponsiveContent(
+        maxWidth: 720,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            _TierCard(isPremium: isPremium),
+            const SizedBox(height: 20),
+            const Text(
+              'WHAT PREMIUM UNLOCKS',
+              style: TextStyle(
+                fontFamily: 'Sora',
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6,
+                color: _SubscriptionColors.muted,
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          const _PerkRow(
-            icon: Icons.edit_rounded,
-            text: 'Edit public playlists (Free accounts can still edit private ones)',
-          ),
-          const _PerkRow(
-            icon: Icons.queue_music_rounded,
-            text: 'No cap on track suggestions per event (Free: 10)',
-          ),
-          const _PerkRow(
-            icon: Icons.how_to_vote_rounded,
-            text: 'No cap on distinct tracks voted per event (Free: 20)',
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Try Premium with a demo checkout. Use test card details; no charge is made.',
-            style: TextStyle(
-              fontSize: 12,
-              color: _SubscriptionColors.muted,
-              fontStyle: FontStyle.italic,
+            const SizedBox(height: 10),
+            const _PerkRow(
+              icon: Icons.edit_rounded,
+              text: 'Edit public playlists (Free accounts can still edit private ones)',
             ),
-          ),
-          const SizedBox(height: 16),
-          if (!isPremium)
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  gradient: const LinearGradient(
-                    colors: [
-                      _SubscriptionColors.gradientStart,
-                      _SubscriptionColors.gradientEnd,
-                    ],
+            const _PerkRow(
+              icon: Icons.queue_music_rounded,
+              text: 'No cap on track suggestions per event (Free: 10)',
+            ),
+            const _PerkRow(
+              icon: Icons.how_to_vote_rounded,
+              text: 'No cap on distinct tracks voted per event (Free: 20)',
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Try Premium with a demo checkout. Use test card details; no charge is made.',
+              style: TextStyle(
+                fontSize: 12,
+                color: _SubscriptionColors.muted,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (!isPremium)
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    gradient: const LinearGradient(
+                      colors: [
+                        _SubscriptionColors.gradientStart,
+                        _SubscriptionColors.gradientEnd,
+                      ],
+                    ),
+                  ),
+                  child: ElevatedButton(
+                    onPressed: _isSwitching ? null : _onUpgrade,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      disabledBackgroundColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: _isSwitching
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'UPGRADE TO PREMIUM',
+                            style: TextStyle(
+                              fontFamily: 'Sora',
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
                   ),
                 ),
-                child: ElevatedButton(
-                  onPressed: _isSwitching ? null : _onUpgrade,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    disabledBackgroundColor: Colors.transparent,
-                    foregroundColor: Colors.white,
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: OutlinedButton(
+                  onPressed: _isSwitching ? null : _onDowngrade,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.redAccent,
+                    side: const BorderSide(color: Colors.redAccent),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),
@@ -206,11 +242,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.white,
+                            color: Colors.redAccent,
                           ),
                         )
                       : const Text(
-                          'UPGRADE TO PREMIUM',
+                          'DOWNGRADE TO FREE',
                           style: TextStyle(
                             fontFamily: 'Sora',
                             fontWeight: FontWeight.w700,
@@ -219,40 +255,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                         ),
                 ),
               ),
-            )
-          else
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: OutlinedButton(
-                onPressed: _isSwitching ? null : _onDowngrade,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.redAccent,
-                  side: const BorderSide(color: Colors.redAccent),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-                child: _isSwitching
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.redAccent,
-                        ),
-                      )
-                    : const Text(
-                        'DOWNGRADE TO FREE',
-                        style: TextStyle(
-                          fontFamily: 'Sora',
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
