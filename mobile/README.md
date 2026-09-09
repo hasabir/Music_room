@@ -23,6 +23,14 @@ flutter run
 
 ## Running on web
 
+To share the web app publicly, run `make ngrok` from the repository root.
+It starts the backend, builds the web release, and prints the HTTPS URL.
+Keep the terminal open; Ctrl+C stops sharing while leaving the backend running.
+Flutter, Node.js, Docker, curl, Python 3, and an authenticated ngrok installation
+are required. Use `make ngrok NGROK_PORT=5002` if port 5001 is occupied.
+The tunnel serves the app, API, media, and WebSockets together. Its browser
+configuration contains only the public API URL; the local `.env` is not served.
+
 ```bash
 flutter run -d chrome --web-port=5000
 ```

@@ -1,8 +1,9 @@
-.PHONY: help build up down restart logs shell migrate makemigrations createsuperuser test clean flutter-web flutter-web-build
+.PHONY: help build up down restart logs shell migrate makemigrations createsuperuser test clean flutter-web flutter-web-build ngrok
 
 help:
 	@echo "Music Room - Development Commands"
 	@echo "=================================="
+	@echo "make ngrok          - Build web, start backend and print a public ngrok URL (Ctrl+C stops sharing)"
 	@echo "make build          - Build Docker containers"
 	@echo "make up             - Start all services"
 	@echo "make down           - Stop all services"
@@ -134,6 +135,10 @@ flutter-web:
 # confirm nothing's broken (equivalent to what CI would run).
 flutter-web-build:
 	@cd mobile && flutter build web
+
+NGROK_PORT ?= 5001
+ngrok:
+	@NGROK_PORT=$(NGROK_PORT) bash scripts/ngrok.sh
 
 # Development workflow
 dev: up logs
