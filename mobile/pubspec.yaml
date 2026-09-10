@@ -37,6 +37,10 @@ dependencies:
   http: ^1.6.0
   flutter_secure_storage: ^11.0.0
   google_sign_in: ^6.2.1
+  # Direct dep (not just transitive via google_sign_in) so
+  # `package:google_sign_in_web/web_only.dart` can be imported for the
+  # web-only rendered Sign In button — see auth/google_web_button_web.dart.
+  google_sign_in_web: ^0.12.4
   flutter_dotenv: ^5.2.1
   image_picker: ^1.1.2
   audioplayers: ^6.1.0

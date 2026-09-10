@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -5,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../auth/auth_api.dart';
 import '../auth/auth_models.dart';
 import '../auth/google_auth_service.dart';
+import '../auth/google_web_button.dart';
 import '../core/api/api_client.dart';
 
 class _ConnectedColors {
@@ -47,35 +50,61 @@ class _ConnectedAccountsScreenState extends State<ConnectedAccountsScreen> {
   late AuthUser _authUser;
   bool _isLinking = false;
   bool _isUnlinking = false;
+  StreamSubscription<String>? _googleWebIdTokenSub;
 
   @override
   void initState() {
     super.initState();
     _authUser = widget.authUser;
+    // See the matching comment in welcome_screen.dart.
+    if (kIsWeb) {
+      _googleWebIdTokenSub = GoogleAuthService.webIdTokenStream.listen(
+        _onGoogleWebIdToken,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _googleWebIdTokenSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _onLinkGoogle() async {
     setState(() => _isLinking = true);
     try {
       final idToken = await GoogleAuthService.signInAndGetIdToken();
-      final updated = await _authApi.linkGoogleAccount(idToken: idToken);
-      if (!mounted) return;
-      setState(() => _authUser = updated);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Google account linked.')));
+      await _completeLinkGoogle(idToken);
     } on GoogleAuthCancelled {
       // User backed out of the picker — nothing to report.
     } on GoogleAuthFailed catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _isLinking = false);
+    }
+  }
+
+  Future<void> _onGoogleWebIdToken(String idToken) async {
+    if (_isLinking) return;
+    setState(() => _isLinking = true);
+    await _completeLinkGoogle(idToken);
+    if (mounted) setState(() => _isLinking = false);
+  }
+
+  Future<void> _completeLinkGoogle(String idToken) async {
+    try {
+      final updated = await _authApi.linkGoogleAccount(idToken: idToken);
+      if (!mounted) return;
+      setState(() => _authUser = updated);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Google account linked.')));
     } on ApiException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error.message)));
-    } finally {
-      if (mounted) setState(() => _isLinking = false);
     }
   }
 
@@ -189,10 +218,6 @@ class _ConnectedAccountsScreenState extends State<ConnectedAccountsScreen> {
               else
                 _LinkGoogleCard(
                   isLinking: _isLinking,
-                  // Linking runs the same broken-on-web google_sign_in flow
-                  // as signing in — see welcome_screen.dart's doc comment —
-                  // so it stays mobile-only here too. Unlinking above is a
-                  // plain REST call and works fine on web.
                   onLink: kIsWeb ? null : _onLinkGoogle,
                 ),
             ],
@@ -324,9 +349,10 @@ class _LinkGoogleCard extends StatelessWidget {
 
   final bool isLinking;
 
-  /// `null` on web (see the doc comment at the call site) — the button
-  /// stays visible but disabled, with its label swapped to explain why,
-  /// rather than disappearing outright.
+  /// `null` on web — [kIsWeb] there renders Google's own button (see
+  /// build()) instead of a pressable one of our own, since only that
+  /// reliably yields an ID token in a browser (see
+  /// GoogleAuthService.webIdTokenStream).
   final VoidCallback? onLink;
 
   @override
@@ -391,46 +417,54 @@ class _LinkGoogleCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            height: 46,
-            child: OutlinedButton.icon(
-              onPressed: isLinking ? null : onLink,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _ConnectedColors.headline,
-                side: const BorderSide(color: _ConnectedColors.gradientStart),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(23),
-                ),
-              ),
-              icon: isLinking
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: _ConnectedColors.headline,
+          if (kIsWeb)
+            Center(
+              child: isLinking
+                  ? const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _ConnectedColors.headline,
+                        ),
                       ),
                     )
-                  : Icon(
-                      onLink == null
-                          ? Icons.smartphone_rounded
-                          : Icons.link_rounded,
-                      size: 18,
-                    ),
-              label: Text(
-                isLinking
-                    ? 'Linking...'
-                    : onLink == null
-                    ? 'Available in the mobile app'
-                    : 'Link Google Account',
-                style: const TextStyle(
-                  fontFamily: 'Sora',
-                  fontWeight: FontWeight.w700,
+                  : buildGoogleWebButton(),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: OutlinedButton.icon(
+                onPressed: isLinking ? null : onLink,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _ConnectedColors.headline,
+                  side: const BorderSide(color: _ConnectedColors.gradientStart),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(23),
+                  ),
+                ),
+                icon: isLinking
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _ConnectedColors.headline,
+                        ),
+                      )
+                    : const Icon(Icons.link_rounded, size: 18),
+                label: Text(
+                  isLinking ? 'Linking...' : 'Link Google Account',
+                  style: const TextStyle(
+                    fontFamily: 'Sora',
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
-          ),
         ],
       ),
     );

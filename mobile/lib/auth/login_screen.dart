@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
@@ -8,6 +10,7 @@ import '../home/home_screen.dart';
 import 'auth_api.dart';
 import 'email_verification_pending_screen.dart';
 import 'google_auth_service.dart';
+import 'google_web_button.dart';
 import 'register_screen.dart';
 import 'reset_password_screen.dart';
 
@@ -48,11 +51,24 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isPasswordVisible = false;
   bool _isSubmitting = false;
   String? _errorMessage;
+  StreamSubscription<String>? _googleWebIdTokenSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // See the matching comment in welcome_screen.dart.
+    if (kIsWeb) {
+      _googleWebIdTokenSub = GoogleAuthService.webIdTokenStream.listen(
+        _onGoogleWebIdToken,
+      );
+    }
+  }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _googleWebIdTokenSub?.cancel();
     super.dispose();
   }
 
@@ -135,23 +151,38 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final idToken = await GoogleAuthService.signInAndGetIdToken();
-      await _authApi.loginWithGoogle(idToken: idToken);
-
-      if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-        (route) => false,
-      );
+      await _completeGoogleSignIn(idToken);
     } on GoogleAuthCancelled {
       // User dismissed the account picker — not an error.
     } on GoogleAuthFailed catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = error.message);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  Future<void> _onGoogleWebIdToken(String idToken) async {
+    if (_isSubmitting) return;
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
+    await _completeGoogleSignIn(idToken);
+    if (mounted) setState(() => _isSubmitting = false);
+  }
+
+  Future<void> _completeGoogleSignIn(String idToken) async {
+    try {
+      await _authApi.loginWithGoogle(idToken: idToken);
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = error.message);
-    } finally {
-      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -231,17 +262,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: _isSubmitting ? null : _onLogIn,
                     isLoading: _isSubmitting,
                   ),
-                  // Mobile-only — see the matching comment in welcome_screen.dart.
-                  if (!kIsWeb) ...[
-                    const SizedBox(height: 20),
-                    const _OrDivider(),
-                    const SizedBox(height: 20),
+                  const SizedBox(height: 20),
+                  const _OrDivider(),
+                  const SizedBox(height: 20),
+                  // See the matching comment in welcome_screen.dart.
+                  if (kIsWeb)
+                    Center(child: buildGoogleWebButton())
+                  else
                     _GoogleButton(
                       onPressed: _isSubmitting
                           ? null
                           : () => _onContinueWithGoogle(),
                     ),
-                  ],
                   const SizedBox(height: 24),
                   _CreateAccountPrompt(onPressed: _onCreateAccount),
                   const SizedBox(height: 24),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -6,6 +8,7 @@ import '../core/api/api_client.dart';
 import '../home/home_screen.dart';
 import 'auth_api.dart';
 import 'google_auth_service.dart';
+import 'google_web_button.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
 
@@ -35,6 +38,26 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   bool _isSubmitting = false;
   String? _errorMessage;
+  StreamSubscription<String>? _googleWebIdTokenSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // On web, the rendered Google button (see build()) drives this stream
+    // itself rather than us awaiting a future from our own onPressed — see
+    // GoogleAuthService.webIdTokenStream's doc comment for why.
+    if (kIsWeb) {
+      _googleWebIdTokenSub = GoogleAuthService.webIdTokenStream.listen(
+        _onGoogleWebIdToken,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _googleWebIdTokenSub?.cancel();
+    super.dispose();
+  }
 
   void _onCreateAccount() {
     Navigator.of(context)
@@ -56,23 +79,38 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
     try {
       final idToken = await GoogleAuthService.signInAndGetIdToken();
-      await _authApi.loginWithGoogle(idToken: idToken);
-
-      if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-        (route) => false,
-      );
+      await _completeGoogleSignIn(idToken);
     } on GoogleAuthCancelled {
       // User dismissed the account picker — not an error.
     } on GoogleAuthFailed catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = error.message);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  Future<void> _onGoogleWebIdToken(String idToken) async {
+    if (_isSubmitting) return;
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
+    await _completeGoogleSignIn(idToken);
+    if (mounted) setState(() => _isSubmitting = false);
+  }
+
+  Future<void> _completeGoogleSignIn(String idToken) async {
+    try {
+      await _authApi.loginWithGoogle(idToken: idToken);
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = error.message);
-    } finally {
-      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -102,25 +140,21 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 ),
                 const SizedBox(height: 12),
                 _LogInButton(onPressed: _isSubmitting ? null : _onLogIn),
-                // Google Sign-In stays mobile-only for now: google_sign_in's
-                // web implementation only returns an ID token on a *second*
-                // sign-in (once a credential is already cached from a prior
-                // silent/One Tap flow) — the very first popup a new web user
-                // sees comes back with no ID token at all, which this app's
-                // backend call requires. See docs/WEB_BONUS.md for the two
-                // real fixes considered (a native Google button, or an
-                // access-token-based backend endpoint) and why this bonus
-                // ships without either for now.
-                if (!kIsWeb) ...[
-                  const SizedBox(height: 20),
-                  const _OrDivider(),
-                  const SizedBox(height: 20),
+                const SizedBox(height: 20),
+                const _OrDivider(),
+                const SizedBox(height: 20),
+                // On web, Google's own rendered button owns its click
+                // handler and drives _onGoogleWebIdToken via the stream
+                // subscribed to in initState() — see
+                // GoogleAuthService.webIdTokenStream.
+                if (kIsWeb)
+                  Center(child: buildGoogleWebButton())
+                else
                   _GoogleButton(
                     onPressed: _isSubmitting
                         ? null
                         : () => _onContinueWithGoogle(),
                   ),
-                ],
                 const SizedBox(height: 24),
               ],
             ),
