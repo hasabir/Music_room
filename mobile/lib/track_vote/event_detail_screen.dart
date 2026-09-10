@@ -394,6 +394,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         title: entry.song.title,
         artist: entry.song.artist,
         artworkUrl: entry.song.albumArtUrl,
+        sourceLabel: _event?.title ?? '',
         position: position,
       );
       if (mounted) setState(() => _autoPlayFailedSongId = null);

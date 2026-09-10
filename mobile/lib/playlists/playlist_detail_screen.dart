@@ -632,6 +632,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
         title: song.songTitle,
         artist: song.songArtist,
         artworkUrl: song.songAlbumArtUrl,
+        sourceLabel: _playlist?.title ?? '',
       );
       if (!mounted) return false;
       setState(() => _playingSongId = song.id);

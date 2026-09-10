@@ -54,6 +54,7 @@ class PlaybackController {
     required String title,
     required String artist,
     required String artworkUrl,
+    String sourceLabel = '',
     Duration position = Duration.zero,
   }) async {
     ClientActionLog.record('playback.play');
@@ -64,6 +65,7 @@ class PlaybackController {
         title: title,
         artist: artist,
         artworkUrl: artworkUrl,
+        sourceLabel: sourceLabel,
         position: position,
       ),
     );
@@ -115,6 +117,7 @@ class PlaybackState {
     this.title = '',
     this.artist = '',
     this.artworkUrl = '',
+    this.sourceLabel = '',
     this.position = Duration.zero,
     this.duration = Duration.zero,
     this.isPlaying = false,
@@ -124,6 +127,12 @@ class PlaybackState {
   final String title;
   final String artist;
   final String artworkUrl;
+
+  /// Where this track is playing from — the playlist's title for a
+  /// playlist preview, empty for an event track (already shown
+  /// front-and-center by the event's own "Now Playing" card, see
+  /// `isEventTrack`). Purely informational, shown alongside the artist.
+  final String sourceLabel;
   final Duration position;
   final Duration duration;
   final bool isPlaying;
@@ -143,6 +152,7 @@ class PlaybackState {
     String? title,
     String? artist,
     String? artworkUrl,
+    String? sourceLabel,
     Duration? position,
     Duration? duration,
     bool? isPlaying,
@@ -151,6 +161,7 @@ class PlaybackState {
     title: title ?? this.title,
     artist: artist ?? this.artist,
     artworkUrl: artworkUrl ?? this.artworkUrl,
+    sourceLabel: sourceLabel ?? this.sourceLabel,
     position: position ?? this.position,
     duration: duration ?? this.duration,
     isPlaying: isPlaying ?? this.isPlaying,
@@ -163,6 +174,7 @@ class PlaybackState {
       other.title == title &&
       other.artist == artist &&
       other.artworkUrl == artworkUrl &&
+      other.sourceLabel == sourceLabel &&
       other.position == position &&
       other.duration == duration &&
       other.isPlaying == isPlaying;
@@ -173,6 +185,7 @@ class PlaybackState {
     title,
     artist,
     artworkUrl,
+    sourceLabel,
     position,
     duration,
     isPlaying,

@@ -73,7 +73,9 @@ class MiniPlayer extends StatelessWidget {
                                       ),
                                     ),
                                     Text(
-                                      state.artist,
+                                      state.sourceLabel.isEmpty
+                                          ? state.artist
+                                          : '${state.artist} • ${state.sourceLabel}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
@@ -247,6 +249,18 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     state.artist,
                     style: const TextStyle(color: Color(0xFFAAA7B8)),
                   ),
+                  if (state.sourceLabel.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'From ${state.sourceLabel}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF7C7A8C),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   Slider(
                     value: _progress(state),
