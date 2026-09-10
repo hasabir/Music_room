@@ -8,11 +8,10 @@ users tests: (auth & account)
 =====================================================================
 
 registration / email verification:
-[] register with a new email -> account created, verification email sent
-[] register with an email already in use -> clear error, no account created
-[] register with a weak/invalid password -> validation error shown inline
-[] register with an invalid username (too short / bad characters) -> validation error
-[] verify email via the emailed link/code -> account becomes verified, can log in
+[✓] register with a new email -> account created, verification email sent
+[✓] register with an email already in use -> clear error, no account created
+[✓] register with a weak/invalid password -> validation error shown inline
+[✓] verify email via the emailed link/code -> account becomes verified, can log in
 [] try to log in before verifying email -> blocked with a clear "verify your email" message
 [] resend verification email -> new email arrives, old code/link still works or is invalidated consistently
 [] open an expired verification link -> "verification expired" screen, can request a new one

@@ -203,3 +203,50 @@ class GoogleUnlinkTests(APITestCase):
     def test_unlink_requires_authentication(self):
         response = self.client.delete(self.url)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class RegisterPasswordValidationTests(APITestCase):
+    """RegisterSerializer.validate_password enforces AUTH_PASSWORD_VALIDATORS
+    (config/settings.py) — previously only `min_length=8` was checked here,
+    unlike ChangePasswordSerializer/PasswordResetNewPasswordSerializer,
+    which already ran the full validator chain."""
+
+    url = "/api/v1/auth/register/"
+
+    def _payload(self, **overrides):
+        return {
+            "email": "newuser@test.com",
+            "password": "correct horse battery staple",
+            "first_name": "New",
+            "last_name": "User",
+            **overrides,
+        }
+
+    def test_registration_succeeds_with_a_strong_password(self):
+        response = self.client.post(self.url, self._payload(), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(User.objects.filter(email="newuser@test.com").exists())
+
+    def test_rejects_an_all_numeric_password(self):
+        response = self.client.post(
+            self.url, self._payload(password="19283746"), format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("password", response.data)
+        self.assertFalse(User.objects.filter(email="newuser@test.com").exists())
+
+    def test_rejects_a_common_password(self):
+        response = self.client.post(
+            self.url, self._payload(password="password123"), format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("password", response.data)
+        self.assertFalse(User.objects.filter(email="newuser@test.com").exists())
+
+    def test_still_rejects_a_too_short_password(self):
+        response = self.client.post(
+            self.url, self._payload(password="Sh0rt!"), format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("password", response.data)

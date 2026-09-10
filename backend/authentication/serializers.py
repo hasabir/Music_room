@@ -19,6 +19,15 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A user with this email already exists.")
         return value
 
+    def validate_password(self, value):
+        # `min_length=8` above rejects short passwords before this even
+        # runs; this is what actually enforces AUTH_PASSWORD_VALIDATORS
+        # (not-too-common, not-entirely-numeric, etc.) — the same checks
+        # ChangePasswordSerializer/PasswordResetNewPasswordSerializer
+        # already run, which registration was missing entirely.
+        validate_password(value)
+        return value
+
     def create(self, validated_data):
         user = User.objects.create_user(
             email=validated_data["email"],
