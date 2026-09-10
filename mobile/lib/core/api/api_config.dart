@@ -113,18 +113,20 @@ class ApiConfig {
       Uri.parse('$baseUrl$playlistsEndpoint$playlistId/collaborators/');
   static Uri playlistCollaboratorDetailUri(int playlistId, int userId) =>
       Uri.parse('$baseUrl$playlistsEndpoint$playlistId/collaborators/$userId/');
+
   /// [byArtist] switches from the default title/artist/etc keyword match
   /// to an artist-name lookup — see `TrackSearchView` (`backend/api/views.py`).
   static Uri trackSearchUri(String query, {bool byArtist = false}) =>
-      Uri.parse('$baseUrl$trackSearchEndpoint').replace(
-        queryParameters: {'q': query, if (byArtist) 'by': 'artist'},
-      );
+      Uri.parse('$baseUrl$trackSearchEndpoint')
+          .replace(queryParameters: {'q': query, if (byArtist) 'by': 'artist'});
   static Uri trackTrendingUri() => Uri.parse('$baseUrl$trackTrendingEndpoint');
+
   /// Web-only — see `location_label.dart`'s `forwardGeocodeCoordinates`.
   /// Proxies the Google Geocoding API server-side, for the one platform
   /// the `geocoding` plugin can't run on directly.
   static Uri geocodeUri(String query) =>
-      Uri.parse('$baseUrl$geocodeEndpoint').replace(queryParameters: {'q': query});
+      Uri.parse('$baseUrl$geocodeEndpoint')
+          .replace(queryParameters: {'q': query});
   static Uri trackPreviewUri(String externalId) => Uri.parse(
     '$baseUrl/api/v1/tracks/${Uri.encodeComponent(externalId)}/preview/',
   );
@@ -140,6 +142,15 @@ class ApiConfig {
   );
 
   static Uri eventsUri() => Uri.parse('$baseUrl$eventsEndpoint');
+  static Uri notificationSocketUri(String token) {
+    final httpUri = Uri.parse(baseUrl);
+    return httpUri.replace(
+      scheme: httpUri.scheme == 'https' ? 'wss' : 'ws',
+      path: '/ws/notifications/',
+      queryParameters: {'token': token},
+    );
+  }
+
   static Uri eventDetailUri(int eventId) =>
       Uri.parse('$baseUrl$eventsEndpoint$eventId/');
   static Uri eventQueueUri(int eventId) =>

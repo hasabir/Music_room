@@ -20,6 +20,7 @@ from channels.security.websocket import AllowedHostsOriginValidator
 from events.ws_auth import JWTAuthMiddlewareStack
 import events.routing
 import playlists.routing
+import user.routing
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
@@ -27,7 +28,8 @@ application = ProtocolTypeRouter({
         JWTAuthMiddlewareStack(
             URLRouter(
                 events.routing.websocket_urlpatterns +
-                playlists.routing.websocket_urlpatterns
+                playlists.routing.websocket_urlpatterns +
+                user.routing.websocket_urlpatterns
             )
         )
     ),

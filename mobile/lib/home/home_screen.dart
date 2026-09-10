@@ -11,6 +11,8 @@ import '../core/auth/token_storage.dart';
 import '../core/responsive/responsive.dart';
 import '../core/widgets/app_bottom_nav.dart';
 import '../core/widgets/app_tab_navigation.dart';
+import '../notifications/notifications_screen.dart';
+import '../notifications/notification_service.dart';
 import '../profile/profile_api.dart';
 import '../profile/profile_avatar.dart';
 import '../profile/profile_models.dart';
@@ -46,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _profileApi = ProfileApi();
   final _eventApi = EventApi();
   final _tokenStorage = TokenStorage();
+  final _notificationService = RealtimeNotificationService();
 
   UserProfile? _profile;
   AuthUser? _authUser;
@@ -62,6 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// slightly behind [_yourEvents]/[_discoverEvents] rather than blocking
   /// them.
   List<Event>? _pendingInvites;
+  int _friendRequestCount = 0;
   final Set<int> _respondingEventIds = {};
 
   Position? _devicePosition;
@@ -73,6 +77,19 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _load();
+    unawaited(
+      _notificationService.start(onNotification: _onRealtimeNotification),
+    );
+  }
+
+  @override
+  void dispose() {
+    _notificationService.removeListener(_onRealtimeNotification);
+    super.dispose();
+  }
+
+  void _onRealtimeNotification() {
+    if (mounted) unawaited(_load());
   }
 
   Future<void> _load() async {
@@ -86,10 +103,12 @@ class _HomeScreenState extends State<HomeScreen> {
         _profileApi.getMyProfile(),
         _authApi.getCurrentUser(),
         _eventApi.listEvents(),
+        _profileApi.getReceivedRequests(),
       ]);
       final profile = results[0] as UserProfile;
       final authUser = results[1] as AuthUser;
       final events = results[2] as List<Event>;
+      final friendRequests = results[3] as List<FriendRequest>;
 
       final yourEvents = <Event>[];
       final discover = <Event>[];
@@ -116,6 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _yourEvents = yourEvents;
         _discoverEvents = discover;
         _pendingInvites = null;
+        _friendRequestCount = friendRequests.length;
         _loading = false;
       });
 
@@ -196,6 +216,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _signOutAndReturnToWelcome() async {
+    _notificationService.stop();
     await _tokenStorage.clear();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -218,6 +239,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onOpenProfile() => navigateToTab(context, AppTab.home, AppTab.profile);
+
+  Future<void> _onOpenNotifications() async {
+    await _notificationService.requestPermission();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => NotificationsScreen(
+          eventInvites: List.of(_pendingInvites ?? const []),
+        ),
+      ),
+    );
+    if (mounted) await _load();
+  }
 
   Future<void> _onRespond(Event event, {required bool accept}) async {
     setState(() => _respondingEventIds.add(event.id));
@@ -307,6 +341,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               greetingName: _greetingName(),
                               profile: _profile,
                               onTapAvatar: _onOpenProfile,
+                              notificationCount:
+                                  _friendRequestCount +
+                                  (_pendingInvites?.length ?? 0),
+                              onTapNotifications: _onOpenNotifications,
                             ),
                       const SizedBox(height: 28),
                       const HomeSectionHeader(title: 'Your Events'),
@@ -416,11 +454,15 @@ class _Header extends StatelessWidget {
     required this.greetingName,
     required this.profile,
     required this.onTapAvatar,
+    required this.notificationCount,
+    required this.onTapNotifications,
   });
 
   final String greetingName;
   final UserProfile? profile;
   final VoidCallback onTapAvatar;
+  final int notificationCount;
+  final VoidCallback onTapNotifications;
 
   @override
   Widget build(BuildContext context) {
@@ -456,6 +498,20 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
+          Badge(
+            isLabelVisible: notificationCount > 0,
+            label: Text(notificationCount > 99 ? '99+' : '$notificationCount'),
+            child: IconButton(
+              tooltip: 'Notifications',
+              onPressed: onTapNotifications,
+              icon: const Icon(
+                Icons.notifications_none_rounded,
+                color: HomeColors.body,
+                size: 27,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           InkWell(
             onTap: onTapAvatar,
             customBorder: const CircleBorder(),

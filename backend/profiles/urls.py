@@ -5,6 +5,7 @@ from .views import (
     AcceptFriendRequestView,
     RejectFriendRequestView,
     RemoveFriendView,
+    CancelFriendRequestView,
     FriendListView,
     PendingFriendRequestListView,
     SentFriendRequestListView,
@@ -65,6 +66,11 @@ urlpatterns = [
         "friends/<int:user_id>/remove/",
         RemoveFriendView.as_view(),
         name="remove-friend"
+    ),
+    path(
+        "friends/<int:user_id>/cancel/",
+        CancelFriendRequestView.as_view(),
+        name="cancel-friend-request"
     ),
     path("me/", MyProfileView.as_view(), name="my-profile"),
     path("me/activity/", MyActivityView.as_view(), name="my-activity"),

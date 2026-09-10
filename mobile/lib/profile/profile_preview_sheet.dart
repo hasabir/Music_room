@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api/api_client.dart';
+import '../notifications/notification_service.dart';
 import 'profile_api.dart';
 import 'profile_avatar.dart';
 import 'profile_models.dart';
@@ -93,6 +94,7 @@ class ProfilePreviewSheet extends StatefulWidget {
 
 class _ProfilePreviewSheetState extends State<ProfilePreviewSheet> {
   final _profileApi = ProfileApi();
+  final _notificationService = RealtimeNotificationService.instance;
   late final Future<OtherUserProfile> _profileFuture;
 
   /// Seeded from the fetched profile's own `relationship_status`/
@@ -108,6 +110,26 @@ class _ProfilePreviewSheetState extends State<ProfilePreviewSheet> {
   void initState() {
     super.initState();
     _profileFuture = _loadProfile();
+    _notificationService.addListener(_refreshRelationship);
+  }
+
+  @override
+  void dispose() {
+    _notificationService.removeListener(_refreshRelationship);
+    super.dispose();
+  }
+
+  Future<void> _refreshRelationship() async {
+    try {
+      final profile = await _profileApi.getUserProfile(widget.userId);
+      if (!mounted) return;
+      setState(() {
+        _relationshipStatus = profile.relationshipStatus;
+        _friendshipId = profile.friendshipId;
+      });
+    } on ApiException {
+      // Keep the last known relationship during a transient failure.
+    }
   }
 
   Future<OtherUserProfile> _loadProfile() async {

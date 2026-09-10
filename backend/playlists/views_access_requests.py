@@ -15,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 
 from authentication.utils import log_action
+from user.notifications import notify_user
 
 from .models import Playlist, PlaylistCollaborator, PlaylistAccessRequest
 from .serializers import PlaylistAccessRequestSerializer, DecideAccessRequestSerializer
@@ -80,6 +81,13 @@ class PlaylistAccessRequestListCreateView(APIView):
             "playlist_id": playlist.id,
             "title": playlist.title,
         })
+        notify_user(
+            playlist.owner_id,
+            kind="playlist_access_request",
+            title="Playlist access request",
+            body=f'@{request.user.username} requested access to "{playlist.title}".',
+            data={"playlist_id": playlist.id, "request_id": access_request.id},
+        )
 
         return Response(PlaylistAccessRequestSerializer(access_request).data, status=status.HTTP_201_CREATED)
 
@@ -131,6 +139,14 @@ class PlaylistAccessRequestMineView(APIView):
             "playlist_id": playlist.id,
             "title": playlist.title,
         })
+        notify_user(
+            playlist.owner_id,
+            kind="playlist_access_cancelled",
+            title="Playlist access request cancelled",
+            body=f'@{request.user.username} cancelled their request for "{playlist.title}".',
+            data={"playlist_id": playlist.id},
+        )
+        broadcast_playlist_update(playlist)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -181,5 +197,12 @@ class PlaylistAccessRequestDecideView(APIView):
             "approved": approve,
         })
         broadcast_playlist_update(playlist)
+        notify_user(
+            access_request.requester_id,
+            kind="playlist_access_decided",
+            title="Playlist access updated",
+            body=f'Your request for "{playlist.title}" was {"approved" if approve else "denied"}.',
+            data={"playlist_id": playlist.id, "approved": approve},
+        )
 
         return Response(PlaylistAccessRequestSerializer(access_request).data)

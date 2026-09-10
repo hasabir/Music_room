@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../auth/auth_api.dart';
 import '../core/api/api_client.dart';
+import '../notifications/notification_service.dart';
 import '../profile/profile_api.dart';
 import '../profile/profile_avatar.dart';
 import '../profile/profile_models.dart';
@@ -37,6 +38,7 @@ class _EventGuestsScreenState extends State<EventGuestsScreen> {
   final _profileApi = ProfileApi();
   final _authApi = AuthApi();
   final _searchController = TextEditingController();
+  final _notificationService = RealtimeNotificationService.instance;
   Timer? _debounce;
   List<EventGuest> _guests = const [];
   List<SearchUser>? _searchResults;
@@ -50,6 +52,7 @@ class _EventGuestsScreenState extends State<EventGuestsScreen> {
   void initState() {
     super.initState();
     _loadGuests();
+    _notificationService.addListener(_onRealtimeNotification);
     _authApi.getCurrentUser().then((user) {
       if (mounted) setState(() => _currentUserId = user.id);
     });
@@ -57,9 +60,14 @@ class _EventGuestsScreenState extends State<EventGuestsScreen> {
 
   @override
   void dispose() {
+    _notificationService.removeListener(_onRealtimeNotification);
     _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onRealtimeNotification() {
+    if (mounted) _loadGuests();
   }
 
   Future<void> _loadGuests() async {

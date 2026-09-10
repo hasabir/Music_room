@@ -10,6 +10,7 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResp
 
 from user.models import User, ActionLog
 from authentication.utils import log_action
+from user.notifications import notify_user
 
 from .models import Friendship, Profile, _default_field_visibility
 from .serializers import (
@@ -141,6 +142,14 @@ class SendFriendRequestView(generics.GenericAPIView):
             user=request.user
         )
 
+        notify_user(
+            receiver.id,
+            kind="friend_request",
+            title="New friend request",
+            body=f"@{request.user.username} sent you a friend request.",
+            data={"request_id": friendship.id, "sender_id": request.user.id},
+        )
+
         return Response(
             FriendshipSerializer(friendship).data,
             status=status.HTTP_201_CREATED
@@ -178,6 +187,14 @@ class AcceptFriendRequestView(generics.GenericAPIView):
             request,
             "friend.request_accepted",
             user=request.user
+        )
+
+        notify_user(
+            friendship.sender_id,
+            kind="friend_request_accepted",
+            title="Friend request accepted",
+            body=f"@{request.user.username} accepted your friend request.",
+            data={"user_id": request.user.id},
         )
 
         return Response(
@@ -261,6 +278,11 @@ class RemoveFriendView(generics.GenericAPIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        other_user_id = (
+            friendship.receiver_id
+            if friendship.sender_id == request.user.id
+            else friendship.sender_id
+        )
         friendship.delete()
 
         log_action(
@@ -269,10 +291,46 @@ class RemoveFriendView(generics.GenericAPIView):
             user=request.user
         )
 
+        notify_user(
+            other_user_id,
+            kind="friend_removed",
+            title="Friendship updated",
+            body=f"@{request.user.username} removed you from their friends.",
+            data={"user_id": request.user.id},
+        )
+
         return Response(
             {"detail": "Friend removed successfully."},
             status=status.HTTP_204_NO_CONTENT
         )
+
+
+@extend_schema(
+    summary="Cancel a sent friend request",
+    description="Deletes your pending friend request to the selected user.",
+    responses={204: None, 404: OpenApiResponse(description="No matching pending request found.")},
+    tags=["profile"],
+)
+class CancelFriendRequestView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, user_id):
+        friendship = get_object_or_404(
+            Friendship,
+            sender=request.user,
+            receiver_id=user_id,
+            status="pending",
+        )
+        friendship.delete()
+        log_action(request, "friend.request_cancelled", user=request.user)
+        notify_user(
+            user_id,
+            kind="friend_request_cancelled",
+            title="Friend request cancelled",
+            body=f"@{request.user.username} cancelled their friend request.",
+            data={"sender_id": request.user.id},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema(

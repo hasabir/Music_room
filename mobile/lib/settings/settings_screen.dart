@@ -6,6 +6,7 @@ import '../auth/auth_models.dart';
 import '../auth/email_verification_pending_screen.dart';
 import '../auth/welcome_screen.dart';
 import '../core/auth/token_storage.dart';
+import '../notifications/notification_service.dart';
 import '../profile/edit_profile_screen.dart';
 import '../profile/profile_avatar.dart';
 import '../profile/profile_models.dart';
@@ -95,6 +96,7 @@ class SettingsScreen extends StatelessWidget {
     final authApi = AuthApi();
     final tokenStorage = TokenStorage();
 
+    RealtimeNotificationService.instance.stop();
     await authApi.logout();
     await tokenStorage.clear();
 

@@ -5,6 +5,7 @@ import '../auth/auth_api.dart';
 import '../auth/welcome_screen.dart';
 import '../core/api/api_client.dart';
 import '../core/auth/token_storage.dart';
+import '../notifications/notification_service.dart';
 import '../profile/profile_avatar.dart';
 import '../profile/profile_preview_sheet.dart';
 import 'add_collaborators_screen.dart';
@@ -49,6 +50,7 @@ class _PlaylistCollaboratorsScreenState
   final _playlistApi = PlaylistApi();
   final _authApi = AuthApi();
   final _tokenStorage = TokenStorage();
+  final _notificationService = RealtimeNotificationService.instance;
 
   var _isLoading = true;
   String? _error;
@@ -62,9 +64,20 @@ class _PlaylistCollaboratorsScreenState
   void initState() {
     super.initState();
     _load();
+    _notificationService.addListener(_onRealtimeNotification);
     _authApi.getCurrentUser().then((user) {
       if (mounted) setState(() => _currentUserId = user.id);
     });
+  }
+
+  @override
+  void dispose() {
+    _notificationService.removeListener(_onRealtimeNotification);
+    super.dispose();
+  }
+
+  void _onRealtimeNotification() {
+    if (mounted) _load();
   }
 
   Future<void> _load() async {

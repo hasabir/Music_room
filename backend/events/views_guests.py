@@ -17,10 +17,12 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResp
 
 from authentication.utils import log_action
 from user.models import User
+from user.notifications import notify_user
 
 from .models import Event, EventGuest, EventMembership
 from .serializers import EventGuestSerializer, InviteGuestSerializer, EventMembershipSerializer
 from .permissions import can_user_see_event
+from .broadcast import broadcast_queue_update
 
 
 @extend_schema_view(
@@ -128,6 +130,13 @@ class EventGuestListView(APIView):
             "visibility": event.visibility,
             "via": "invited",
         })
+        notify_user(
+            invited_user.id,
+            kind="event_invite",
+            title="Event invitation",
+            body=f'You were invited to "{event.title}".',
+            data={"event_id": event.id},
+        )
 
         return Response(EventGuestSerializer(guest).data, status=status.HTTP_201_CREATED)
 
@@ -163,6 +172,14 @@ class EventGuestRemoveView(APIView):
             "visibility": event.visibility,
             "removed_user_id": user_id,
         })
+        notify_user(
+            user_id,
+            kind="event_guest_removed",
+            title="Event invitation removed",
+            body=f'You were removed from "{event.title}".',
+            data={"event_id": event.id},
+        )
+        broadcast_queue_update(event)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -215,6 +232,14 @@ class EventGuestRespondView(APIView):
             "title": event.title,
             "visibility": event.visibility,
         })
+        notify_user(
+            event.host_id,
+            kind="event_rsvp_updated",
+            title="Event RSVP updated",
+            body=f'@{request.user.username} {response_value} "{event.title}".',
+            data={"event_id": event.id, "response": response_value},
+        )
+        broadcast_queue_update(event)
 
         return Response(EventGuestSerializer(guest).data, status=status.HTTP_200_OK)
 

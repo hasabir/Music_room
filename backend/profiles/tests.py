@@ -15,6 +15,55 @@ def create_verified_user(email, password="TestPass123"):
     return user
 
 
+class CancelFriendRequestTests(APITestCase):
+    def setUp(self):
+        self.sender = create_verified_user("sender@test.com")
+        self.receiver = create_verified_user("receiver@test.com")
+        self.request = Friendship.objects.create(
+            sender=self.sender,
+            receiver=self.receiver,
+            status="pending",
+        )
+
+    def test_sender_can_cancel_pending_request(self):
+        self.client.force_authenticate(self.sender)
+        response = self.client.delete(
+            f"/api/v1/profile/friends/{self.receiver.id}/cancel/"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Friendship.objects.filter(id=self.request.id).exists())
+
+    def test_receiver_cannot_cancel_someone_elses_request(self):
+        self.client.force_authenticate(self.receiver)
+        response = self.client.delete(
+            f"/api/v1/profile/friends/{self.sender.id}/cancel/"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(Friendship.objects.filter(id=self.request.id).exists())
+
+
+class RemoveFriendRealtimeTests(APITestCase):
+    def setUp(self):
+        self.alice = create_verified_user("alice@test.com")
+        self.bob = create_verified_user("bob@test.com")
+        self.friendship = Friendship.objects.create(
+            sender=self.alice,
+            receiver=self.bob,
+            status="accepted",
+        )
+
+    def test_either_side_can_remove_friendship(self):
+        self.client.force_authenticate(self.bob)
+        response = self.client.delete(
+            f"/api/v1/profile/friends/{self.alice.id}/remove/"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Friendship.objects.filter(id=self.friendship.id).exists())
+
+
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class AvatarAssignmentTests(APITestCase):
     """`create_profile_for_user` is the one place both the email-verification

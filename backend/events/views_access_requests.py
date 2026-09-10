@@ -16,6 +16,7 @@ from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 
 from authentication.utils import log_action
+from user.notifications import notify_user
 
 from .models import Event, EventGuest, EventAccessRequest
 from .serializers import EventAccessRequestSerializer, DecideAccessRequestSerializer
@@ -89,6 +90,13 @@ class EventAccessRequestListCreateView(APIView):
             "event_id": event.id,
             "title": event.title,
         })
+        notify_user(
+            event.host_id,
+            kind="event_access_request",
+            title="Event access request",
+            body=f'@{request.user.username} requested access to "{event.title}".',
+            data={"event_id": event.id, "request_id": access_request.id},
+        )
 
         return Response(EventAccessRequestSerializer(access_request).data, status=status.HTTP_201_CREATED)
 
@@ -140,6 +148,14 @@ class EventAccessRequestMineView(APIView):
             "event_id": event.id,
             "title": event.title,
         })
+        notify_user(
+            event.host_id,
+            kind="event_access_cancelled",
+            title="Event access request cancelled",
+            body=f'@{request.user.username} cancelled their request for "{event.title}".',
+            data={"event_id": event.id},
+        )
+        broadcast_queue_update(event)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -198,5 +214,12 @@ class EventAccessRequestDecideView(APIView):
             "requester_id": access_request.requester_id,
             "approved": approve,
         })
+        notify_user(
+            access_request.requester_id,
+            kind="event_access_decided",
+            title="Event access updated",
+            body=f'Your request for "{event.title}" was {"approved" if approve else "denied"}.',
+            data={"event_id": event.id, "approved": approve},
+        )
 
         return Response(EventAccessRequestSerializer(access_request).data)

@@ -16,6 +16,7 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResp
 
 from authentication.utils import log_action
 from user.models import User
+from user.notifications import notify_user
 
 from .models import Playlist, PlaylistCollaborator
 from .serializers import (
@@ -91,6 +92,13 @@ class PlaylistCollaboratorListView(APIView):
             "invited_user_id": invited_user.id,
         })
         broadcast_playlist_update(playlist)
+        notify_user(
+            invited_user.id,
+            kind="playlist_invite",
+            title="Playlist invitation",
+            body=f'You were invited to collaborate on "{playlist.title}".',
+            data={"playlist_id": playlist.id},
+        )
 
         return Response(PlaylistCollaboratorSerializer(collaborator).data, status=status.HTTP_201_CREATED)
 
@@ -127,6 +135,13 @@ class PlaylistCollaboratorRemoveView(APIView):
             "removed_user_id": user_id,
         })
         broadcast_playlist_update(playlist)
+        notify_user(
+            user_id,
+            kind="playlist_collaborator_removed",
+            title="Playlist access removed",
+            body=f'You were removed from "{playlist.title}".',
+            data={"playlist_id": playlist.id},
+        )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -146,4 +161,11 @@ class PlaylistCollaboratorRemoveView(APIView):
             setattr(collaborator, field, value)
         collaborator.save(update_fields=list(serializer.validated_data))
         broadcast_playlist_update(playlist)
+        notify_user(
+            user_id,
+            kind="playlist_permissions_updated",
+            title="Playlist permissions updated",
+            body=f'Your permissions for "{playlist.title}" changed.',
+            data={"playlist_id": playlist.id},
+        )
         return Response(PlaylistCollaboratorSerializer(collaborator).data)

@@ -2,6 +2,7 @@ import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api/api_client.dart';
+import '../notifications/notification_service.dart';
 import 'profile_api.dart';
 import 'profile_avatar.dart';
 import 'profile_models.dart';
@@ -71,6 +72,7 @@ class ViewProfileScreen extends StatefulWidget {
 
 class _ViewProfileScreenState extends State<ViewProfileScreen> {
   final _profileApi = ProfileApi();
+  final _notificationService = RealtimeNotificationService.instance;
 
   late Future<OtherUserProfile> _profileFuture;
   late Future<List<ActivityEntry>> _activityFuture;
@@ -85,6 +87,26 @@ class _ViewProfileScreenState extends State<ViewProfileScreen> {
     _friendshipId = widget.friendshipId;
     _profileFuture = _profileApi.getUserProfile(widget.userId);
     _activityFuture = _profileApi.getUserActivity(widget.userId);
+    _notificationService.addListener(_refreshRelationship);
+  }
+
+  @override
+  void dispose() {
+    _notificationService.removeListener(_refreshRelationship);
+    super.dispose();
+  }
+
+  Future<void> _refreshRelationship() async {
+    try {
+      final profile = await _profileApi.getUserProfile(widget.userId);
+      if (!mounted) return;
+      setState(() {
+        _relationshipStatus = profile.relationshipStatus;
+        _friendshipId = profile.friendshipId;
+      });
+    } on ApiException {
+      // A transient refresh failure must not replace the profile on screen.
+    }
   }
 
   Future<void> _runAction(Future<void> Function() action) async {
