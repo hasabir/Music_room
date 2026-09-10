@@ -3,7 +3,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from profiles.serializers import _actor_display_name
 from profiles.services import avatar_for_user
-from .models import Event, EventGuest, EventMembership, EventParticipation, Song, EventSong, Vote, EventAccessRequest
+from .models import Event, EventGuest, EventMembership, DailyParticipation, Song, EventSong, Vote, EventAccessRequest
 from .services import FREE_SUGGESTION_LIMIT, FREE_VOTE_LIMIT
 
 class EventSerializer(serializers.ModelSerializer):
@@ -65,12 +65,20 @@ class EventSerializer(serializers.ModelSerializer):
     # The `*_limit` fields return `null` for a Premium user (or an
     # unauthenticated request) — the client renders that uniformly as
     # "unlimited, no counter shown" and never hardcodes 10/20 itself.
+    #
+    # The cap itself is per calendar day, across every event (see
+    # events/services.py) — so `my_suggestion_count`/`my_vote_count` are
+    # NOT scoped to `obj`, despite living on this per-event serializer:
+    # every event a user looks at today shows the same global count,
+    # which is the correct way to represent a global-per-day limit.
 
     def get_my_suggestion_count(self, obj):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return 0
-        participation = EventParticipation.objects.filter(event=obj, user=request.user).first()
+        participation = DailyParticipation.objects.filter(
+            user=request.user, date=timezone.localdate()
+        ).first()
         return participation.suggestion_count if participation else 0
 
     def get_my_suggestion_limit(self, obj):
@@ -83,7 +91,9 @@ class EventSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return 0
-        return Vote.objects.filter(voter=request.user, event_song__event=obj).count()
+        return Vote.objects.filter(
+            voter=request.user, created_at__date=timezone.localdate()
+        ).count()
 
     def get_my_vote_limit(self, obj):
         request = self.context.get("request")

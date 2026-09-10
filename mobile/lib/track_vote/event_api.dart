@@ -20,8 +20,9 @@ class VoteNotPermittedException implements Exception {
 }
 
 /// Thrown when the vote endpoint rejects the caller specifically because
-/// they've hit their FREE-tier distinct-vote cap for this event (backend
-/// `code: "vote_limit_reached"` — see docs/SUBSCRIPTION_BONUS.md). Kept
+/// they've hit their FREE-tier distinct-vote cap for today, across every
+/// event (backend `code: "vote_limit_reached"` — see
+/// docs/SUBSCRIPTION_BONUS.md). Kept
 /// distinct from [VoteNotPermittedException]: that one drives a reactive,
 /// whole-queue "voting restricted" banner, which would incorrectly cover
 /// retracting an *already-cast* vote too — and retracting is exactly how
@@ -36,8 +37,9 @@ class VoteLimitReachedException implements Exception {
 }
 
 /// Thrown when the suggest-track endpoint rejects the caller because
-/// they've hit their FREE-tier suggestion cap for this event (backend
-/// `code: "suggestion_limit_reached"` — see docs/SUBSCRIPTION_BONUS.md).
+/// they've hit their FREE-tier suggestion cap for today, across every
+/// event (backend `code: "suggestion_limit_reached"` — see
+/// docs/SUBSCRIPTION_BONUS.md).
 class SuggestionLimitReachedException implements Exception {
   SuggestionLimitReachedException(this.message);
 
@@ -191,8 +193,8 @@ class EventApi {
   /// exists.
   ///
   /// Throws [SuggestionLimitReachedException] (rather than a bare
-  /// [ApiException]) when a FREE-tier caller has hit their per-event
-  /// suggestion cap — see docs/SUBSCRIPTION_BONUS.md.
+  /// [ApiException]) when a FREE-tier caller has hit their daily,
+  /// cross-event suggestion cap — see docs/SUBSCRIPTION_BONUS.md.
   Future<EventSong> addToQueue(
     int eventId, {
     required String title,
@@ -231,7 +233,7 @@ class EventApi {
   /// `locationRestrictionEnabled` is `true`.
   ///
   /// Throws [VoteLimitReachedException] when a FREE-tier caller has hit
-  /// their per-event distinct-vote cap (checked first — it's also a 403,
+  /// their daily, cross-event distinct-vote cap (checked first — it's also a 403,
   /// but a more specific one than [VoteNotPermittedException] below), or
   /// [VoteNotPermittedException] for any other 403 — i.e. any other
   /// failure case in the backend's `can_user_vote` (not enough songs

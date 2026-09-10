@@ -151,6 +151,7 @@ void main() {
     'PlaylistCollaboratorsScreen': () => PlaylistCollaboratorsScreen(
       playlistId: 1,
       playlistTitle: 'My playlist',
+      isOwner: true,
     ),
     'CreatePlaylistScreen': () => CreatePlaylistScreen(),
     'PlaylistDetailScreen': () => PlaylistDetailScreen(playlistId: 1),

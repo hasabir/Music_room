@@ -49,13 +49,14 @@ class SuggestTrackScreen extends StatefulWidget {
   });
   final int eventId;
 
-  /// How many tracks this user has already suggested to this event
-  /// (lifetime-cumulative — see `docs/SUBSCRIPTION_BONUS.md`) as of when
-  /// this screen was opened, and the Free-tier cap (`null` = Premium,
-  /// unlimited). Used only to short-circuit locally and show a banner —
-  /// the backend re-checks and is the actual source of truth, so a stale
-  /// value here (e.g. from another device) just means the user sees the
-  /// [SuggestionLimitReachedException] snackbar instead of the banner.
+  /// How many tracks this user has already suggested today, across every
+  /// event (see `docs/SUBSCRIPTION_BONUS.md`) as of when this screen was
+  /// opened, and the Free-tier daily cap (`null` = Premium, unlimited).
+  /// Used only to short-circuit locally and show a banner — the backend
+  /// re-checks and is the actual source of truth, so a stale value here
+  /// (e.g. from another device, or another event suggested to since) just
+  /// means the user sees the [SuggestionLimitReachedException] snackbar
+  /// instead of the banner.
   final int initialSuggestionCount;
   final int? suggestionLimit;
 
@@ -200,7 +201,7 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
     if (_atLimit) {
       _showSnack(
         'You have reached the ${widget.suggestionLimit} suggestion limit for '
-        'this event. Upgrade to Premium for unlimited suggestions.',
+        'today, across all events. Upgrade to Premium for unlimited suggestions.',
       );
       return;
     }
@@ -343,7 +344,7 @@ class _SuggestTrackScreenState extends State<SuggestTrackScreen> {
               child: Text(
                 _atLimit
                     ? 'Suggestion limit reached ($limit/$limit) — upgrade to Premium for unlimited suggestions.'
-                    : '$_suggestionCount/$limit suggestions used for this event.',
+                    : '$_suggestionCount/$limit suggestions used today, across all events.',
                 style: TextStyle(
                   fontSize: 12,
                   color: _atLimit ? Colors.redAccent : _SuggestColors.muted,

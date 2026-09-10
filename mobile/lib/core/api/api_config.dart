@@ -55,6 +55,7 @@ class ApiConfig {
   static const String trackTrendingEndpoint = '/api/v1/tracks/trending/';
   static const String geocodeEndpoint = '/api/v1/geocode/';
   static const String eventsEndpoint = '/api/v1/events/';
+  static const String notificationsEndpoint = '/api/v1/user/notifications/';
 
   static Uri registerUri() => Uri.parse('$baseUrl$registerEndpoint');
   static Uri loginUri() => Uri.parse('$baseUrl$loginEndpoint');
@@ -111,6 +112,14 @@ class ApiConfig {
       );
   static Uri playlistCollaboratorsUri(int playlistId) =>
       Uri.parse('$baseUrl$playlistsEndpoint$playlistId/collaborators/');
+  static Uri playlistCollaboratorsMineUri() =>
+      Uri.parse('$baseUrl${playlistsEndpoint}collaborators/mine/');
+  static Uri notificationsUri() =>
+      Uri.parse('$baseUrl$notificationsEndpoint');
+  static Uri notificationMarkReadUri(int notificationId) =>
+      Uri.parse('$baseUrl$notificationsEndpoint$notificationId/read/');
+  static Uri notificationMarkAllReadUri() =>
+      Uri.parse('$baseUrl${notificationsEndpoint}read-all/');
   static Uri playlistCollaboratorDetailUri(int playlistId, int userId) =>
       Uri.parse('$baseUrl$playlistsEndpoint$playlistId/collaborators/$userId/');
   static Uri playlistJoinUri(int playlistId) =>

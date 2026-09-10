@@ -3,11 +3,12 @@
 Endpoints for managing a playlist's collaborator list (used for private
 playlists and invited_only edit_permission).
 
-Only the owner can invite/remove collaborators. Owner or any collaborator
-can list who's invited.
+The owner, or a collaborator granted `can_manage_collaborators`, can
+invite/remove collaborators. Owner or any collaborator can list who's
+invited.
 """
 from django.shortcuts import get_object_or_404
-from rest_framework import status
+from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -37,12 +38,15 @@ from .broadcast import broadcast_playlist_update
     ),
     post=extend_schema(
         summary="Invite a collaborator to a playlist",
-        description="Invites a user to a private playlist, or grants them edit rights on an invited_only playlist. Owner only.",
+        description=(
+            "Invites a user to a private playlist, or grants them edit rights on an "
+            "invited_only playlist. Owner, or a collaborator with `can_manage_collaborators`, only."
+        ),
         request=InviteCollaboratorSerializer,
         responses={
             201: PlaylistCollaboratorSerializer,
             400: OpenApiResponse(description="User already invited, or inviting yourself."),
-            403: OpenApiResponse(description="Only the owner can invite collaborators."),
+            403: OpenApiResponse(description="You are not allowed to invite collaborators."),
         },
         tags=["playlists"],
     ),
@@ -104,11 +108,30 @@ class PlaylistCollaboratorListView(APIView):
 
 
 @extend_schema(
+    summary="List my playlist collaborator invitations",
+    description="Every playlist the signed-in user has been invited to collaborate on, most recent first. Powers the in-app notifications list.",
+    responses={200: PlaylistCollaboratorSerializer(many=True)},
+    tags=["playlists"],
+)
+class PlaylistCollaboratorMineView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = PlaylistCollaboratorSerializer
+
+    def get_queryset(self):
+        return PlaylistCollaborator.objects.filter(
+            collaborator=self.request.user
+        ).select_related("playlist").order_by("-invited_at")
+
+
+@extend_schema(
     summary="Remove a collaborator from a playlist",
-    description="Revokes an invitation / removes a collaborator from the playlist. Owner only.",
+    description=(
+        "Revokes an invitation / removes a collaborator from the playlist. "
+        "Owner, or a collaborator with `can_manage_collaborators`, only."
+    ),
     responses={
         204: OpenApiResponse(description="Collaborator removed."),
-        403: OpenApiResponse(description="Only the owner can remove collaborators."),
+        403: OpenApiResponse(description="You are not allowed to remove collaborators."),
         404: OpenApiResponse(description="This user is not invited to the playlist."),
     },
     tags=["playlists"],

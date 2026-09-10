@@ -249,6 +249,116 @@ class PlaylistCollaboratorTests(APITestCase):
         response = self.client.get(f"/api/v1/playlists/{self.playlist_id}/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_invited_collaborator_sees_the_invite_in_their_own_list(self):
+        self.client.post(self.collaborators_url, {"user_id": self.collaborator.id})
+
+        self.client.force_authenticate(self.collaborator)
+        response = self.client.get("/api/v1/playlists/collaborators/mine/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["playlist"], self.playlist_id)
+        self.assertEqual(response.data[0]["playlist_title"], "Private Mix")
+
+    def test_stranger_sees_no_invites(self):
+        self.client.post(self.collaborators_url, {"user_id": self.collaborator.id})
+
+        self.client.force_authenticate(self.stranger)
+        response = self.client.get("/api/v1/playlists/collaborators/mine/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class PlaylistCollaboratorManagerPermissionTests(APITestCase):
+    """A collaborator granted `can_manage_collaborators` can invite/remove
+    people and decide access requests — same as the owner — but still
+    can't edit anyone's permissions (that stays owner-only)."""
+
+    def setUp(self):
+        self.owner = create_verified_user("manager_owner@test.com")
+        self.manager = create_verified_user("manager@test.com")
+        self.plain_collaborator = create_verified_user("plain_collab@test.com")
+        self.newcomer = create_verified_user("newcomer@test.com")
+        self.requester = create_verified_user("requester@test.com")
+
+        self.client.force_authenticate(self.owner)
+        playlist_resp = self.client.post(
+            "/api/v1/playlists/", {"title": "Team Mix", "visibility": "private"}
+        )
+        self.playlist_id = playlist_resp.data["id"]
+        self.collaborators_url = f"/api/v1/playlists/{self.playlist_id}/collaborators/"
+        self.access_requests_url = f"/api/v1/playlists/{self.playlist_id}/access-requests/"
+
+        self.client.post(self.collaborators_url, {"user_id": self.manager.id})
+        self.client.patch(f"{self.collaborators_url}{self.manager.id}/", {
+            "can_add_songs": True, "can_reorder_songs": True, "can_manage_collaborators": True,
+        })
+        self.client.post(self.collaborators_url, {"user_id": self.plain_collaborator.id})
+
+    def test_manager_collaborator_can_invite(self):
+        self.client.force_authenticate(self.manager)
+        response = self.client.post(self.collaborators_url, {"user_id": self.newcomer.id})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_manager_collaborator_can_remove(self):
+        self.client.force_authenticate(self.manager)
+        response = self.client.delete(f"{self.collaborators_url}{self.plain_collaborator.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_plain_collaborator_cannot_invite_or_remove(self):
+        self.client.force_authenticate(self.plain_collaborator)
+        self.assertEqual(
+            self.client.post(self.collaborators_url, {"user_id": self.newcomer.id}).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(
+            self.client.delete(f"{self.collaborators_url}{self.manager.id}/").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+    def test_manager_collaborator_can_list_and_decide_access_requests(self):
+        self.client.force_authenticate(self.requester)
+        request_resp = self.client.post(self.access_requests_url, {})
+        request_id = request_resp.data["id"]
+
+        self.client.force_authenticate(self.manager)
+        list_response = self.client.get(self.access_requests_url)
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(list_response.data), 1)
+
+        decide_response = self.client.post(
+            f"{self.access_requests_url}{request_id}/decide/", {"approve": True}
+        )
+        self.assertEqual(decide_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            PlaylistCollaborator.objects.filter(
+                playlist_id=self.playlist_id, collaborator=self.requester
+            ).exists()
+        )
+
+    def test_plain_collaborator_cannot_list_or_decide_access_requests(self):
+        self.client.force_authenticate(self.requester)
+        request_resp = self.client.post(self.access_requests_url, {})
+        request_id = request_resp.data["id"]
+
+        self.client.force_authenticate(self.plain_collaborator)
+        self.assertEqual(
+            self.client.get(self.access_requests_url).status_code, status.HTTP_403_FORBIDDEN
+        )
+        self.assertEqual(
+            self.client.post(
+                f"{self.access_requests_url}{request_id}/decide/", {"approve": True}
+            ).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+    def test_manager_collaborator_cannot_edit_permissions(self):
+        self.client.force_authenticate(self.manager)
+        response = self.client.patch(f"{self.collaborators_url}{self.plain_collaborator.id}/", {
+            "can_add_songs": False, "can_reorder_songs": False, "can_manage_collaborators": True,
+        })
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
 
 class PlaylistIsCollaboratorFieldTests(APITestCase):
     """`is_collaborator` on PlaylistSerializer — lets the client tell a

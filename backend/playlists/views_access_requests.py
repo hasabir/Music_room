@@ -1,9 +1,10 @@
 # playlists/views_access_requests.py
 """
 Endpoints for requesting access to a playlist you can't currently see
-(private) or can't edit (invited_only), and for the owner to decide on
-those requests. Approving a request just creates a PlaylistCollaborator,
-which already grants both view access and invited_only edit rights.
+(private) or can't edit (invited_only), and for the owner — or a
+collaborator granted `can_manage_collaborators` — to decide on those
+requests. Approving a request just creates a PlaylistCollaborator, which
+already grants both view access and invited_only edit rights.
 """
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -19,6 +20,7 @@ from user.notifications import notify_user
 
 from .models import Playlist, PlaylistCollaborator, PlaylistAccessRequest
 from .serializers import PlaylistAccessRequestSerializer, DecideAccessRequestSerializer
+from .permissions import can_user_manage_collaborators
 from .throttles import AccessRequestRateThrottle
 from .broadcast import broadcast_playlist_update
 
@@ -26,7 +28,10 @@ from .broadcast import broadcast_playlist_update
 @extend_schema_view(
     get=extend_schema(
         summary="List access requests for a playlist",
-        description="Returns every access request made for this playlist. Owner only.",
+        description=(
+            "Returns every access request made for this playlist. Owner, or a "
+            "collaborator with `can_manage_collaborators`, only."
+        ),
         responses={200: PlaylistAccessRequestSerializer(many=True)},
         tags=["playlists"],
     ),
@@ -51,8 +56,8 @@ class PlaylistAccessRequestListCreateView(APIView):
 
     def get(self, request, playlist_id):
         playlist = get_object_or_404(Playlist, id=playlist_id)
-        if playlist.owner_id != request.user.id:
-            return Response({"detail": "Only the owner can view access requests."},
+        if not can_user_manage_collaborators(request.user, playlist):
+            return Response({"detail": "You are not allowed to view access requests."},
                              status=status.HTTP_403_FORBIDDEN)
 
         requests = playlist.access_requests.select_related("requester").all()
@@ -152,12 +157,15 @@ class PlaylistAccessRequestMineView(APIView):
 
 @extend_schema(
     summary="Approve or deny an access request",
-    description="Approving adds the requester as a collaborator. Owner only.",
+    description=(
+        "Approving adds the requester as a collaborator. Owner, or a "
+        "collaborator with `can_manage_collaborators`, only."
+    ),
     request=DecideAccessRequestSerializer,
     responses={
         200: PlaylistAccessRequestSerializer,
         400: OpenApiResponse(description="This request has already been decided."),
-        403: OpenApiResponse(description="Only the owner can decide access requests."),
+        403: OpenApiResponse(description="You are not allowed to decide access requests."),
     },
     tags=["playlists"],
 )
@@ -166,8 +174,8 @@ class PlaylistAccessRequestDecideView(APIView):
 
     def post(self, request, playlist_id, request_id):
         playlist = get_object_or_404(Playlist, id=playlist_id)
-        if playlist.owner_id != request.user.id:
-            return Response({"detail": "Only the owner can decide access requests."},
+        if not can_user_manage_collaborators(request.user, playlist):
+            return Response({"detail": "You are not allowed to decide access requests."},
                              status=status.HTTP_403_FORBIDDEN)
 
         access_request = get_object_or_404(PlaylistAccessRequest, id=request_id, playlist=playlist)

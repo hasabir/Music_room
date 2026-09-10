@@ -81,6 +81,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     subscription_tier = models.CharField(
         max_length=10, choices=SUBSCRIPTION_CHOICES, default=SUBSCRIPTION_FREE
     )
+    # Set to now + PREMIUM_PERIOD on upgrade, cleared on downgrade to Free.
+    # Purely informational for now — nothing expires it automatically, since
+    # there's no payment gateway to renew or lapse it — but it's what the
+    # subscription screen shows as "renews on"/"time left".
+    subscription_expires_at = models.DateTimeField(null=True, blank=True)
 
     objects = UserManager()
 
@@ -123,3 +128,27 @@ class ActionLog(models.Model):
 
     def __str__(self):
         return f"{self.action} by {self.user or 'anonymous'} at {self.created_at}"
+
+
+class Notification(models.Model):
+    """One entry in a user's in-app notifications list. Created by
+    `user.notifications.notify_user` alongside the transient websocket
+    message it sends for the realtime toast — this is what backs the
+    Notifications screen's full history and read/unread state, which the
+    websocket delivery alone (fire-and-forget, nothing stored) can't."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    kind = models.CharField(max_length=50)
+    title = models.CharField(max_length=200)
+    body = models.CharField(max_length=500)
+    # Same per-kind payload sent over the websocket (e.g. {"playlist_id": 3})
+    # — lets the client route a tap without parsing the body text.
+    data = models.JSONField(default=dict, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.kind} for {self.user_id}"

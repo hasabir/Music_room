@@ -25,8 +25,8 @@ class _SubscriptionColors {
 /// Premium actually unlocks, enforced server-side regardless of anything
 /// this screen shows: editing a playlist (public or private, own or
 /// invited — see `backend/playlists/permissions.py`), and no cap on
-/// suggestions/votes per event (Free is limited to 10 suggestions / 20
-/// distinct votes per event).
+/// suggestions/votes (Free is limited to 10 suggestions / 20 distinct
+/// votes per day, across every event, not per event).
 class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({super.key, required this.authUser});
 
@@ -96,8 +96,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         ),
         content: const Text(
           "You'll immediately lose the ability to edit any playlist, and "
-          "go back to a 10-suggestion / 20-vote cap per event. Anything you've "
-          "already suggested or voted on stays as-is — nothing is undone.",
+          "go back to a 10-suggestion / 20-vote cap per day, across every "
+          "event. Anything you've already suggested or voted on stays "
+          "as-is — nothing is undone.",
           style: TextStyle(color: _SubscriptionColors.muted),
         ),
         actions: [
@@ -144,11 +145,14 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            _TierCard(isPremium: isPremium),
+            _TierCard(
+              isPremium: isPremium,
+              expiresAt: _authUser.subscriptionExpiresAt,
+            ),
             const SizedBox(height: 20),
-            const Text(
-              'WHAT PREMIUM UNLOCKS',
-              style: TextStyle(
+            Text(
+              isPremium ? 'WHAT PREMIUM UNLOCKS' : 'FREE PLAN LIMITS',
+              style: const TextStyle(
                 fontFamily: 'Sora',
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
@@ -159,15 +163,18 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             const SizedBox(height: 10),
             const _PerkRow(
               icon: Icons.edit_rounded,
-              text: 'Edit playlists (add, reorder, or remove songs — own or invited)',
+              text: 'Edit playlists (add, reorder, or remove songs — own or invited). '
+                  'Free: view-only, even on playlists you were invited to.',
             ),
             const _PerkRow(
               icon: Icons.queue_music_rounded,
-              text: 'No cap on track suggestions per event (Free: 10)',
+              text: 'Track suggestions per day, across every event — Premium: unlimited, '
+                  'Free: capped at 10',
             ),
             const _PerkRow(
               icon: Icons.how_to_vote_rounded,
-              text: 'No cap on distinct tracks voted per event (Free: 20)',
+              text: 'Distinct tracks voted per day, across every event — Premium: unlimited, '
+                  'Free: capped at 20',
             ),
             const SizedBox(height: 24),
             const Text(
@@ -264,12 +271,31 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 }
 
 class _TierCard extends StatelessWidget {
-  const _TierCard({required this.isPremium});
+  const _TierCard({required this.isPremium, this.expiresAt});
 
   final bool isPremium;
+  final DateTime? expiresAt;
+
+  String? _expiryLabel() {
+    if (!isPremium || expiresAt == null) return null;
+    final remaining = expiresAt!.difference(DateTime.now());
+    final datePart = '${_month(expiresAt!.month)} ${expiresAt!.day}, ${expiresAt!.year}';
+    if (remaining.isNegative) return 'Expired on $datePart';
+    final days = remaining.inDays;
+    final timeLeft = days >= 1
+        ? '$days day${days == 1 ? '' : 's'} left'
+        : '${remaining.inHours.clamp(1, 23)} hour${remaining.inHours == 1 ? '' : 's'} left';
+    return 'Renews on $datePart · $timeLeft';
+  }
+
+  static String _month(int month) => const [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      ][month - 1];
 
   @override
   Widget build(BuildContext context) {
+    final expiryLabel = _expiryLabel();
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -314,12 +340,23 @@ class _TierCard extends StatelessWidget {
                 Text(
                   isPremium
                       ? 'Unlimited suggestions, votes, and playlist editing.'
-                      : 'Limited suggestions/votes per event; no playlist editing.',
+                      : 'Limited suggestions/votes per day; no playlist editing.',
                   style: const TextStyle(
                     fontSize: 12,
                     color: _SubscriptionColors.muted,
                   ),
                 ),
+                if (expiryLabel != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    expiryLabel,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _SubscriptionColors.premium,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

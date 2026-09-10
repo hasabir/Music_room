@@ -837,7 +837,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             if (!isPremium && event.myVoteLimit != null) ...[
               const SizedBox(height: 4),
               Text(
-                '${event.myVoteCount}/${event.myVoteLimit} votes used this event',
+                '${event.myVoteCount}/${event.myVoteLimit} votes used today, across all events',
                 style: const TextStyle(fontSize: 11, color: _EventColors.muted),
               ),
             ],
@@ -896,10 +896,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 ),
               )
             // Bonus: Free vs. Premium subscription — a Free user who's hit
-            // their per-event suggestion cap sees an upsell here instead
-            // of the normal button. The backend enforces this regardless
-            // (see SuggestionLimitReachedException below); this just
-            // avoids a doomed round trip and explains why.
+            // their daily, cross-event suggestion cap sees an upsell here
+            // instead of the normal button. The backend enforces this
+            // regardless (see SuggestionLimitReachedException below); this
+            // just avoids a doomed round trip and explains why.
             else if (atSuggestionLimit)
               SizedBox(
                 width: double.infinity,
@@ -940,7 +940,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
-                    '${event.mySuggestionCount}/${event.mySuggestionLimit} suggestions used',
+                    '${event.mySuggestionCount}/${event.mySuggestionLimit} suggestions used '
+                    'today, across all events',
                     style: const TextStyle(
                       fontSize: 11,
                       color: _EventColors.muted,

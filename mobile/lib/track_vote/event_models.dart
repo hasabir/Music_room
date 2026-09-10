@@ -324,23 +324,28 @@ class Event {
   final bool hasLiked;
 
   /// Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md).
-  /// Lifetime-per-event count of tracks the signed-in user has suggested
-  /// — never decreases, even after a suggested song leaves the queue.
+  /// Count of tracks the signed-in user has suggested *today, across
+  /// every event* — never decreases over the course of the day, even
+  /// after a suggested song leaves its event's queue. Deliberately the
+  /// same value regardless of which event this came from, since the cap
+  /// itself is global-per-day, not per event.
   final int mySuggestionCount;
 
   /// `null` for a Premium user (or an unauthenticated request) —
   /// "unlimited, don't show a counter". Otherwise the FREE-tier
-  /// per-event suggestion cap.
+  /// suggestion cap (per day, across every event).
   final int? mySuggestionLimit;
 
   /// Live count of distinct tracks the signed-in user currently has an
-  /// active vote on in this event — retracting a vote lowers this,
-  /// unlike [mySuggestionCount].
+  /// active vote on *today, across every event* — retracting a vote
+  /// lowers this, unlike [mySuggestionCount]. Same value regardless of
+  /// which event this came from, for the same reason as
+  /// [mySuggestionCount].
   final int myVoteCount;
 
   /// `null` for a Premium user (or an unauthenticated request) —
   /// "unlimited, don't show a counter". Otherwise the FREE-tier
-  /// per-event distinct-vote cap.
+  /// distinct-vote cap (per day, across every event).
   final int? myVoteLimit;
 
   /// The backend's authoritative "on air" song right now — see

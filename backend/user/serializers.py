@@ -8,6 +8,7 @@ from rest_framework import serializers
 from django.conf import settings
 from user.models import User
 from user.models import ActionLog
+from user.models import Notification
 
 
 class ActionLogSerializer(serializers.ModelSerializer):
@@ -33,6 +34,13 @@ class ActionLogSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ["id", "kind", "title", "body", "data", "is_read", "created_at"]
+        read_only_fields = fields
+
+
 class ClientActionSerializer(serializers.Serializer):
     # Client events cannot impersonate authoritative server activity entries.
     action = serializers.ChoiceField(choices=[
@@ -49,7 +57,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'username', 'first_name', 'last_name', 'registration_method',
             'is_email_verified', 'has_google_linked', 'google_linked_email', 'date_joined',
-            'subscription_tier', 'is_premium',
+            'subscription_tier', 'is_premium', 'subscription_expires_at',
         ]
         read_only_fields = fields
 

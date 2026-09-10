@@ -67,16 +67,17 @@ class PlaylistCollaboratorSerializer(serializers.ModelSerializer):
     collaborator_display_name = serializers.SerializerMethodField()
     collaborator_avatar = serializers.SerializerMethodField()
     collaborator_avatar_type = serializers.SerializerMethodField()
+    playlist_title = serializers.CharField(source="playlist.title", read_only=True)
 
     class Meta:
         model = PlaylistCollaborator
         fields = [
-            "id", "playlist", "collaborator", "collaborator_username", "collaborator_display_name",
-            "collaborator_avatar", "collaborator_avatar_type", "invited_at",
+            "id", "playlist", "playlist_title", "collaborator", "collaborator_username",
+            "collaborator_display_name", "collaborator_avatar", "collaborator_avatar_type", "invited_at",
             "can_add_songs", "can_reorder_songs", "can_manage_collaborators",
         ]
         read_only_fields = [
-            "id", "invited_at", "collaborator_username", "collaborator_display_name",
+            "id", "invited_at", "playlist_title", "collaborator_username", "collaborator_display_name",
             "collaborator_avatar", "collaborator_avatar_type",
         ]
 

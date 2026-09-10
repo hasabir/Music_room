@@ -216,6 +216,15 @@ class PlaylistApi {
     return response.map((json) => PlaylistCollaborator.fromJson(json)).toList();
   }
 
+  /// Every playlist the signed-in user has been invited to collaborate
+  /// on, most recent first. Powers the in-app notifications list.
+  Future<List<PlaylistCollaborator>> listMyCollaboratorInvites() async {
+    final response = await _authorizedGetList(
+      ApiConfig.playlistCollaboratorsMineUri(),
+    );
+    return response.map((json) => PlaylistCollaborator.fromJson(json)).toList();
+  }
+
   /// Invites [userId] to a private playlist, or grants them edit rights
   /// on an invited_only-edit playlist. Owner only.
   Future<PlaylistCollaborator> inviteCollaborator(

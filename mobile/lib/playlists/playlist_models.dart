@@ -225,6 +225,7 @@ class PlaylistCollaborator {
   const PlaylistCollaborator({
     required this.id,
     required this.playlist,
+    required this.playlistTitle,
     required this.collaborator,
     required this.collaboratorUsername,
     required this.collaboratorDisplayName,
@@ -240,6 +241,7 @@ class PlaylistCollaborator {
       PlaylistCollaborator(
         id: json['id'] as int,
         playlist: json['playlist'] as int,
+        playlistTitle: json['playlist_title'] as String? ?? '',
         collaborator: json['collaborator'] as int,
         collaboratorUsername: json['collaborator_username'] as String? ?? '',
         collaboratorDisplayName: json['collaborator_display_name'] as String? ?? '',
@@ -255,6 +257,7 @@ class PlaylistCollaborator {
 
   final int id;
   final int playlist;
+  final String playlistTitle;
 
   /// The invited user's id.
   final int collaborator;

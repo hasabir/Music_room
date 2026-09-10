@@ -17,11 +17,12 @@ import threading
 
 from django.db import connection
 from django.test import TransactionTestCase
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from user.models import User
-from .models import Event, EventParticipation, EventSong, Song, Vote
+from .models import DailyParticipation, Event, EventSong, Song, Vote
 from .services import FREE_SUGGESTION_LIMIT, FREE_VOTE_LIMIT
 
 
@@ -35,8 +36,8 @@ class SuggestionLimitConcurrencyTests(TransactionTestCase):
         )
         self.event = Event.objects.create(host=self.host, title="Concurrency Party", visibility="public")
         self.event.members.create(member=self.user)
-        EventParticipation.objects.create(
-            event=self.event, user=self.user, suggestion_count=FREE_SUGGESTION_LIMIT - 1
+        DailyParticipation.objects.create(
+            user=self.user, date=timezone.localdate(), suggestion_count=FREE_SUGGESTION_LIMIT - 1
         )
 
     def test_two_concurrent_suggestions_at_the_boundary_only_one_succeeds(self):
@@ -69,7 +70,7 @@ class SuggestionLimitConcurrencyTests(TransactionTestCase):
         self.assertEqual(results.count(status.HTTP_201_CREATED), 1)
         self.assertEqual(results.count(status.HTTP_403_FORBIDDEN), thread_count - 1)
         self.assertEqual(
-            EventParticipation.objects.get(event=self.event, user=self.user).suggestion_count,
+            DailyParticipation.objects.get(user=self.user, date=timezone.localdate()).suggestion_count,
             FREE_SUGGESTION_LIMIT,
         )
 
@@ -122,6 +123,6 @@ class VoteLimitConcurrencyTests(TransactionTestCase):
         self.assertEqual(results.count(status.HTTP_201_CREATED), 1)
         self.assertEqual(results.count(status.HTTP_403_FORBIDDEN), len(candidates) - 1)
         self.assertEqual(
-            Vote.objects.filter(voter=self.user, event_song__event=self.event).count(),
+            Vote.objects.filter(voter=self.user, created_at__date=timezone.localdate()).count(),
             FREE_VOTE_LIMIT,
         )

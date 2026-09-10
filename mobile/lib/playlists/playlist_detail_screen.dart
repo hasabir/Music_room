@@ -690,6 +690,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
         builder: (_) => PlaylistCollaboratorsScreen(
           playlistId: widget.playlistId,
           playlistTitle: playlist.title,
+          isOwner: playlist.owner == _authUser?.username,
         ),
       ),
     );
@@ -803,9 +804,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
 
     final authUser = _authUser!;
     final isOwner = playlist.owner == authUser.username;
-    final isCollaborator = _collaborators.any(
-      (c) => c.collaboratorUsername == authUser.username,
-    );
+    final myCollaboratorRow = _collaborators
+        .where((c) => c.collaboratorUsername == authUser.username)
+        .firstOrNull;
+    final isCollaborator = myCollaboratorRow != null;
     final hasEditPermission =
         isOwner ||
         playlist.editPermission == playlistEditPermissionEveryone ||
@@ -823,7 +825,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
     final needsInvitations =
         playlist.visibility != playlistVisibilityPublic ||
         playlist.editPermission != playlistEditPermissionEveryone;
-    final showInvitationControls = isOwner && needsInvitations;
+    // Not just the owner — a collaborator the owner granted
+    // `can_manage_collaborators` to can invite/remove people too (see
+    // `can_user_manage_collaborators` in `backend/playlists/permissions.py`).
+    final canManageCollaborators =
+        isOwner || (myCollaboratorRow?.canManageCollaborators ?? false);
+    final showInvitationControls = canManageCollaborators && needsInvitations;
     // Self-serve join, mirroring events' Join/Joined pattern — public
     // playlists only, and only for someone who isn't already the owner,
     // an invited collaborator, or a member. Joining never grants edit

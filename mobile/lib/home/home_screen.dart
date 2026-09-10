@@ -11,6 +11,8 @@ import '../core/auth/token_storage.dart';
 import '../core/responsive/responsive.dart';
 import '../core/widgets/app_bottom_nav.dart';
 import '../core/widgets/app_tab_navigation.dart';
+import '../notifications/notification_api.dart';
+import '../notifications/notification_models.dart';
 import '../notifications/notifications_screen.dart';
 import '../notifications/notification_service.dart';
 import '../profile/profile_api.dart';
@@ -47,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _authApi = AuthApi();
   final _profileApi = ProfileApi();
   final _eventApi = EventApi();
+  final _notificationApi = NotificationApi();
   final _tokenStorage = TokenStorage();
   final _notificationService = RealtimeNotificationService();
 
@@ -65,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// slightly behind [_yourEvents]/[_discoverEvents] rather than blocking
   /// them.
   List<Event>? _pendingInvites;
-  int _friendRequestCount = 0;
+  int _unreadNotificationCount = 0;
   final Set<int> _respondingEventIds = {};
 
   Position? _devicePosition;
@@ -103,12 +106,13 @@ class _HomeScreenState extends State<HomeScreen> {
         _profileApi.getMyProfile(),
         _authApi.getCurrentUser(),
         _eventApi.listEvents(),
-        _profileApi.getReceivedRequests(),
+        _notificationApi.listNotifications(),
       ]);
       final profile = results[0] as UserProfile;
       final authUser = results[1] as AuthUser;
       final events = results[2] as List<Event>;
-      final friendRequests = results[3] as List<FriendRequest>;
+      final notifications = results[3] as List<AppNotification>;
+      final unreadCount = notifications.where((item) => !item.isRead).length;
 
       final yourEvents = <Event>[];
       final discover = <Event>[];
@@ -135,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _yourEvents = yourEvents;
         _discoverEvents = discover;
         _pendingInvites = null;
-        _friendRequestCount = friendRequests.length;
+        _unreadNotificationCount = unreadCount;
         _loading = false;
       });
 
@@ -341,9 +345,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               greetingName: _greetingName(),
                               profile: _profile,
                               onTapAvatar: _onOpenProfile,
-                              notificationCount:
-                                  _friendRequestCount +
-                                  (_pendingInvites?.length ?? 0),
+                              notificationCount: _unreadNotificationCount,
                               onTapNotifications: _onOpenNotifications,
                             ),
                       const SizedBox(height: 28),

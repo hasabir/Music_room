@@ -4,12 +4,15 @@ from .views import (
     PlaylistListCreateView, PlaylistDetailView,
     PlaylistSongListView, PlaylistSongDeleteView, PlaylistSongMoveView, PlaylistJoinView
 )
-from .views_collaborators import PlaylistCollaboratorListView, PlaylistCollaboratorRemoveView
+from .views_collaborators import (
+    PlaylistCollaboratorListView, PlaylistCollaboratorMineView, PlaylistCollaboratorRemoveView
+)
 from .views_access_requests import (
     PlaylistAccessRequestListCreateView, PlaylistAccessRequestMineView, PlaylistAccessRequestDecideView
 )
 
 urlpatterns = [
+    path('collaborators/mine/', PlaylistCollaboratorMineView.as_view(), name='playlist_collaborator_mine'),
     path('', PlaylistListCreateView.as_view(), name='playlist_list_create'),
     path('<int:pk>/', PlaylistDetailView.as_view(), name='playlist_detail'),
     path('<int:playlist_id>/songs/', PlaylistSongListView.as_view(), name='playlist_songs'),

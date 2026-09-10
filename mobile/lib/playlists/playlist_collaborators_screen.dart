@@ -22,10 +22,12 @@ class _CollaboratorsColors {
   static const tertiary = Color(0xFF2FD9F4);
 }
 
-/// A playlist's collaborator list, reachable only by the playlist's owner
-/// from the detail screen (`POST/GET/DELETE .../collaborators/` are all
-/// owner-only on the backend, aside from listing — see
-/// `backend/playlists/views_collaborators.py`).
+/// A playlist's collaborator list, reachable from the detail screen by the
+/// playlist's owner or by any collaborator the owner granted
+/// `can_manage_collaborators` to (see `can_user_manage_collaborators` in
+/// `backend/playlists/permissions.py`, which gates invite/remove here and
+/// on the access-requests endpoints the same way). Editing another
+/// collaborator's permissions stays owner-only.
 ///
 /// Follows the same list-screen-plus-search-screen split as Friends:
 /// this screen lists and removes; [AddCollaboratorsScreen] (mirroring
@@ -35,10 +37,18 @@ class PlaylistCollaboratorsScreen extends StatefulWidget {
     super.key,
     required this.playlistId,
     required this.playlistTitle,
+    required this.isOwner,
   });
 
   final int playlistId;
   final String playlistTitle;
+
+  /// Whether the signed-in user is the playlist's owner, as opposed to a
+  /// collaborator who merely has `can_manage_collaborators` — both can
+  /// invite/remove people here, but changing a collaborator's own
+  /// permissions stays owner-only (see `PlaylistCollaboratorRemoveView
+  /// .patch` in `backend/playlists/views_collaborators.py`).
+  final bool isOwner;
 
   @override
   State<PlaylistCollaboratorsScreen> createState() =>
@@ -334,6 +344,7 @@ class _PlaylistCollaboratorsScreenState
                 collaborator: collaborator,
                 currentUserId: _currentUserId,
                 isSaving: _savingCollaboratorIds.contains(collaborator.id),
+                canEditPermissions: widget.isOwner,
                 onRemove: () => _onRemove(collaborator),
                 onAddSongsChanged: (value) =>
                     _updatePermissions(collaborator, canAddSongs: value),
@@ -539,6 +550,7 @@ class _CollaboratorRow extends StatelessWidget {
     required this.collaborator,
     required this.currentUserId,
     required this.isSaving,
+    required this.canEditPermissions,
     required this.onRemove,
     required this.onAddSongsChanged,
     required this.onReorderChanged,
@@ -548,6 +560,12 @@ class _CollaboratorRow extends StatelessWidget {
   final PlaylistCollaborator collaborator;
   final int? currentUserId;
   final bool isSaving;
+
+  /// Only the owner can change a collaborator's permissions — a
+  /// manager-collaborator can still invite/remove people, and sees these
+  /// switches, but can't toggle them (see `PlaylistCollaboratorsScreen
+  /// .isOwner`).
+  final bool canEditPermissions;
   final VoidCallback onRemove;
   final ValueChanged<bool> onAddSongsChanged;
   final ValueChanged<bool> onReorderChanged;
@@ -636,7 +654,7 @@ class _CollaboratorRow extends StatelessWidget {
             label: 'Can add or remove songs',
             description: 'Build and curate the playlist',
             value: collaborator.canAddSongs,
-            enabled: !isSaving,
+            enabled: !isSaving && canEditPermissions,
             onChanged: onAddSongsChanged,
           ),
           _PermissionSwitch(
@@ -644,7 +662,7 @@ class _CollaboratorRow extends StatelessWidget {
             label: 'Can reorder songs',
             description: 'Change the playlist order',
             value: collaborator.canReorderSongs,
-            enabled: !isSaving,
+            enabled: !isSaving && canEditPermissions,
             onChanged: onReorderChanged,
           ),
           _PermissionSwitch(
@@ -652,9 +670,17 @@ class _CollaboratorRow extends StatelessWidget {
             label: 'Can invite and remove people',
             description: 'Manage the collaborator list',
             value: collaborator.canManageCollaborators,
-            enabled: !isSaving,
+            enabled: !isSaving && canEditPermissions,
             onChanged: onManageChanged,
           ),
+          if (!canEditPermissions)
+            const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Text(
+                'Only the playlist owner can change permissions.',
+                style: TextStyle(fontSize: 11, color: _CollaboratorsColors.muted),
+              ),
+            ),
           if (isSaving)
             const Padding(
               padding: EdgeInsets.only(top: 6),

@@ -12,7 +12,7 @@ from rest_framework.test import APITestCase
 from rest_framework import status
 
 from user.models import User
-from .models import Event, Song, EventSong, Vote, EventGuest, EventAccessRequest, EventMembership, EventParticipation
+from .models import Event, Song, EventSong, Vote, EventGuest, EventAccessRequest, EventMembership, DailyParticipation
 from .services import FREE_SUGGESTION_LIMIT, FREE_VOTE_LIMIT
 
 
@@ -2192,10 +2192,15 @@ class SubscriptionLimitTests(APITestCase):
     """
     Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md)
     — the FREE-tier suggestion/vote caps enforced in EventQueueView.post
-    and VoteView.post. Race-condition safety itself is covered separately
-    in events/concurrency_tests.py (this file's tests all run inside
-    APITestCase's single-connection transaction, which can't exercise
-    real cross-connection locking).
+    and VoteView.post. The cap is per calendar day, across every event a
+    user takes part in — not per event (see
+    test_suggestion_cap_is_shared_across_events/
+    test_vote_cap_is_shared_across_events below) — so a single free_user
+    below deliberately suggests/votes across two different events rather
+    than staying within one. Race-condition safety itself is covered
+    separately in events/concurrency_tests.py (this file's tests all run
+    inside APITestCase's single-connection transaction, which can't
+    exercise real cross-connection locking).
     """
 
     def setUp(self):
@@ -2210,20 +2215,27 @@ class SubscriptionLimitTests(APITestCase):
         self.event_id = event_resp.data["id"]
         self.queue_url = f"/api/v1/events/{self.event_id}/queue/"
 
+        # A second, unrelated event — used to prove the cap is shared
+        # across events, not reset per event.
+        second_event_resp = self.client.post("/api/v1/events/", {"title": "Sub Test Party 2"})
+        self.second_event_id = second_event_resp.data["id"]
+        self.second_queue_url = f"/api/v1/events/{self.second_event_id}/queue/"
+
         # Suggesting requires having joined (can_user_suggest_track, a
         # separate, earlier bonus — see docs/WEB_BONUS.md) — unrelated to
         # subscription tier, but a precondition for every test below.
         for user in (self.free_user, self.premium_user):
             self.client.force_authenticate(user)
             self.client.post(f"/api/v1/events/{self.event_id}/join/")
+            self.client.post(f"/api/v1/events/{self.second_event_id}/join/")
 
-    def _add_song_as(self, user, title, artist="Artist"):
+    def _add_song_as(self, user, title, artist="Artist", queue_url=None):
         self.client.force_authenticate(user)
-        return self.client.post(self.queue_url, {"title": title, "artist": artist})
+        return self.client.post(queue_url or self.queue_url, {"title": title, "artist": artist})
 
-    def _vote_as(self, user, event_song_id):
+    def _vote_as(self, user, event_song_id, queue_url=None):
         self.client.force_authenticate(user)
-        return self.client.post(f"{self.queue_url}{event_song_id}/vote/")
+        return self.client.post(f"{queue_url or self.queue_url}{event_song_id}/vote/")
 
     def _retract_as(self, user, event_song_id):
         self.client.force_authenticate(user)
@@ -2238,7 +2250,7 @@ class SubscriptionLimitTests(APITestCase):
         self.assertEqual(eleventh.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(eleventh.data["code"], "suggestion_limit_reached")
 
-        participation = EventParticipation.objects.get(event_id=self.event_id, user=self.free_user)
+        participation = DailyParticipation.objects.get(user=self.free_user, date=timezone.localdate())
         self.assertEqual(participation.suggestion_count, FREE_SUGGESTION_LIMIT)
         # The rejected 11th suggestion never became a real queue entry —
         # the catalog Song row itself is fine to exist either way (it's a
@@ -2293,3 +2305,69 @@ class SubscriptionLimitTests(APITestCase):
         eleventh = self._add_song_as(self.host, "Host Song Too Many")
         self.assertEqual(eleventh.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(eleventh.data["code"], "suggestion_limit_reached")
+
+    def test_suggestion_cap_is_shared_across_events(self):
+        # 6 suggestions in the first event, 4 in the second — 10 total,
+        # at the cap — then the 11th, in either event, must be rejected.
+        for i in range(6):
+            response = self._add_song_as(self.free_user, f"Event 1 Song {i}")
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        for i in range(4):
+            response = self._add_song_as(
+                self.free_user, f"Event 2 Song {i}", queue_url=self.second_queue_url
+            )
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        blocked = self._add_song_as(
+            self.free_user, "One Too Many", queue_url=self.second_queue_url
+        )
+        self.assertEqual(blocked.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(blocked.data["code"], "suggestion_limit_reached")
+
+        also_blocked = self._add_song_as(self.free_user, "Also One Too Many")
+        self.assertEqual(also_blocked.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_vote_cap_is_shared_across_events(self):
+        # Seeded by the Premium user so seeding itself doesn't consume
+        # the free_user's own suggestion cap.
+        first_event_song_ids = []
+        for i in range(12):
+            response = self._add_song_as(self.premium_user, f"Event 1 Votable {i}")
+            first_event_song_ids.append(response.data["id"])
+        second_event_song_ids = []
+        for i in range(12):
+            response = self._add_song_as(
+                self.premium_user, f"Event 2 Votable {i}", queue_url=self.second_queue_url
+            )
+            second_event_song_ids.append(response.data["id"])
+
+        # 12 distinct votes in the first event, 8 in the second — 20
+        # total, at the cap.
+        for song_id in first_event_song_ids[:12]:
+            response = self._vote_as(self.free_user, song_id)
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        for song_id in second_event_song_ids[:8]:
+            response = self._vote_as(
+                self.free_user, song_id, queue_url=self.second_queue_url
+            )
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        blocked = self._vote_as(
+            self.free_user, second_event_song_ids[8], queue_url=self.second_queue_url
+        )
+        self.assertEqual(blocked.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(blocked.data["code"], "vote_limit_reached")
+
+    def test_my_suggestion_count_on_event_serializer_is_global(self):
+        # Suggestions made in the first event show up in the *second*
+        # event's own `my_suggestion_count` — it's a global-per-day
+        # count, not scoped to whichever event's serializer you're
+        # reading it from.
+        for i in range(3):
+            response = self._add_song_as(self.free_user, f"Event 1 Song {i}")
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        self.client.force_authenticate(self.free_user)
+        response = self.client.get(f"/api/v1/events/{self.second_event_id}/")
+        self.assertEqual(response.data["my_suggestion_count"], 3)
+        self.assertEqual(response.data["my_suggestion_limit"], FREE_SUGGESTION_LIMIT)

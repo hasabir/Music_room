@@ -274,10 +274,10 @@ class EventQueueView(APIView):
 
             # FREE-tier cap (see events/services.py + docs/SUBSCRIPTION_BONUS.md).
             # lock_participation() serializes this one user's own concurrent
-            # suggestions for this event via SELECT ... FOR UPDATE, so two
-            # near-simultaneous requests can't both read "under the limit"
-            # and both proceed.
-            participation = lock_participation(event, request.user)
+            # suggestions today, across every event, via SELECT ... FOR
+            # UPDATE, so two near-simultaneous requests can't both read
+            # "under the limit" and both proceed.
+            participation = lock_participation(request.user)
 
             # Checked *before* get_or_create() below so a request we're
             # about to reject never leaves behind a newly-created EventSong
@@ -292,7 +292,8 @@ class EventQueueView(APIView):
                 return Response(
                     {
                         "detail": f"Free accounts can suggest at most {FREE_SUGGESTION_LIMIT} "
-                                  f"tracks per event. Upgrade to Premium for unlimited suggestions.",
+                                  f"tracks per day, across all events. Upgrade to Premium for "
+                                  f"unlimited suggestions.",
                         "code": "suggestion_limit_reached",
                     },
                     status=status.HTTP_403_FORBIDDEN,
@@ -322,8 +323,8 @@ class EventQueueView(APIView):
                 event_song.added_at = timezone.now()
                 event_song.save(update_fields=["status", "added_by", "added_at"])
 
-            # Lifetime-per-event, never decremented — see EventParticipation's
-            # doc comment for why this can't just be derived from
+            # Per-day, never decremented — see DailyParticipation's doc
+            # comment for why this can't just be derived from
             # EventSong.added_by (revival above reassigns that field).
             participation.suggestion_count = F("suggestion_count") + 1
             participation.save(update_fields=["suggestion_count"])
@@ -424,10 +425,10 @@ class VoteView(APIView):
         try:
             with transaction.atomic():
                 # FREE-tier cap (see events/services.py + docs/SUBSCRIPTION_BONUS.md).
-                # Same per-(event, user) lock as the suggestion cap, so two
+                # Same per-(user, date) lock as the suggestion cap, so two
                 # near-simultaneous votes from this user can't both read
                 # "under the limit" and both proceed.
-                lock_participation(event, request.user)
+                lock_participation(request.user)
 
                 # Re-voting a song already voted for must still fall through
                 # to the existing "already voted" IntegrityError path below,
@@ -436,15 +437,18 @@ class VoteView(APIView):
                     event_song=event_song, voter=request.user
                 ).exists()
                 if not already_voted and not request.user.is_premium:
+                    # Distinct tracks voted today, across every event — not
+                    # just this one. Read live (not from a stored counter)
+                    # so retracting a vote immediately frees up a slot.
                     distinct_count = Vote.objects.filter(
-                        voter=request.user, event_song__event=event
+                        voter=request.user, created_at__date=timezone.localdate()
                     ).count()
                     if distinct_count >= FREE_VOTE_LIMIT:
                         return Response(
                             {
                                 "detail": f"Free accounts can vote on at most {FREE_VOTE_LIMIT} "
-                                          f"different tracks per event. Upgrade to Premium, or "
-                                          f"retract another vote first.",
+                                          f"different tracks per day, across all events. Upgrade "
+                                          f"to Premium, or retract another vote first.",
                                 "code": "vote_limit_reached",
                             },
                             status=status.HTTP_403_FORBIDDEN,

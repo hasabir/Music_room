@@ -13,6 +13,7 @@ class AuthUser {
     this.googleLinkedEmail,
     this.subscriptionTier = subscriptionTierFree,
     this.isPremium = false,
+    this.subscriptionExpiresAt,
   });
 
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
@@ -27,6 +28,9 @@ class AuthUser {
     googleLinkedEmail: json['google_linked_email'] as String?,
     subscriptionTier: json['subscription_tier'] as String? ?? subscriptionTierFree,
     isPremium: json['is_premium'] as bool? ?? false,
+    subscriptionExpiresAt: json['subscription_expires_at'] == null
+        ? null
+        : DateTime.tryParse(json['subscription_expires_at'] as String),
   );
 
   final int id;
@@ -54,6 +58,10 @@ class AuthUser {
   /// property; prefer it everywhere except the Settings tier display.
   final String subscriptionTier;
   final bool isPremium;
+
+  /// When the current Premium period ends; `null` on Free (or if never
+  /// upgraded). Purely informational — nothing lapses it automatically.
+  final DateTime? subscriptionExpiresAt;
 }
 
 const String subscriptionTierFree = 'free';
