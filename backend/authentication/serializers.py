@@ -39,6 +39,17 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 
+class EmailNotVerifiedError(Exception):
+    """Raised by LoginSerializer.validate instead of serializers.ValidationError
+    specifically so LoginView can hand the client a flat, bare-string
+    `code` field. A raised ValidationError's dict values get wrapped in
+    lists by DRF's `as_serializer_error` (matching how every other field
+    error is a list of messages) — fine for `detail`, which the client
+    only ever displays as text, but it'd turn `code` into `["email_not_
+    verified"]`, breaking the client's `code == "email_not_verified"`
+    string check. A plain Python exception skips that machinery entirely."""
+
+
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
@@ -59,10 +70,7 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError({"detail": "This account is disabled."})
 
         if user.registration_method == "email" and not user.is_email_verified:
-            raise serializers.ValidationError({
-                "detail": "Email not verified. Please verify your email before logging in.",
-                "code": "email_not_verified"
-            })
+            raise EmailNotVerifiedError()
 
         attrs["user"] = user
         return attrs

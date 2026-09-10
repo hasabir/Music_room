@@ -12,8 +12,8 @@ registration / email verification:
 [✓] register with an email already in use -> clear error, no account created
 [✓] register with a weak/invalid password -> validation error shown inline
 [✓] verify email via the emailed link/code -> account becomes verified, can log in
-[] try to log in before verifying email -> blocked with a clear "verify your email" message
-[] resend verification email -> new email arrives, old code/link still works or is invalidated consistently
+[✓] try to log in before verifying email -> blocked, routes to the "verify your email" screen with resend (fixed: LoginView was returning `code` list-wrapped — `["email_not_verified"]` — via a raised serializers.ValidationError, which crashed the mobile client's `as String?` cast instead of routing anywhere. LoginSerializer now raises a plain EmailNotVerifiedError that LoginView turns into a flat-string `code` response; api_client.dart's `code` extraction is also now defensive against either shape.)
+[✓] resend verification email -> new email arrives, old code/link still works or is invalidated consistently
 [] open an expired verification link -> "verification expired" screen, can request a new one
 [] tap an already-used verification link a second time -> handled gracefully, no crash
 

@@ -291,7 +291,7 @@ class ApiClient {
       response.statusCode,
       message,
       fieldErrors: decoded,
-      code: decoded?['code'] as String?,
+      code: _extractCode(decoded),
     );
   }
 
@@ -319,8 +319,22 @@ class ApiClient {
       response.statusCode,
       message,
       fieldErrors: decoded,
-      code: decoded?['code'] as String?,
+      code: _extractCode(decoded),
     );
+  }
+
+  /// `code` is meant to be a bare string (e.g. `"vote_limit_reached"`),
+  /// but a DRF `ValidationError` raised as a dict has each of its values
+  /// wrapped in a list by DRF's error formatting — so a `code` raised
+  /// that way comes back as `["some_code"]` instead. Unwrapping
+  /// defensively here means a caller's `error.code == '...'` check never
+  /// silently breaks (or, before this, throws a cast exception) just
+  /// because a given endpoint happens to raise its error that way.
+  String? _extractCode(Map<String, dynamic>? decoded) {
+    final code = decoded?['code'];
+    if (code is String) return code;
+    if (code is List && code.isNotEmpty) return code.first.toString();
+    return null;
   }
 
   /// Picks the first human-readable message out of an error body — skips

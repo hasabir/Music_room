@@ -20,6 +20,7 @@ from .serializers import (
     RegisterSerializer,
     LoginSerializer,
     EmailVerifySerializer,
+    EmailNotVerifiedError,
     PasswordResetRequestSerializer,
     PasswordResetNewPasswordSerializer,
     PasswordResetVerifyCodeSerializer,
@@ -126,6 +127,21 @@ class LoginView(generics.GenericAPIView):
 
         try:
             serializer.is_valid(raise_exception=True)
+
+        except EmailNotVerifiedError:
+            log_action(
+                request,
+                "authentication.login.failed"
+            )
+            # A bare string `code` — see EmailNotVerifiedError's doc
+            # comment for why this can't just be a raised ValidationError.
+            return Response(
+                {
+                    "detail": "Email not verified. Please verify your email before logging in.",
+                    "code": "email_not_verified",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         except serializers.ValidationError:
             log_action(

@@ -250,3 +250,35 @@ class RegisterPasswordValidationTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("password", response.data)
+
+
+class LoginUnverifiedEmailTests(APITestCase):
+    """LoginView rejects an unverified email/password account with a bare
+    string `code` (not list-wrapped) — see EmailNotVerifiedError's doc
+    comment. A raised serializers.ValidationError would have DRF wrap
+    `code` as `["email_not_verified"]`, which the mobile client's
+    `error.code == 'email_not_verified'` check can't match."""
+
+    url = "/api/v1/auth/login/"
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="unverified@test.com", password="TestPass123", registration_method="email"
+        )
+
+    def test_login_rejected_with_a_bare_string_code(self):
+        response = self.client.post(
+            self.url, {"email": "unverified@test.com", "password": "TestPass123"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["code"], "email_not_verified")
+        self.assertIsInstance(response.data["detail"], str)
+
+    def test_verified_account_logs_in_normally(self):
+        self.user.is_email_verified = True
+        self.user.save(update_fields=["is_email_verified"])
+
+        response = self.client.post(
+            self.url, {"email": "unverified@test.com", "password": "TestPass123"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

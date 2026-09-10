@@ -105,15 +105,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   /// The backend rejects login for an unverified email account with this
-  /// `code` field (see `authentication/serializers.py`'s `LoginSerializer`)
-  /// rather than a generic 400 — that's how this case is distinguished
-  /// from a wrong password.
-  bool _isEmailNotVerified(ApiException error) {
-    final codes = error.fieldErrors?['code'];
-    if (codes is List) return codes.contains('email_not_verified');
-    if (codes is String) return codes == 'email_not_verified';
-    return false;
-  }
+  /// `code` field (see `authentication/serializers.py`'s
+  /// `EmailNotVerifiedError`/`LoginView`) rather than a generic 400 —
+  /// that's how this case is distinguished from a wrong password.
+  bool _isEmailNotVerified(ApiException error) =>
+      error.code == 'email_not_verified';
 
   /// An unverified account can't just show an error — the user has no way
   /// to act on it from here. Instead, kick off a fresh verification code
