@@ -20,10 +20,11 @@ class _SubscriptionColors {
 
 /// Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md).
 ///
-/// A **mock** upgrade/downgrade — `POST /api/v1/user/subscription/` just
+/// A **mock** upgrade/Cancel subscription— `POST /api/v1/user/subscription/` just
 /// flips the stored tier server-side, no payment gateway involved. What
 /// Premium actually unlocks, enforced server-side regardless of anything
-/// this screen shows: editing a public playlist, and no cap on
+/// this screen shows: editing a playlist (public or private, own or
+/// invited — see `backend/playlists/permissions.py`), and no cap on
 /// suggestions/votes per event (Free is limited to 10 suggestions / 20
 /// distinct votes per event).
 class SubscriptionScreen extends StatefulWidget {
@@ -90,11 +91,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         backgroundColor: _SubscriptionColors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text(
-          'Downgrade to Free?',
+          'Cancel subscription?',
           style: TextStyle(fontFamily: 'Sora', color: _SubscriptionColors.body),
         ),
         content: const Text(
-          "You'll immediately lose the ability to edit public playlists, and "
+          "You'll immediately lose the ability to edit any playlist, and "
           "go back to a 10-suggestion / 20-vote cap per event. Anything you've "
           "already suggested or voted on stays as-is — nothing is undone.",
           style: TextStyle(color: _SubscriptionColors.muted),
@@ -158,7 +159,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             const SizedBox(height: 10),
             const _PerkRow(
               icon: Icons.edit_rounded,
-              text: 'Edit public playlists (Free accounts can still edit private ones)',
+              text: 'Edit playlists (add, reorder, or remove songs — own or invited)',
             ),
             const _PerkRow(
               icon: Icons.queue_music_rounded,
@@ -246,7 +247,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                           ),
                         )
                       : const Text(
-                          'DOWNGRADE TO FREE',
+                          'Cancel subscription',
                           style: TextStyle(
                             fontFamily: 'Sora',
                             fontWeight: FontWeight.w700,
@@ -312,8 +313,8 @@ class _TierCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   isPremium
-                      ? 'Unlimited suggestions, votes, and public playlist editing.'
-                      : 'Limited suggestions/votes per event; private-playlist editing only.',
+                      ? 'Unlimited suggestions, votes, and playlist editing.'
+                      : 'Limited suggestions/votes per event; no playlist editing.',
                   style: const TextStyle(
                     fontSize: 12,
                     color: _SubscriptionColors.muted,

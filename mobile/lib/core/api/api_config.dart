@@ -113,6 +113,8 @@ class ApiConfig {
       Uri.parse('$baseUrl$playlistsEndpoint$playlistId/collaborators/');
   static Uri playlistCollaboratorDetailUri(int playlistId, int userId) =>
       Uri.parse('$baseUrl$playlistsEndpoint$playlistId/collaborators/$userId/');
+  static Uri playlistJoinUri(int playlistId) =>
+      Uri.parse('$baseUrl$playlistsEndpoint$playlistId/join/');
 
   /// [byArtist] switches from the default title/artist/etc keyword match
   /// to an artist-name lookup — see `TrackSearchView` (`backend/api/views.py`).

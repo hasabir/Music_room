@@ -2,7 +2,7 @@
 from django.urls import path
 from .views import (
     PlaylistListCreateView, PlaylistDetailView,
-    PlaylistSongListView, PlaylistSongDeleteView, PlaylistSongMoveView
+    PlaylistSongListView, PlaylistSongDeleteView, PlaylistSongMoveView, PlaylistJoinView
 )
 from .views_collaborators import PlaylistCollaboratorListView, PlaylistCollaboratorRemoveView
 from .views_access_requests import (
@@ -15,6 +15,7 @@ urlpatterns = [
     path('<int:playlist_id>/songs/', PlaylistSongListView.as_view(), name='playlist_songs'),
     path('<int:playlist_id>/songs/<int:playlist_song_id>/', PlaylistSongDeleteView.as_view(), name='playlist_song_delete'),
     path('<int:playlist_id>/songs/<int:playlist_song_id>/move/', PlaylistSongMoveView.as_view(), name='playlist_song_move'),
+    path('<int:playlist_id>/join/', PlaylistJoinView.as_view(), name='playlist_join'),
     path('<int:playlist_id>/collaborators/', PlaylistCollaboratorListView.as_view(), name='playlist_collaborator_list'),
     path('<int:playlist_id>/collaborators/<int:user_id>/', PlaylistCollaboratorRemoveView.as_view(), name='playlist_collaborator_remove'),
     path('<int:playlist_id>/access-requests/', PlaylistAccessRequestListCreateView.as_view(), name='playlist_access_request_list_create'),

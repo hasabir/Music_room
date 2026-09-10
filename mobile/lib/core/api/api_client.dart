@@ -19,7 +19,7 @@ class ApiException implements Exception {
 
   /// Machine-readable error code the backend includes on specific
   /// responses (e.g. `"suggestion_limit_reached"`, `"vote_limit_reached"`,
-  /// `"public_playlist_requires_premium"` — see
+  /// `"playlist_edit_requires_premium"` — see
   /// docs/SUBSCRIPTION_BONUS.md) — `null` for the many error responses
   /// that don't set one. Lets callers branch on a stable identifier
   /// instead of parsing [message] text.

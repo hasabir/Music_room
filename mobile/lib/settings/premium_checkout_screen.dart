@@ -147,7 +147,7 @@ class _PremiumCheckoutScreenState extends State<PremiumCheckoutScreen> {
                       ),
                       const SizedBox(height: 12),
                       const Text(
-                        'Unlimited suggestions & votes\nEdit public playlists',
+                        'Unlimited suggestions & votes\nEdit playlists',
                         style: TextStyle(color: Colors.white70, height: 1.6),
                       ),
                       const Divider(height: 32, color: Colors.white24),
@@ -259,7 +259,7 @@ class _PremiumCheckoutScreenState extends State<PremiumCheckoutScreen> {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'No recurring payments. Switch back to Free in Settings.',
+                    'No recurring payments. Switch back  in Settings.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Color(0xFF908FA0), fontSize: 12),
                   ),

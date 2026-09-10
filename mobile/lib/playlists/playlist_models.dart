@@ -89,6 +89,7 @@ class Playlist {
     required this.coverPreset,
     required this.songCount,
     required this.isCollaborator,
+    required this.isMember,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -105,6 +106,7 @@ class Playlist {
     coverPreset: json['cover_preset'] as String?,
     songCount: json['song_count'] as int? ?? 0,
     isCollaborator: json['is_collaborator'] as bool? ?? false,
+    isMember: json['is_member'] as bool? ?? false,
     createdAt: DateTime.parse(json['created_at'] as String),
     updatedAt: DateTime.parse(json['updated_at'] as String),
   );
@@ -137,10 +139,15 @@ class Playlist {
   final int songCount;
 
   /// Whether the signed-in user is an invited `PlaylistCollaborator` on
-  /// this playlist. Always `false` for the owner. Unlike events, there's
-  /// no self-serve "join" for playlists — this only ever comes from an
-  /// owner invite or an approved access request.
+  /// this playlist. Always `false` for the owner. This only ever comes
+  /// from an owner invite or an approved access request — distinct from
+  /// [isMember], which never grants edit access on its own.
   final bool isCollaborator;
+
+  /// Whether the signed-in user has self-joined this public playlist via
+  /// `POST .../join/`. Always `false` for the owner. Mirrors
+  /// `Event.isMember`.
+  final bool isMember;
   final DateTime createdAt;
   final DateTime updatedAt;
 }

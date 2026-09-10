@@ -13,9 +13,10 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResp
 from authentication.utils import log_action
 from events.models import Song
 
-from .models import Playlist, PlaylistSong
+from .models import Playlist, PlaylistSong, PlaylistMembership
 from .serializers import (
-    PlaylistSerializer, AddSongToPlaylistSerializer, MoveSongSerializer, PlaylistSongSerializer
+    PlaylistSerializer, AddSongToPlaylistSerializer, MoveSongSerializer, PlaylistSongSerializer,
+    PlaylistMembershipSerializer
 )
 from .permissions import can_user_see_playlist, can_user_add_songs, can_user_reorder_songs
 from .services import DuplicatePlaylistSong, add_song_to_playlist, remove_song_from_playlist, move_song
@@ -206,6 +207,51 @@ class PlaylistSongListView(APIView):
         broadcast_playlist_update(playlist)
 
         return Response(PlaylistSongSerializer(playlist_song).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(
+    summary="Join a public playlist",
+    description=(
+        "Self-serve join for a public playlist — any authenticated user "
+        "can join. Private playlists cannot be self-joined; the owner "
+        "must invite you (see `POST /playlists/<id>/collaborators/`).\n\n"
+        "This only records membership for 'Joined' listing purposes — it "
+        "does not grant any edit capability, which remains governed "
+        "entirely by `edit_permission`/collaborator status."
+    ),
+    responses={
+        201: PlaylistMembershipSerializer,
+        400: OpenApiResponse(description="Already joined, or you're the owner."),
+        403: OpenApiResponse(description="This playlist is private — you must be invited."),
+    },
+    tags=["playlists"],
+)
+class PlaylistJoinView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, playlist_id):
+        playlist = get_object_or_404(Playlist, id=playlist_id)
+
+        if playlist.owner_id == request.user.id:
+            return Response({"detail": "You are the owner of this playlist."},
+                             status=status.HTTP_400_BAD_REQUEST)
+
+        if playlist.visibility != "public":
+            return Response({"detail": "This playlist is private — you must be invited by the owner."},
+                             status=status.HTTP_403_FORBIDDEN)
+
+        membership, created = PlaylistMembership.objects.get_or_create(playlist=playlist, member=request.user)
+        if not created:
+            return Response({"detail": "You have already joined this playlist."},
+                             status=status.HTTP_400_BAD_REQUEST)
+
+        log_action(request, "playlist.joined", user=request.user, metadata={
+            "playlist_id": playlist.id,
+            "title": playlist.title,
+            "visibility": playlist.visibility,
+        })
+
+        return Response(PlaylistMembershipSerializer(membership).data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema(

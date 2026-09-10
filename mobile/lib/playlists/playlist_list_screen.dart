@@ -38,11 +38,13 @@ class _PlaylistColors {
 ///   `email` — see `_isMine` below).
 /// - `is_collaborator` (`PlaylistSerializer.get_is_collaborator`), `true`
 ///   once the user has been added as a `PlaylistCollaborator` — via an
-///   owner invite or an approved access request. Unlike events, there's
-///   no self-serve "join" for playlists. A private playlist never needs
-///   this flag: the list endpoint only ever returns a private playlist to
-///   its owner or an invited collaborator, so any private, non-owned
-///   playlist here already means "collaborating" — see `_isJoined` below.
+///   owner invite or an approved access request. A private playlist never
+///   needs this flag: the list endpoint only ever returns a private
+///   playlist to its owner or an invited collaborator, so any private,
+///   non-owned playlist here already means "collaborating".
+/// - `is_member` (`PlaylistSerializer.get_is_member`), `true` once the
+///   user has self-joined a public playlist via `POST .../join/` — mirrors
+///   events' `is_member`. See `_isJoined` below.
 class PlaylistListScreen extends StatefulWidget {
   const PlaylistListScreen({super.key});
 
@@ -303,13 +305,15 @@ bool _isMine(Playlist playlist, String currentUsername) =>
     playlist.owner == currentUsername;
 
 /// A playlist counts as "joined" (once [_isMine] has already ruled out
-/// owning) if the user is an invited collaborator (`Playlist.isCollaborator`)
-/// or if it's private — the list endpoint only ever returns a private
-/// playlist to its owner or an invited collaborator, and there's no
-/// self-serve "join" for playlists at all, so a private, non-owned
-/// playlist here can only mean "invited to collaborate".
+/// owning) if the user is an invited collaborator (`Playlist.isCollaborator`),
+/// has self-joined a public playlist (`Playlist.isMember` — see
+/// `PlaylistJoinView`), or if it's private — the list endpoint only ever
+/// returns a private playlist to its owner or an invited collaborator, so a
+/// private, non-owned playlist here can only mean "invited to collaborate".
 bool _isJoined(Playlist playlist) =>
-    playlist.isCollaborator || playlist.visibility == playlistVisibilityPrivate;
+    playlist.isCollaborator ||
+    playlist.isMember ||
+    playlist.visibility == playlistVisibilityPrivate;
 
 class _ListData {
   const _ListData({required this.playlists, required this.authUser});

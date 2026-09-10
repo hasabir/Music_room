@@ -49,22 +49,24 @@ def _collaborator_for(user, playlist):
 
 
 # Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md).
-# Editing a PUBLIC playlist requires Premium, regardless of the
-# playlist's own edit_permission — even "everyone can edit" is
-# overridden, and there is deliberately no owner exemption. Private
-# playlists never reach this check at all, so their existing behavior
-# under edit_permission is completely untouched.
+# Editing ANY playlist — public or private — requires Premium, regardless
+# of the playlist's own edit_permission — even "everyone can edit" is
+# overridden, and there is deliberately no owner exemption. Originally
+# scoped to public playlists only; broadened to also cover private ones
+# (still no owner exemption) once it was confirmed that editing a private
+# playlist should require *both* access (owner/invite/edit_permission)
+# and Premium, not access alone.
 _PREMIUM_REQUIRED_REASON = (
-    "Editing a public playlist requires Premium — upgrade your account, "
-    "or ask the owner to make this playlist private."
+    "Editing a playlist requires Premium — upgrade your account to add, "
+    "reorder, or remove songs."
 )
-_PREMIUM_REQUIRED_CODE = "public_playlist_requires_premium"
+_PREMIUM_REQUIRED_CODE = "playlist_edit_requires_premium"
 
 
 def can_user_add_songs(user, playlist):
     if not can_user_see_playlist(user, playlist):
         return False, "You do not have access to this playlist.", ""
-    if playlist.visibility == "public" and not user.is_premium:
+    if not user.is_premium:
         return False, _PREMIUM_REQUIRED_REASON, _PREMIUM_REQUIRED_CODE
     if playlist.owner_id == user.id or playlist.edit_permission == "everyone":
         return True, "", ""
@@ -77,7 +79,7 @@ def can_user_add_songs(user, playlist):
 def can_user_reorder_songs(user, playlist):
     if not can_user_see_playlist(user, playlist):
         return False, "You do not have access to this playlist.", ""
-    if playlist.visibility == "public" and not user.is_premium:
+    if not user.is_premium:
         return False, _PREMIUM_REQUIRED_REASON, _PREMIUM_REQUIRED_CODE
     if playlist.owner_id == user.id or playlist.edit_permission == "everyone":
         return True, "", ""

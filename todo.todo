@@ -1,0 +1,16 @@
+[] free subscription can not edit playlist
+[x] a free supscription user can add music to playlist but can not edit it even if it his own playlist. This is a limitation of the free subscription plan. To edit playlists, users need to upgrade to a premium subscription. (Covered by the existing public-playlist premium gate — see docs/SUBSCRIPTION_BONUS.md.)
+[x] if a user the user is upgraded to primium subscription then downgraded either by clicking the downgrade button or by canceling the subscription, the user will lose the ability to edit their playlists.  However, they will still be able to view and play their playlists, but any changes made while on a premium subscription will remain intact. it is not woking right now for the the playlists that the user was invited to (Premium gate broadened to cover private playlists too, not just public — editing any playlist, owned or invited, now requires both access and Premium. backend/playlists/permissions.py, mobile playlist_detail_screen.dart/subscription_screen.dart/premium_checkout_screen.dart.)
+[] in the subscription management section, users can see their current subscription status and the benefits associated with each plan. It is important to clearly communicate the limitations of the free subscription to avoid confusion and ensure users understand what features are available to them.
+[] in the subscription management section, users must be able to see how much time is left on their current subscription and when it will expire. This information helps users make informed decisions about whether to renew or upgrade their subscription.
+
+
+[x] when edditing playlist , user must be able to see that they are currently on a free subscription and that editing is not available. A prompt or message should inform them that they need to upgrade to a premium subscription to access editing features. even if the user needs to request invitation to edit the playlist there must be to two messages so that the user is aware of both the limitation of their current subscription and the option to request an invitation to edit the playlist. This ensures clarity and transparency in the user experience. (playlist_detail_screen.dart now shows the Premium banner and the invited-only/request-access banner independently — both appear together when both conditions are unmet.)
+
+
+[] in the events section, free subscription users should be limited to 10 suggestions and 20 votes per month, not by events.
+
+
+[x] add joined button to playlist (self-serve join for public playlists — PlaylistMembership/is_member, PlaylistJoinView, "Join playlist"/"Joined" button on playlist detail screen)
+
+[] fix the screen of notification, it must display all the notification and must save the notification read/unread status. (Currently, the notification screen is not displaying all notifications and does not save the read/unread status.)

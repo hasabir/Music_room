@@ -253,8 +253,9 @@ class PlaylistCollaboratorTests(APITestCase):
 class PlaylistIsCollaboratorFieldTests(APITestCase):
     """`is_collaborator` on PlaylistSerializer — lets the client tell a
     public playlist the user already collaborates on apart from one
-    they've merely discovered (no self-serve "join" exists for playlists,
-    unlike events)."""
+    they've merely discovered. Distinct from self-serve membership
+    (`is_member` — see `PlaylistJoinTests`), which never grants
+    collaborator status on its own."""
 
     def setUp(self):
         self.owner = create_verified_user("owner@test.com")
@@ -299,6 +300,86 @@ class PlaylistIsCollaboratorFieldTests(APITestCase):
             p for p in response.data["results"] if p["id"] == self.playlist_id
         )
         self.assertTrue(playlist["is_collaborator"])
+
+
+class PlaylistJoinTests(APITestCase):
+    """Self-serve join for public playlists (`PlaylistJoinView`) — mirrors
+    `events.tests.EventIsMemberFieldTests`/`EventJoinView`. Joining only
+    ever records `PlaylistMembership`/`is_member`; it never creates a
+    `PlaylistCollaborator` and grants no edit capability on its own."""
+
+    def setUp(self):
+        self.owner = create_verified_user("join_owner@test.com")
+        self.joiner = create_verified_user("join_joiner@test.com")
+        self.stranger = create_verified_user("join_stranger@test.com")
+
+        self.client.force_authenticate(self.owner)
+        public_resp = self.client.post(
+            "/api/v1/playlists/", {"title": "Public Mix", "visibility": "public"}
+        )
+        self.public_id = public_resp.data["id"]
+        self.public_join_url = f"/api/v1/playlists/{self.public_id}/join/"
+        self.public_detail_url = f"/api/v1/playlists/{self.public_id}/"
+
+        private_resp = self.client.post(
+            "/api/v1/playlists/", {"title": "Private Mix", "visibility": "private"}
+        )
+        self.private_id = private_resp.data["id"]
+        self.private_join_url = f"/api/v1/playlists/{self.private_id}/join/"
+
+    def test_join_public_playlist(self):
+        self.client.force_authenticate(self.joiner)
+        response = self.client.post(self.public_join_url, {})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_is_member_true_after_joining(self):
+        self.client.force_authenticate(self.joiner)
+        self.client.post(self.public_join_url, {})
+        response = self.client.get(self.public_detail_url)
+        self.assertTrue(response.data["is_member"])
+
+    def test_is_member_false_for_stranger_who_has_not_joined(self):
+        self.client.force_authenticate(self.stranger)
+        response = self.client.get(self.public_detail_url)
+        self.assertFalse(response.data["is_member"])
+
+    def test_is_member_false_for_owner(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(self.public_detail_url)
+        self.assertFalse(response.data["is_member"])
+
+    def test_owner_cannot_join_own_playlist(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(self.public_join_url, {})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cannot_join_twice(self):
+        self.client.force_authenticate(self.joiner)
+        self.client.post(self.public_join_url, {})
+        response = self.client.post(self.public_join_url, {})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cannot_self_join_private_playlist(self):
+        self.client.force_authenticate(self.stranger)
+        response = self.client.post(self.private_join_url, {})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_joining_grants_no_edit_capability(self):
+        # Joining is membership-only — it must not create a
+        # PlaylistCollaborator or otherwise unlock add/reorder rights.
+        self.client.force_authenticate(self.owner)
+        self.client.patch(self.public_detail_url, {"edit_permission": "invited_only"})
+
+        self.client.force_authenticate(self.joiner)
+        self.client.post(self.public_join_url, {})
+        response = self.client.get(self.public_detail_url)
+        self.assertFalse(response.data["is_collaborator"])
+
+        add_response = self.client.post(
+            f"/api/v1/playlists/{self.public_id}/songs/",
+            {"title": "Song", "artist": "Artist"},
+        )
+        self.assertEqual(add_response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
@@ -363,9 +444,10 @@ class PlaylistParticipantAvatarFieldTests(APITestCase):
 class PlaylistPremiumGateTests(APITestCase):
     """
     Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md)
-    — editing a PUBLIC playlist requires Premium, regardless of
-    edit_permission, with no owner exemption. Private playlists must be
-    completely unaffected.
+    — editing ANY playlist (public or private) requires Premium,
+    regardless of edit_permission, with no owner exemption. A private
+    playlist requires both conditions: access (owner/invite/
+    edit_permission) AND Premium — access alone is not enough.
     """
 
     def setUp(self):
@@ -390,21 +472,16 @@ class PlaylistPremiumGateTests(APITestCase):
         # edit_permission rules alone; the Premium gate overrides that.
         response = self.client.post(self.public_songs_url, {"title": "Song", "artist": "Artist"})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(response.data["code"], "public_playlist_requires_premium")
+        self.assertEqual(response.data["code"], "playlist_edit_requires_premium")
 
-    def test_free_owner_can_still_edit_own_private_playlist(self):
+    def test_free_owner_blocked_from_editing_own_private_playlist(self):
         # Same owner, same Free tier, same "everyone can edit" setting —
-        # only `visibility` differs. Must be completely unaffected.
-        add = self.client.post(self.private_songs_url, {"title": "Song", "artist": "Artist"})
-        self.assertEqual(add.status_code, status.HTTP_201_CREATED)
-
-        move = self.client.post(
-            f"{self.private_songs_url}{add.data['id']}/move/", {"new_position": 0}
-        )
-        self.assertEqual(move.status_code, status.HTTP_200_OK)
-
-        remove = self.client.delete(f"{self.private_songs_url}{add.data['id']}/")
-        self.assertEqual(remove.status_code, status.HTTP_204_NO_CONTENT)
+        # only `visibility` differs. Must be blocked exactly like the
+        # public case: access to your own playlist is not enough on its
+        # own, Premium is still required.
+        response = self.client.post(self.private_songs_url, {"title": "Song", "artist": "Artist"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["code"], "playlist_edit_requires_premium")
 
     def test_premium_owner_can_edit_own_public_playlist(self):
         self.owner.subscription_tier = User.SUBSCRIPTION_PREMIUM
@@ -421,12 +498,127 @@ class PlaylistPremiumGateTests(APITestCase):
         remove = self.client.delete(f"{self.public_songs_url}{add.data['id']}/")
         self.assertEqual(remove.status_code, status.HTTP_204_NO_CONTENT)
 
+    def test_premium_owner_can_edit_own_private_playlist(self):
+        self.owner.subscription_tier = User.SUBSCRIPTION_PREMIUM
+        self.owner.save(update_fields=["subscription_tier"])
+
+        add = self.client.post(self.private_songs_url, {"title": "Song", "artist": "Artist"})
+        self.assertEqual(add.status_code, status.HTTP_201_CREATED)
+
+        move = self.client.post(
+            f"{self.private_songs_url}{add.data['id']}/move/", {"new_position": 0}
+        )
+        self.assertEqual(move.status_code, status.HTTP_200_OK)
+
+        remove = self.client.delete(f"{self.private_songs_url}{add.data['id']}/")
+        self.assertEqual(remove.status_code, status.HTTP_204_NO_CONTENT)
+
     def test_free_non_owner_blocked_from_editing_public_everyone_playlist(self):
         # A non-owner relying purely on edit_permission="everyone" — also
         # overridden, same as the owner, confirming there's no special
-        # case for *who* is editing, only the playlist's own visibility.
+        # case for *who* is editing.
         other = create_verified_user("premium_gate_other@test.com")
         self.client.force_authenticate(other)
         response = self.client.post(self.public_songs_url, {"title": "Song", "artist": "Artist"})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(response.data["code"], "public_playlist_requires_premium")
+        self.assertEqual(response.data["code"], "playlist_edit_requires_premium")
+
+    def test_free_invited_collaborator_blocked_from_editing_public_playlist(self):
+        # A real invited PlaylistCollaborator (can_add_songs=True), not just
+        # edit_permission="everyone" — the premium gate must still apply,
+        # exactly as it does for the owner. Guards against a regression
+        # where the collaborator-permission branch is reached before the
+        # premium check instead of after it.
+        collaborator = create_verified_user("premium_gate_collaborator@test.com")
+        self.client.force_authenticate(self.owner)
+        self.client.post(
+            f"/api/v1/playlists/{self.public_playlist_id}/collaborators/",
+            {"user_id": collaborator.id},
+        )
+
+        self.client.force_authenticate(collaborator)
+        response = self.client.post(self.public_songs_url, {"title": "Song", "artist": "Artist"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["code"], "playlist_edit_requires_premium")
+
+    def test_free_invited_collaborator_blocked_from_editing_private_playlist(self):
+        # An invited collaborator on a PRIVATE playlist — access via
+        # invite is not enough on its own; Premium is still required. This
+        # is the scenario originally reported as a bug (it wasn't — private
+        # playlists simply weren't gated at all at the time).
+        collaborator = create_verified_user("premium_gate_private_collaborator@test.com")
+        self.client.force_authenticate(self.owner)
+        self.client.post(
+            f"/api/v1/playlists/{self.private_playlist_id}/collaborators/",
+            {"user_id": collaborator.id},
+        )
+
+        self.client.force_authenticate(collaborator)
+        response = self.client.post(self.private_songs_url, {"title": "Song", "artist": "Artist"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["code"], "playlist_edit_requires_premium")
+
+    def test_premium_invited_collaborator_can_edit_private_playlist(self):
+        # Both conditions met — invited AND Premium — succeeds.
+        collaborator = create_verified_user("premium_gate_premium_private_collaborator@test.com")
+        collaborator.subscription_tier = User.SUBSCRIPTION_PREMIUM
+        collaborator.save(update_fields=["subscription_tier"])
+
+        self.client.force_authenticate(self.owner)
+        self.client.post(
+            f"/api/v1/playlists/{self.private_playlist_id}/collaborators/",
+            {"user_id": collaborator.id},
+        )
+
+        self.client.force_authenticate(collaborator)
+        response = self.client.post(self.private_songs_url, {"title": "Song", "artist": "Artist"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_downgraded_collaborator_loses_edit_on_public_playlist(self):
+        # An invited collaborator who WAS Premium (and could edit) gets
+        # downgraded to Free and must then lose edit ability, same as a
+        # downgraded owner would.
+        collaborator = create_verified_user("premium_gate_downgraded@test.com")
+        collaborator.subscription_tier = User.SUBSCRIPTION_PREMIUM
+        collaborator.save(update_fields=["subscription_tier"])
+
+        self.client.force_authenticate(self.owner)
+        self.client.post(
+            f"/api/v1/playlists/{self.public_playlist_id}/collaborators/",
+            {"user_id": collaborator.id},
+        )
+
+        self.client.force_authenticate(collaborator)
+        add = self.client.post(self.public_songs_url, {"title": "Song", "artist": "Artist"})
+        self.assertEqual(add.status_code, status.HTTP_201_CREATED)
+
+        collaborator.subscription_tier = User.SUBSCRIPTION_FREE
+        collaborator.save(update_fields=["subscription_tier"])
+
+        blocked = self.client.post(self.public_songs_url, {"title": "Song 2", "artist": "Artist"})
+        self.assertEqual(blocked.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(blocked.data["code"], "playlist_edit_requires_premium")
+
+    def test_downgraded_collaborator_loses_edit_on_private_playlist(self):
+        # Same as above, but for a PRIVATE invited playlist — the exact
+        # scenario reported as broken.
+        collaborator = create_verified_user("premium_gate_downgraded_private@test.com")
+        collaborator.subscription_tier = User.SUBSCRIPTION_PREMIUM
+        collaborator.save(update_fields=["subscription_tier"])
+
+        self.client.force_authenticate(self.owner)
+        self.client.post(
+            f"/api/v1/playlists/{self.private_playlist_id}/collaborators/",
+            {"user_id": collaborator.id},
+        )
+
+        self.client.force_authenticate(collaborator)
+        add = self.client.post(self.private_songs_url, {"title": "Song", "artist": "Artist"})
+        self.assertEqual(add.status_code, status.HTTP_201_CREATED)
+
+        collaborator.subscription_tier = User.SUBSCRIPTION_FREE
+        collaborator.save(update_fields=["subscription_tier"])
+
+        blocked = self.client.post(self.private_songs_url, {"title": "Song 2", "artist": "Artist"})
+        self.assertEqual(blocked.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(blocked.data["code"], "playlist_edit_requires_premium")

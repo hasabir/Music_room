@@ -110,6 +110,12 @@ class PlaylistApi {
     await _authorizedDelete(ApiConfig.playlistDetailUri(playlistId));
   }
 
+  /// Joins a public playlist as a plain member. Mirrors [EventApi.joinEvent]
+  /// — this does not grant any edit capability, only membership.
+  Future<void> joinPlaylist(int playlistId) async {
+    await _authorizedPost(ApiConfig.playlistJoinUri(playlistId), body: const {});
+  }
+
   /// Lists all songs in a playlist, in order.
   Future<List<PlaylistSong>> listSongs(int playlistId) async {
     final response = await _authorizedGetList(

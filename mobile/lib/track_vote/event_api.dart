@@ -25,7 +25,7 @@ class VoteNotPermittedException implements Exception {
 /// distinct from [VoteNotPermittedException]: that one drives a reactive,
 /// whole-queue "voting restricted" banner, which would incorrectly cover
 /// retracting an *already-cast* vote too — and retracting is exactly how
-/// a Free user is meant to free up a slot once at this cap.
+/// a Free user is meant  up a slot once at this cap.
 class VoteLimitReachedException implements Exception {
   VoteLimitReachedException(this.message);
 

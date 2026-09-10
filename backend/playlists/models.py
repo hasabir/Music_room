@@ -117,6 +117,31 @@ class PlaylistSong(models.Model):
         return f"{self.song} at position {self.position} in {self.playlist}"
 
 
+class PlaylistMembership(models.Model):
+    """
+    Tracks that a user has explicitly self-joined a public playlist —
+    mirrors events.EventMembership. This is deliberately independent of
+    PlaylistCollaborator: joining does not grant any edit capability
+    (adding/reordering songs is still governed entirely by
+    permissions.can_user_add_songs/can_user_reorder_songs), it only
+    records membership for "Joined" UI/listing purposes. Private
+    playlists have no self-join at all.
+    """
+
+    playlist = models.ForeignKey(Playlist, on_delete=models.CASCADE, related_name="members")
+    member = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="joined_playlists"
+    )
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("playlist", "member")
+        ordering = ["-joined_at"]
+
+    def __str__(self):
+        return f"{self.member.email} joined {self.playlist.title}"
+
+
 class PlaylistAccessRequest(models.Model):
     """
     A request from a non-collaborator to gain access to a playlist —

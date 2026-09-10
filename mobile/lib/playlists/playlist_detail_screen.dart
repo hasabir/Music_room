@@ -102,6 +102,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
   PlaylistAccessRequest? _myAccessRequest;
   var _isRequestingAccess = false;
   var _isCancellingAccessRequest = false;
+  var _isJoiningPlaylist = false;
 
   /// True while a drag gesture is in progress, so a poll tick landing
   /// mid-drag doesn't yank the list out from under the user's finger.
@@ -252,6 +253,24 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
       if (!mounted) return;
       setState(() => _isCancellingAccessRequest = false);
       _showMessage(error.message);
+    }
+  }
+
+  /// Self-serve join for a public playlist — mirrors
+  /// `event_detail_screen.dart`'s `_onJoinEvent`. Does not grant any edit
+  /// capability on its own; it only records membership (`Playlist.isMember`).
+  Future<void> _onJoinPlaylist() async {
+    if (_isJoiningPlaylist) return;
+    setState(() => _isJoiningPlaylist = true);
+    try {
+      await _playlistApi.joinPlaylist(widget.playlistId);
+      await _loadAll();
+    } on SessionExpiredException {
+      await _signOutAndReturnToWelcome();
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } finally {
+      if (mounted) setState(() => _isJoiningPlaylist = false);
     }
   }
 
@@ -793,18 +812,27 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
         (playlist.editPermission == playlistEditPermissionInvitedOnly &&
             isCollaborator);
     // Bonus: Free vs. Premium subscription (see docs/SUBSCRIPTION_BONUS.md).
-    // Editing a *public* playlist requires Premium, regardless of
-    // `editPermission` — including for the owner, with no exemption. This
-    // is enforced server-side (`can_user_add_songs`/`can_user_reorder_songs`
-    // in `backend/playlists/permissions.py`); the check here only controls
+    // Editing ANY playlist — public or private — requires Premium,
+    // regardless of `editPermission` — including for the owner, with no
+    // exemption. This is enforced server-side
+    // (`can_user_add_songs`/`can_user_reorder_songs` in
+    // `backend/playlists/permissions.py`); the check here only controls
     // whether this screen shows edit affordances at all.
-    final isPremiumBlocked =
-        playlist.visibility == playlistVisibilityPublic && !authUser.isPremium;
+    final isPremiumBlocked = !authUser.isPremium;
     final canEdit = hasEditPermission && !isPremiumBlocked;
     final needsInvitations =
         playlist.visibility != playlistVisibilityPublic ||
         playlist.editPermission != playlistEditPermissionEveryone;
     final showInvitationControls = isOwner && needsInvitations;
+    // Self-serve join, mirroring events' Join/Joined pattern — public
+    // playlists only, and only for someone who isn't already the owner,
+    // an invited collaborator, or a member. Joining never grants edit
+    // access on its own (see `isPremiumBlocked`/`canEdit` above).
+    final canJoin =
+        !isOwner &&
+        !isCollaborator &&
+        !playlist.isMember &&
+        playlist.visibility == playlistVisibilityPublic;
 
     final coverAndInfo = Column(
       children: [
@@ -814,6 +842,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
           isPlaying: _playingSongId != null,
           onPlayTap: _songs.isEmpty ? _onPlaybackUnavailable : _onHeaderPlayTap,
         ),
+        if (canJoin || (!isOwner && playlist.isMember)) ...[
+          const SizedBox(height: 14),
+          _JoinPlaylistRow(
+            isMember: playlist.isMember,
+            isJoining: _isJoiningPlaylist,
+            onJoin: _onJoinPlaylist,
+          ),
+        ],
         if (_collaborators.isNotEmpty || showInvitationControls) ...[
           const SizedBox(height: 14),
           _CollaboratorsRow(
@@ -823,15 +859,18 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
           ),
         ],
         const SizedBox(height: 24),
-        if (hasEditPermission && isPremiumBlocked) ...[
-          // Only shown to someone who would otherwise be allowed to edit —
-          // a stranger with no edit permission at all sees the "ask the
-          // owner"/invited-only banner below instead, regardless of tier.
+        // These two banners are independent, not mutually exclusive: a
+        // Free user who also isn't invited to an invited_only playlist is
+        // blocked by BOTH conditions, and must see both messages — the
+        // subscription limitation and the option to request an invitation
+        // — rather than only whichever one happened to be checked first.
+        if (isPremiumBlocked) ...[
           _PremiumRequiredBanner(
             onUpgrade: () => _onUpgradeToPremium(authUser),
           ),
           const SizedBox(height: 16),
-        ] else if (!canEdit &&
+        ],
+        if (!hasEditPermission &&
             playlist.editPermission == playlistEditPermissionInvitedOnly) ...[
           _EditLockedBanner(
             myRequest: _myAccessRequest,
@@ -964,6 +1003,67 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
 /// grants it) but it's public and they're on the Free tier — see
 /// docs/SUBSCRIPTION_BONUS.md. This uses the red "locked"
 /// styling and offers a direct upgrade shortcut.
+/// Self-serve "Join"/"Joined" row for a public playlist — mirrors the
+/// join button on `event_detail_screen.dart`, but stays visible (as a
+/// disabled "Joined" state) after joining instead of disappearing, since
+/// this screen has room for a persistent status row.
+class _JoinPlaylistRow extends StatelessWidget {
+  const _JoinPlaylistRow({
+    required this.isMember,
+    required this.isJoining,
+    required this.onJoin,
+  });
+
+  final bool isMember;
+  final bool isJoining;
+  final VoidCallback onJoin;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: isMember || isJoining ? null : onJoin,
+        icon: isJoining
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(
+                isMember
+                    ? Icons.check_circle_rounded
+                    : Icons.group_add_outlined,
+                size: 18,
+                color: isMember
+                    ? _PlaylistColors.tertiary
+                    : _PlaylistColors.body,
+              ),
+        label: Text(
+          isJoining ? 'Joining…' : (isMember ? 'Joined' : 'Join playlist'),
+          style: TextStyle(
+            fontFamily: 'Sora',
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: isMember ? _PlaylistColors.tertiary : _PlaylistColors.body,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          side: BorderSide(
+            color: isMember
+                ? _PlaylistColors.tertiary.withValues(alpha: 0.5)
+                : _PlaylistColors.cardBorder,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PremiumRequiredBanner extends StatelessWidget {
   const _PremiumRequiredBanner({required this.onUpgrade});
 
@@ -992,8 +1092,8 @@ class _PremiumRequiredBanner extends StatelessWidget {
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Editing a public playlist requires Premium — upgrade your '
-                  'account, or ask the owner to make this playlist private.',
+                  'Editing a playlist requires Premium — upgrade your '
+                  'account to add, reorder, or remove songs.',
                   style: TextStyle(fontSize: 12, color: _PlaylistColors.muted),
                 ),
               ),
