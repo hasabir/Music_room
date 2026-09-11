@@ -287,17 +287,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   /// Resolves the coordinates to submit with a vote when [event] is
   /// location-restricted — sourced from the signed-in user's *profile*
   /// location (`Profile.location`, a free-text field like "Paris, France",
-  /// set in Edit Profile), not a live GPS fix — see DECISIONS.md. Throws a
+  /// set in Edit Profile), not a live GPS fix — see DECISIONS.md. The
+  /// backend resolves and caches `location`'s coordinates once, server-side,
+  /// whenever it's saved (`ProfileSerializer.update`), so this just reads
+  /// that cache instead of forward-geocoding on every vote. Throws a
   /// [String] with a user-facing reason (surfaced via
   /// [VoteNotPermittedException]'s handling, same as any other rejection)
-  /// if the profile has no location set, or if it can't be resolved to
-  /// real-world coordinates at all. Whether those coordinates end up
-  /// *close enough* to the venue is left to the backend's existing
-  /// `can_user_vote` distance check — this only ever resolves and hands
-  /// off a coordinate, it doesn't itself decide "too far".
-  Future<({double latitude, double longitude})?> _voterCoordinates(
-    Event event,
-  ) async {
+  /// if the profile has no location set, or it couldn't be resolved to
+  /// real-world coordinates when it was saved. Whether those coordinates
+  /// end up *close enough* to the venue is left to the backend's existing
+  /// `can_user_vote` distance check — this only ever hands off a
+  /// coordinate, it doesn't itself decide "too far".
+  ({double latitude, double longitude})? _voterCoordinates(Event event) {
     if (!event.locationRestrictionEnabled) return null;
 
     final location = _myProfile?.location.trim() ?? '';
@@ -305,11 +306,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       throw 'Set your location in your profile to vote in this event.';
     }
 
-    final coordinates = await forwardGeocodeCoordinates(location);
-    if (coordinates == null) {
-      throw 'We couldn\'t find "$location" — check your location in your profile.';
+    final latitude = _myProfile?.locationLatitude;
+    final longitude = _myProfile?.locationLongitude;
+    if (latitude == null || longitude == null) {
+      throw 'We couldn\'t resolve "$location" — try setting your location again in your profile.';
     }
-    return coordinates;
+    return (latitude: latitude, longitude: longitude);
   }
 
   /// Proactive counterpart to [_voterCoordinates] — run once after
@@ -325,7 +327,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     String? reason;
     try {
-      final coordinates = await _voterCoordinates(event);
+      final coordinates = _voterCoordinates(event);
       final venueLatitude = event.venueCenterLatitude;
       final venueLongitude = event.venueCenterLongitude;
       final allowedDistance = event.allowedDistanceMeters;
@@ -345,12 +347,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       }
     } on String catch (message) {
       reason = message;
-    } on ApiException catch (error) {
-      // The web-only geocoding path (see forwardGeocodeCoordinates) can
-      // fail with a specific backend-reported reason instead of just
-      // resolving to null — surface it the same way as the `String` case
-      // above rather than letting it go uncaught.
-      reason = error.message;
     }
     if (mounted && reason != null) {
       setState(() => _voteRestrictionReason = reason);
@@ -413,7 +409,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       if (entry.hasVoted) {
         await _eventApi.retractVote(widget.eventId, entry.id);
       } else {
-        final coordinates = await _voterCoordinates(event);
+        final coordinates = _voterCoordinates(event);
         await _eventApi.vote(
           widget.eventId,
           entry.id,

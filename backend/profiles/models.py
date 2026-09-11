@@ -143,6 +143,12 @@ class Profile(models.Model):
 
     # Friends-only information
     location = models.CharField(max_length=100, blank=True)
+    # Resolved once, server-side, whenever `location` is saved (see
+    # ProfileSerializer.update) — so a location-restricted event's vote
+    # check can compare against these directly instead of forward-geocoding
+    # the free-text `location` on every single vote attempt.
+    location_latitude = models.FloatField(null=True, blank=True)
+    location_longitude = models.FloatField(null=True, blank=True)
     favorite_artist = models.CharField(max_length=100, blank=True)
 
     # Private information

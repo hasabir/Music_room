@@ -3,13 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:geocoding/geocoding.dart';
 
-import '../core/api/api_client.dart';
-import '../core/api/api_config.dart';
-import '../core/auth/token_storage.dart';
-
 final _geocoding = Geocoding();
-final _apiClient = ApiClient();
-final _tokenStorage = TokenStorage();
 
 /// Reverse-geocodes [latitude]/[longitude] into a short human-readable
 /// label — neighborhood and/or city, plus country — for display instead of
@@ -40,60 +34,6 @@ Future<String?> reverseGeocodeLabel(double latitude, double longitude) async {
   } catch (_) {
     return null;
   }
-}
-
-/// Forward-geocodes a free-text place name (e.g. a profile's self-reported
-/// "location" field, like "Paris, France") into coordinates. Returns
-/// `null` if nothing could be resolved on the native path — no network, no
-/// geocoder, or the text just doesn't match a real place. See
-/// [reverseGeocodeLabel] for the opposite direction.
-///
-/// This one *can't* just degrade to "unavailable on web" like
-/// [reverseGeocodeLabel] does: it's what resolves a voter's profile
-/// location before every vote on a location-restricted event, so a
-/// permanently-null result would make that entire license rule
-/// unvotable from a browser — not "read-only", just broken. On web this
-/// calls the backend's own `/geocode/` endpoint instead (see
-/// docs/WEB_BONUS.md), which proxies the Google Geocoding API from the
-/// server side using a key the `geocoding` plugin has no way to reach —
-/// and, unlike the native path, lets a failure's [ApiException] propagate
-/// rather than collapsing it to `null`, since the backend already reports
-/// a specific, accurate reason ("no location found for X" vs. "the
-/// geocoding service is unreachable") that's worth showing over the
-/// generic message every caller here already falls back to on `null`.
-/// Every existing caller already catches [ApiException] alongside the
-/// plain `String` this file's callers throw for the `null` case, so this
-/// doesn't add a new catch clause anywhere it's used.
-Future<({double latitude, double longitude})?> forwardGeocodeCoordinates(String query) async {
-  final trimmed = query.trim();
-  if (trimmed.isEmpty) return null;
-  return kIsWeb
-      ? _forwardGeocodeViaBackend(trimmed)
-      : _forwardGeocodeViaPlugin(trimmed);
-}
-
-Future<({double latitude, double longitude})?> _forwardGeocodeViaPlugin(String query) async {
-  try {
-    final locations = await _geocoding.locationFromAddress(query);
-    if (locations.isEmpty) return null;
-    final first = locations.first;
-    return (latitude: first.latitude, longitude: first.longitude);
-  } catch (_) {
-    return null;
-  }
-}
-
-Future<({double latitude, double longitude})?> _forwardGeocodeViaBackend(String query) async {
-  final accessToken = await _tokenStorage.readAccessToken();
-  if (accessToken == null) return null;
-  final response = await _apiClient.get(
-    ApiConfig.geocodeUri(query),
-    accessToken: accessToken,
-  );
-  final latitude = (response['latitude'] as num?)?.toDouble();
-  final longitude = (response['longitude'] as num?)?.toDouble();
-  if (latitude == null || longitude == null) return null;
-  return (latitude: latitude, longitude: longitude);
 }
 
 /// Straight-line distance between two points, in meters — the Haversine

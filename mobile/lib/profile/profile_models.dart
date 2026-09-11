@@ -151,6 +151,8 @@ class UserProfile {
     required this.displayName,
     required this.bio,
     required this.location,
+    required this.locationLatitude,
+    required this.locationLongitude,
     required this.favoriteArtist,
     required this.phoneNumber,
     required this.birthday,
@@ -170,6 +172,8 @@ class UserProfile {
     displayName: json['display_name'] as String? ?? '',
     bio: json['bio'] as String? ?? '',
     location: json['location'] as String? ?? '',
+    locationLatitude: (json['location_latitude'] as num?)?.toDouble(),
+    locationLongitude: (json['location_longitude'] as num?)?.toDouble(),
     favoriteArtist: json['favorite_artist'] as String? ?? '',
     phoneNumber: json['phone_number'] as String? ?? '',
     birthday: json['birthday'] != null
@@ -200,6 +204,8 @@ class UserProfile {
   final String displayName;
   final String bio;
   final String location;
+  final double? locationLatitude;
+  final double? locationLongitude;
   final String favoriteArtist;
   final String phoneNumber;
   final DateTime? birthday;

@@ -1,5 +1,5 @@
 Manual QA test plan — Music Room
-Legend: [] = not yet run, [x] = passed, [!] = failed (add a note after the line)
+Legend: [] = not yet run, [✓] = passed, [!] = failed (add a note after the line)
 Test with at least two accounts (A = free, B = premium, H = host/owner) unless noted.
 
 
@@ -15,19 +15,19 @@ registration / email verification:
 [✓] try to log in before verifying email -> blocked, routes to the "verify your email" screen with resend (fixed: LoginView was returning `code` list-wrapped — `["email_not_verified"]` — via a raised serializers.ValidationError, which crashed the mobile client's `as String?` cast instead of routing anywhere. LoginSerializer now raises a plain EmailNotVerifiedError that LoginView turns into a flat-string `code` response; api_client.dart's `code` extraction is also now defensive against either shape.)
 [✓] resend verification email -> new email arrives, old code/link still works or is invalidated consistently
 [] open an expired verification link -> "verification expired" screen, can request a new one
-[] tap an already-used verification link a second time -> handled gracefully, no crash
+[✓] tap an already-used verification link a second time -> handled gracefully, no crash
 
 login / logout / sessions:
-[] log in with correct email + password -> lands on Home
-[] log in with wrong password -> clear error, account not locked out unexpectedly
-[] log in with an email that doesn't exist -> same generic error (no user enumeration)
-[] log out -> returns to Welcome screen, protected screens no longer reachable
+[✓] log in with correct email + password -> lands on Home
+[✓] log in with wrong password -> clear error, account not locked out unexpectedly
+[✓] log in with an email that doesn't exist -> same generic error (no user enumeration)
+[✓] log out -> returns to Welcome screen, protected screens no longer reachable
 [] force-quit the app while logged in, reopen -> still logged in (session persisted)
 [] let the access token expire while using the app -> silently refreshes via refresh token, no interruption
 [] let the refresh token also expire/become invalid -> cleanly signed out to Welcome, no crash loop
 
 Google sign-in / account linking:
-[] sign up via "Continue with Google" (new account) -> account created and logged in
+[✓] sign up via "Continue with Google" (new account) -> account created and logged in
 [] sign in via Google with an email that already has a password account -> linking/merge behavior is correct, no duplicate accounts
 [] link a Google account from Settings while already logged in with email/password -> linked, shown in Connected Accounts
 [] try to link a Google account already linked to a different Music Room user -> rejected with a clear message

@@ -15,7 +15,7 @@ ngrok version
 ngrok config check
 docker compose up -d db redis backend
 echo "Building the web release..."
-(cd mobile && flutter build web --release --no-web-resources-cdn)
+(cd mobile && flutter build web --release --no-web-resources-cdn --pwa-strategy=none)
 
 runtime_dir=$(mktemp -d "${TMPDIR:-/tmp}/music-room-ngrok.XXXXXX")
 proxy_pid=''

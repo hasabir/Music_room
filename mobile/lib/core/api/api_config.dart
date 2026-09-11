@@ -53,7 +53,6 @@ class ApiConfig {
   static const String playlistsEndpoint = '/api/v1/playlists/';
   static const String trackSearchEndpoint = '/api/v1/tracks/search/';
   static const String trackTrendingEndpoint = '/api/v1/tracks/trending/';
-  static const String geocodeEndpoint = '/api/v1/geocode/';
   static const String eventsEndpoint = '/api/v1/events/';
   static const String notificationsEndpoint = '/api/v1/user/notifications/';
 
@@ -132,12 +131,6 @@ class ApiConfig {
           .replace(queryParameters: {'q': query, if (byArtist) 'by': 'artist'});
   static Uri trackTrendingUri() => Uri.parse('$baseUrl$trackTrendingEndpoint');
 
-  /// Web-only — see `location_label.dart`'s `forwardGeocodeCoordinates`.
-  /// Proxies the Google Geocoding API server-side, for the one platform
-  /// the `geocoding` plugin can't run on directly.
-  static Uri geocodeUri(String query) =>
-      Uri.parse('$baseUrl$geocodeEndpoint')
-          .replace(queryParameters: {'q': query});
   static Uri trackPreviewUri(String externalId) => Uri.parse(
     '$baseUrl/api/v1/tracks/${Uri.encodeComponent(externalId)}/preview/',
   );

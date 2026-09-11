@@ -1,13 +1,13 @@
 import re
 
 import requests
-from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import generics, serializers, status
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 
+from .geocoding import geocode, GeocodingUnavailable
 from .throttles import GeocodeRateThrottle, TrackPreviewRateThrottle, TrackSearchRateThrottle
 
 class HomeView(APIView):
@@ -354,19 +354,17 @@ class TrackPreviewView(APIView):
         return Response({"preview_url": preview_url})
 
 
-GOOGLE_GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json"
-
-
 @extend_schema(
     summary="Forward-geocode a free-text location",
     description=(
         "Resolves a free-text place name (e.g. a profile's self-reported "
         "'location' field, like 'Paris, France') into coordinates via the "
-        "Google Geocoding API, using this server's own API key.\n\n"
-        "Exists for the web client: the Flutter `geocoding` plugin (what "
-        "native builds use for this) has no web implementation at all, but "
-        "a location-restricted event's vote check still needs *some* way "
-        "to resolve the voter's profile location — see docs/WEB_BONUS.md."
+        "Google Geocoding API, using this server's own API key. Shares its "
+        "underlying lookup (`api.geocoding.geocode`) with `ProfileSerializer`, "
+        "which resolves and caches a profile's own location the same way "
+        "whenever it's saved (see `Profile.location_latitude`/"
+        "`location_longitude`) — that cache is what location-restricted "
+        "event voting actually reads, not a call to this endpoint."
     ),
     parameters=[
         OpenApiParameter(name="q", type=str, required=True, description="Free-text place name."),
@@ -387,39 +385,13 @@ class GeocodeView(APIView):
         if not query:
             return Response({"detail": "Query parameter 'q' is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not settings.GOOGLE_API_KEY:
-            return Response(
-                {"detail": "Geocoding is not configured on the server."},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
         try:
-            response = requests.get(
-                GOOGLE_GEOCODING_URL,
-                params={"address": query, "key": settings.GOOGLE_API_KEY},
-                timeout=5,
-            )
-            response.raise_for_status()
-            payload = response.json()
-        except (requests.RequestException, ValueError):
-            return Response(
-                {"detail": "Unable to reach the geocoding service. Please try again."},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+            coordinates = geocode(query)
+        except GeocodingUnavailable as error:
+            return Response({"detail": str(error)}, status=status.HTTP_502_BAD_GATEWAY)
 
-        api_status = payload.get("status")
-        if api_status == "ZERO_RESULTS":
-            return Response({"detail": f'No location found for "{query}".'}, status=status.HTTP_400_BAD_REQUEST)
-        if api_status != "OK":
-            return Response(
-                {"detail": "Unable to reach the geocoding service. Please try again."},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        results = payload.get("results") or []
-        location = (results[0].get("geometry", {}).get("location", {}) if results else {})
-        latitude, longitude = location.get("lat"), location.get("lng")
-        if latitude is None or longitude is None:
+        if coordinates is None:
             return Response({"detail": f'No location found for "{query}".'}, status=status.HTTP_400_BAD_REQUEST)
 
+        latitude, longitude = coordinates
         return Response({"latitude": latitude, "longitude": longitude})

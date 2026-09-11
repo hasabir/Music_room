@@ -268,6 +268,8 @@ class _ProfileData {
       displayName: '',
       bio: '',
       location: '',
+      locationLatitude: null,
+      locationLongitude: null,
       favoriteArtist: '',
       phoneNumber: '',
       birthday: null,

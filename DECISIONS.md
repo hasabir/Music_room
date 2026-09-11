@@ -388,12 +388,23 @@ event is the host's explicit call and this automatic ladder never overrides or f
 requesting OS location permission on the spot. That's replaced with
 `_EventDetailScreenState._voterCoordinates`: it reads the signed-in user's own
 `UserProfile.location` (the free-text profile field, e.g. "Paris, France", edited in Edit
-Profile — `backend/profiles/models.py`'s `Profile.location`), forward-geocodes it client-side
-via the `geocoding` package (`mobile/lib/track_vote/location_label.dart`'s
-`forwardGeocodeCoordinates`), and sends *those* coordinates as the vote's `latitude`/
-`longitude` — exactly the same request shape as before, so `VoteView`/`can_user_vote`
-(`backend/events/permissions.py`) needed **no backend changes at all**; the distance math was
-always agnostic about where its input coordinates came from.
+Profile — `backend/profiles/models.py`'s `Profile.location`) and sends *its cached
+coordinates* as the vote's `latitude`/`longitude` — exactly the same request shape as before,
+so `VoteView`/`can_user_vote` (`backend/events/permissions.py`) needed **no backend changes at
+all**; the distance math was always agnostic about where its input coordinates came from.
+
+**Resolved once, server-side, on save — not forward-geocoded on every vote:** an earlier
+version of this had the client forward-geocode `location` itself (via the `geocoding` package
+on native, or the backend's `/geocode/` endpoint on web) on every vote and every upfront check.
+That meant a Google Geocoding API call per vote attempt for something that almost never
+changes. Now `Profile.location_latitude`/`location_longitude` cache the resolved coordinates,
+computed once by `ProfileSerializer.update` (`backend/profiles/serializers.py`) whenever
+`location` itself is saved, via the shared `api.geocoding.geocode` helper (also used by
+`GeocodeView` — the same Google Geocoding API call, factored out of duplicating it in two
+places). A location that can't be resolved just leaves the cached fields `null` — it never
+blocks saving the free-text field. `_voterCoordinates` is now a plain synchronous read of
+`_myProfile.locationLatitude`/`locationLongitude`, no network call involved, so it fires
+happily on every poll-driven upfront check without worrying about hammering the geocoding API.
 
 **Why the profile field over live GPS:** requested directly — checking "does this user even
 have a location set" and blocking with a clear reason otherwise reads as a *setting*
