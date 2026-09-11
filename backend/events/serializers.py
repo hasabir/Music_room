@@ -8,13 +8,13 @@ from .services import FREE_SUGGESTION_LIMIT, FREE_VOTE_LIMIT
 
 class EventSerializer(serializers.ModelSerializer):
     host = serializers.StringRelatedField(read_only=True)
-    song_count = serializers.ReadOnlyField()
-    voting_is_open = serializers.ReadOnlyField()
+    song_count = serializers.SerializerMethodField()
+    voting_is_open = serializers.SerializerMethodField()
     current_song = serializers.SerializerMethodField()
     current_position_seconds = serializers.SerializerMethodField()
     is_member = serializers.SerializerMethodField()
-    participant_count = serializers.ReadOnlyField()
-    like_count = serializers.ReadOnlyField()
+    participant_count = serializers.SerializerMethodField()
+    like_count = serializers.SerializerMethodField()
     has_liked = serializers.SerializerMethodField()
     my_suggestion_count = serializers.SerializerMethodField()
     my_suggestion_limit = serializers.SerializerMethodField()
@@ -51,7 +51,8 @@ class EventSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return False
-        return obj.members.filter(member=request.user).exists()
+        annotated = getattr(obj, "_list_is_member", None)
+        return annotated if annotated is not None else obj.members.filter(member=request.user).exists()
 
     def get_has_liked(self, obj):
         """Whether the signed-in user has liked this event
@@ -59,7 +60,33 @@ class EventSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return False
-        return obj.likes.filter(user=request.user).exists()
+        annotated = getattr(obj, "_list_has_liked", None)
+        return annotated if annotated is not None else obj.likes.filter(user=request.user).exists()
+
+    def get_song_count(self, obj):
+        if hasattr(obj, "_list_song_count"):
+            return obj._list_song_count
+        if "queue" in getattr(obj, "_prefetched_objects_cache", {}):
+            return len(obj.queue.all())
+        return obj.song_count
+
+    def get_voting_is_open(self, obj):
+        return self.get_song_count(obj) >= 2
+
+    def get_participant_count(self, obj):
+        if "guests" in getattr(obj, "_prefetched_objects_cache", {}) and \
+                "members" in obj._prefetched_objects_cache:
+            guest_ids = {guest.guest_id for guest in obj.guests.all()}
+            member_ids = {member.member_id for member in obj.members.all()}
+            return len(guest_ids | member_ids)
+        return obj.participant_count
+
+    def get_like_count(self, obj):
+        if hasattr(obj, "_list_like_count"):
+            return obj._list_like_count
+        if "likes" in getattr(obj, "_prefetched_objects_cache", {}):
+            return len(obj.likes.all())
+        return obj.like_count
 
     # ---- Bonus: FREE-tier suggestion/vote limits (docs/SUBSCRIPTION_BONUS.md) ----
     # The `*_limit` fields return `null` for a Premium user (or an
@@ -76,10 +103,12 @@ class EventSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return 0
-        participation = DailyParticipation.objects.filter(
-            user=request.user, date=timezone.localdate()
-        ).first()
-        return participation.suggestion_count if participation else 0
+        if "daily_suggestion_count" not in self.context:
+            participation = DailyParticipation.objects.filter(
+                user=request.user, date=timezone.localdate()
+            ).first()
+            self.context["daily_suggestion_count"] = participation.suggestion_count if participation else 0
+        return self.context["daily_suggestion_count"]
 
     def get_my_suggestion_limit(self, obj):
         request = self.context.get("request")
@@ -91,9 +120,11 @@ class EventSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return 0
-        return Vote.objects.filter(
-            voter=request.user, created_at__date=timezone.localdate()
-        ).count()
+        if "daily_vote_count" not in self.context:
+            self.context["daily_vote_count"] = Vote.objects.filter(
+                voter=request.user, created_at__date=timezone.localdate()
+            ).count()
+        return self.context["daily_vote_count"]
 
     def get_my_vote_limit(self, obj):
         request = self.context.get("request")

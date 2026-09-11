@@ -11,6 +11,7 @@ import '../core/playback/playback_controller.dart';
 import '../core/responsive/responsive.dart';
 import '../playlists/playlist_api.dart';
 import '../profile/profile_api.dart';
+import '../profile/require_profile_location.dart';
 import '../profile/profile_avatar.dart';
 import '../profile/profile_models.dart';
 import '../profile/profile_preview_sheet.dart';
@@ -324,6 +325,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   /// an actual vote attempt.
   Future<void> _checkLocationRestrictionUpfront(Event event) async {
     if (!event.locationRestrictionEnabled) return;
+    // Missing locations are collected when voting, so the action stays available.
+    if (_myProfile == null || !hasProfileCoordinates(_myProfile!)) return;
 
     String? reason;
     try {
@@ -402,13 +405,43 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Future<void> _toggleVote(EventSong entry) async {
+    if (_event == null || _changingVotes.isNotEmpty) return;
+    // Casting a new vote requires having joined (backend's can_user_vote
+    // mirrors can_user_suggest_track's join gate — see this file's
+    // _JoinToVoteDialog doc comment). Retracting an already-cast vote never
+    // hits this: if the row shows hasVoted, the vote was already legally
+    // cast, so there's nothing to gate. Shown as a popup rather than
+    // replacing the row (like the "Join to suggest a track" button does)
+    // since there are many vote rows and only one tap triggers this.
+    if (!entry.hasVoted && !_hasJoinedEvent) {
+      final joined = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _JoinToVoteDialog(
+          eventApi: _eventApi,
+          eventId: widget.eventId,
+        ),
+      );
+      if (!mounted || joined != true) return;
+      await _refetchState();
+      if (!mounted) return;
+    }
     final event = _event;
-    if (event == null || _changingVotes.contains(entry.id)) return;
+    if (event == null || _changingVotes.isNotEmpty) return;
     setState(() => _changingVotes.add(entry.id));
     try {
       if (entry.hasVoted) {
         await _eventApi.retractVote(widget.eventId, entry.id);
       } else {
+        if (event.locationRestrictionEnabled) {
+          final profile = await requireProfileLocation(
+            context,
+            action: 'vote in this event',
+            profile: _myProfile,
+          );
+          if (!mounted || profile == null) return;
+          _myProfile = profile;
+        }
         final coordinates = _voterCoordinates(event);
         await _eventApi.vote(
           widget.eventId,
@@ -2324,6 +2357,110 @@ class _EmptyQueue extends StatelessWidget {
         'Be the first to suggest a track.',
         style: TextStyle(color: _EventColors.muted),
       ),
+    ),
+  );
+}
+
+/// Popup shown when tapping vote on a track without having joined the
+/// event — the backend's `can_user_vote` now requires the same "actually
+/// in it" bar as `can_user_suggest_track` (host, self-joined member, or
+/// invited guest). Pops `true` once `POST .../join/` succeeds so the
+/// caller (`_EventDetailScreenState._toggleVote`) knows to proceed with
+/// the vote it was already about to cast; `false`/`null` (dismissed) means
+/// stay put.
+class _JoinToVoteDialog extends StatefulWidget {
+  const _JoinToVoteDialog({required this.eventApi, required this.eventId});
+  final EventApi eventApi;
+  final int eventId;
+
+  @override
+  State<_JoinToVoteDialog> createState() => _JoinToVoteDialogState();
+}
+
+class _JoinToVoteDialogState extends State<_JoinToVoteDialog> {
+  var _joining = false;
+  String? _error;
+
+  Future<void> _join() async {
+    if (_joining) return;
+    setState(() {
+      _joining = true;
+      _error = null;
+    });
+    try {
+      await widget.eventApi.joinEvent(widget.eventId);
+      if (mounted) Navigator.of(context).pop(true);
+    } on SessionExpiredException {
+      // No sign-out flow here — the next poll tick / API call on the
+      // parent screen will hit the same exception and handle it there.
+      if (mounted) {
+        setState(() => _error = 'Your session expired. Sign in again to continue.');
+      }
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _joining = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_joining,
+    child: AlertDialog(
+      backgroundColor: _EventColors.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      icon: const Icon(
+        Icons.how_to_reg_rounded,
+        color: _EventColors.tertiary,
+        size: 32,
+      ),
+      title: const Text(
+        'Join to vote',
+        style: TextStyle(color: _EventColors.headline),
+      ),
+      content: SizedBox(
+        width: 360,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'You need to join this event before you can vote on its queue.',
+                style: TextStyle(color: _EventColors.body),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: const TextStyle(color: EventBadgeColors.statusCanceled),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _joining ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Not now'),
+        ),
+        FilledButton.icon(
+          onPressed: _joining ? null : _join,
+          icon: _joining
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.how_to_reg_rounded),
+          label: Text(_joining ? 'Joining…' : 'Join event'),
+          style: FilledButton.styleFrom(
+            backgroundColor: _EventColors.tertiary,
+            foregroundColor: const Color(0xFF0E0E15),
+          ),
+        ),
+      ],
     ),
   );
 }

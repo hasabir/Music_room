@@ -10,7 +10,7 @@
 
 [x] if a user is invited to edit a playlist they must receive a notification informing them of the invitation. (Realtime toast already fired on invite via notify_user(kind="playlist_invite") in backend/playlists/views_collaborators.py. Added it to the persistent in-app Notifications list too: new GET /playlists/collaborators/mine/ endpoint, surfaced in notifications_screen.dart as a dismissible "invited to collaborate" card for invites from the last 7 days.)
 
-[] in the events section, free subscription users should be limited to 10 suggestions and 20 votes per day, not per events, and it must be clearly communicated to users that these limits apply to their overall activity across all events. This ensures that users understand the scope of their limitations and can plan their participation accordingly. (event_detail_screen.dart now shows a "10 suggestions / 20 votes per day" message when on Free, and the backend enforces the limit across all events, not per event.)
+[x] in the events section, free subscription users should be limited to 10 suggestions and 20 votes per day, not per events, and it must be clearly communicated to users that these limits apply to their overall activity across all events. This ensures that users understand the scope of their limitations and can plan their participation accordingly. (event_detail_screen.dart now shows a "10 suggestions / 20 votes per day" message when on Free, and the backend enforces the limit across all events, not per event.)
 
 
 [x] add joined button to playlist (self-serve join for public playlists — PlaylistMembership/is_member, PlaylistJoinView, "Join playlist"/"Joined" button on playlist detail screen)

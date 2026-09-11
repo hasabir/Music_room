@@ -427,7 +427,7 @@ class _EventHeroCard extends StatelessWidget {
           children: [
             Stack(
               children: [
-                Container(
+                SizedBox(
                   height: 140,
                   width: double.infinity,
                   child: Image.asset(

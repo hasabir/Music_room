@@ -242,15 +242,37 @@ on the event itself. Two booleans is the smallest change that makes the two rest
 genuinely independent without introducing a new table for something that's always 1:1 with the
 event.
 
-**Permission-check ordering, made explicit:** `can_user_vote` (`events/permissions.py`) now
-checks, in order: visibility → 2-songs-minimum → `invited_only` guest gate (only if
-`vote_permission == invited_only`) → time window (only if `time_restriction_enabled`) →
-location/distance (only if `location_restriction_enabled`). Both restriction checks apply
-regardless of which `vote_permission` is set — they're genuinely orthogonal to "who's allowed
-at all," not scoped to `invited_only` the way the old combined value implicitly was. When both
-are enabled and both would fail, time is checked first, so its message is what surfaces —
-this is a real, testable, and intentionally simple tie-break (`VoteRestrictionCombinationTests`
-locks it in), not an arbitrary implementation accident.
+**Permission-check ordering, made explicit:** `can_user_vote` (`events/permissions.py`) checks,
+in order: visibility → deleted → joined (see "Voting now requires having joined" below) →
+2-songs-minimum → `invited_only` guest gate (only if `vote_permission == invited_only`) → time
+window (only if `time_restriction_enabled`) → location/distance (only if
+`location_restriction_enabled`). Both restriction checks apply regardless of which
+`vote_permission` is set — they're genuinely orthogonal to "who's allowed at all," not scoped
+to `invited_only` the way the old combined value implicitly was. When both are enabled and
+both would fail, time is checked first, so its message is what surfaces — this is a real,
+testable, and intentionally simple tie-break (`VoteRestrictionCombinationTests` locks it in),
+not an arbitrary implementation accident.
+
+## Voting now requires having joined the event
+
+**Decision:** `can_user_vote` used to be deliberately independent of joining — a signed-in
+user who could merely *see* a public `everyone`-permission event could vote on it without ever
+calling `POST .../join/`, unlike suggesting a track (`can_user_suggest_track`), which always
+required it. That inconsistency is gone: `can_user_vote` now applies the exact same join gate
+as `can_user_suggest_track` (host, self-joined `EventMembership`, or `EventGuest` invite),
+checked right after the deleted-event check and before the 2-songs-minimum/invited-only/time/
+location checks, returning `"Join this event before voting."` when it fails. Retracting a vote
+(`VoteView.delete`) is unaffected — it only ever required visibility, not the full
+`can_user_vote` gate, since removing something that already exists and belongs to the caller
+isn't "casting a new vote."
+
+**Mobile:** `EventDetailScreen._toggleVote` mirrors this proactively — tapping vote on a track
+without having joined (per the existing `_hasJoinedEvent`) shows a `_JoinToVoteDialog` popup
+("Join to vote") instead of round-tripping to a 403 first. Accepting joins via the same
+`POST .../join/` the "Join to suggest a track" button already uses, then proceeds with the
+vote that was already in flight. This is a popup rather than replacing the vote button (the
+way "Join to suggest a track" replaces the suggest button) because there are many vote rows
+and only the tapped one should react.
 
 **Validation, split the same way:** `EventSerializer.validate()` no longer has one combined
 "all 5 fields required" block — it has two independent blocks, each checked (and reported)
@@ -506,3 +528,34 @@ retry pattern), `AuthUser.googleLinkedEmail` (now shown instead of the previous 
 email on the "linked" card), a confirm dialog before unlinking (matching
 `PlaylistCollaboratorsScreen`'s existing remove-confirmation pattern), and updated copy that no
 longer claims linking requires a matching email.
+
+## Load-test seed script: shared-event membership compared by id, not object equality
+
+**Decision:** `seed_load_test_data.py`'s final step is supposed to make every one of
+the 1,000 synthetic users a member of one `shared_event`, so `locustfile_write.py`
+and `websocket_probe.py` have a deterministic target every account can act on. The
+first real run of those two scripts (2026-09-11) failed almost every request with
+403s — not a capacity result, a seeding bug: the shared event had 1 member instead
+of 999. Re-running the identical `EventMembership.objects.bulk_create([... for user
+in users if user != shared_event.host], ignore_conflicts=True)` against freshly
+`.order_by('id')`-queried `User`/`Event` objects inserted all 999 rows correctly,
+which points at the `users`/`events` Python objects — reused, in memory, across
+several chained `bulk_create()` calls inside one large `@transaction.atomic()`
+block — as the likely source of a stale or aliased `host` reference, though the
+exact mechanism wasn't pinned down further. Rather than keep chasing that, the
+comparison was changed to `user.id != shared_event.host_id` (plain scalar columns,
+immune to any object-identity staleness regardless of cause), and a re-count
+(`CommandError` if it doesn't equal `len(users) - 1`) was added right after the
+bulk_create. `ignore_conflicts=True` silently drops rows that violate the unique
+constraint, so without this check a future under-seed would again look like a
+successful command and only surface as a wall of unexplained 403s in whatever load
+script ran against it next.
+
+**Consequence:** the already-seeded load database's live `EventMembership` rows for
+`shared_event` were backfilled directly (999 confirmed), and one leftover
+un-retracted `Vote` from the interrupted first run was cleared, since it was about
+to fail every subsequent attempt with "already voted" for the rest of any run
+against that account. Both were one-off data repairs on the existing load volume,
+not schema or application-code changes. See `docs/QUALITY_AND_CAPACITY.md`'s
+"Write-contention, WebSocket, and two-client results" section for the clean rerun
+this unblocked.

@@ -1,0 +1,74 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - load_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    cpus: 2.0
+    mem_limit: 2g
+    networks: [load_network]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory", "384mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    cpus: 0.5
+    mem_limit: 512m
+    networks: [load_network]
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: build/Dockerfile
+    command:
+      - sh
+      - -c
+      - >-
+        python manage.py migrate --noinput &&
+        python manage.py collectstatic --noinput &&
+        daphne -b 0.0.0.0 -p 8000 config.asgi:application
+    env_file: [.env]
+    environment:
+      DEBUG: "0"
+      DB_HOST: db
+      DB_PORT: "5432"
+      REDIS_HOST: redis
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    cpus: 4.0
+    mem_limit: 4g
+    networks: [load_network]
+
+  nginx:
+    build:
+      context: ./nginx
+    ports:
+      - "18082:80"
+    volumes:
+      - ./nginx/nginx.load.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [backend]
+    cpus: 0.5
+    mem_limit: 256m
+    networks: [load_network]
+
+volumes:
+  load_postgres_data:
+
+networks:
+  load_network:
+    driver: bridge

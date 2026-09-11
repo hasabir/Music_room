@@ -149,6 +149,7 @@ class Profile(models.Model):
     # the free-text `location` on every single vote attempt.
     location_latitude = models.FloatField(null=True, blank=True)
     location_longitude = models.FloatField(null=True, blank=True)
+    location_from_gps = models.BooleanField(default=False)
     favorite_artist = models.CharField(max_length=100, blank=True)
 
     # Private information

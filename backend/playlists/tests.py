@@ -255,9 +255,9 @@ class PlaylistCollaboratorTests(APITestCase):
         self.client.force_authenticate(self.collaborator)
         response = self.client.get("/api/v1/playlists/collaborators/mine/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["playlist"], self.playlist_id)
-        self.assertEqual(response.data[0]["playlist_title"], "Private Mix")
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertEqual(response.data["results"][0]["playlist"], self.playlist_id)
+        self.assertEqual(response.data["results"][0]["playlist_title"], "Private Mix")
 
     def test_stranger_sees_no_invites(self):
         self.client.post(self.collaborators_url, {"user_id": self.collaborator.id})
@@ -265,7 +265,8 @@ class PlaylistCollaboratorTests(APITestCase):
         self.client.force_authenticate(self.stranger)
         response = self.client.get("/api/v1/playlists/collaborators/mine/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")

@@ -131,6 +131,12 @@ class QueueAndVotingTests(APITestCase):
     def _login(self, user):
         self.client.force_authenticate(user)
 
+    def _join(self, user):
+        """Log in as `user` and self-join `self.event_id` — voting now
+        requires it (`can_user_vote`), same as suggesting a track."""
+        self._login(user)
+        self.client.post(f"/api/v1/events/{self.event_id}/join/")
+
     def _add_song(self, title, artist):
         return self.client.post(self.queue_url, {"title": title, "artist": artist})
 
@@ -260,7 +266,7 @@ class QueueAndVotingTests(APITestCase):
 
         self.client.post(vote_url, {})  # host votes
 
-        self._login(self.voter1)
+        self._join(self.voter1)
         response = self.client.post(vote_url, {})
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["vote_count"], 2)
@@ -272,7 +278,7 @@ class QueueAndVotingTests(APITestCase):
         # Vote for Song B twice (from two different users) so it outranks A
         vote_url_b = f"{self.queue_url}{add_b.data['id']}/vote/"
         self.client.post(vote_url_b, {})
-        self._login(self.voter1)
+        self._join(self.voter1)
         self.client.post(vote_url_b, {})
 
         response = self.client.get(self.queue_url)
@@ -310,7 +316,7 @@ class QueueAndVotingTests(APITestCase):
         vote_url_b = f"{self.queue_url}{add_b.data['id']}/vote/"
 
         self.client.post(vote_url_a, {})  # host votes A -> A reaches 1 first
-        self._login(self.voter1)
+        self._join(self.voter1)
         self.client.post(vote_url_b, {})  # voter1 votes B -> B reaches 1 second
 
         response = self.client.get(self.queue_url)
@@ -318,7 +324,7 @@ class QueueAndVotingTests(APITestCase):
 
         self._login(self.host)
         self.client.delete(vote_url_a)  # A drops to 0
-        self._login(self.voter2)
+        self._join(self.voter2)
         self.client.post(vote_url_a, {})  # A climbs back to 1, later than B's 1
 
         response = self.client.get(self.queue_url)
@@ -383,6 +389,12 @@ class PlaybackSyncTests(APITestCase):
 
     def _login(self, user):
         self.client.force_authenticate(user)
+
+    def _join(self, user):
+        """Log in as `user` and self-join `self.event_id` — voting now
+        requires it (`can_user_vote`), same as suggesting a track."""
+        self._login(user)
+        self.client.post(f"/api/v1/events/{self.event_id}/join/")
 
     def _add_song(self, title, artist, **extra):
         return self.client.post(self.queue_url, {"title": title, "artist": artist, **extra})
@@ -453,7 +465,7 @@ class PlaybackSyncTests(APITestCase):
         # above it, still well before Song A's clip would naturally finish.
         vote_url_b = f"{self.queue_url}{add_b.data['id']}/vote/"
         self.client.post(vote_url_b, {})
-        self._login(self.voter1)
+        self._join(self.voter1)
         self.client.post(vote_url_b, {})
 
         # Song A is still on air — a vote only ever reorders who's next,
@@ -1393,6 +1405,14 @@ class VoteRestrictionCombinationTests(APITestCase):
         self.event_song_id = add_b.data["id"]
         self.vote_url = f"{self.queue_url}{self.event_song_id}/vote/"
 
+    def _login_voter(self):
+        """Log in as `self.voter` and self-join the event — voting now
+        requires it (`can_user_vote`), same as suggesting a track. Every
+        test in this class exercises the time/location restriction checks
+        specifically, which only run *after* the join gate."""
+        self.client.force_authenticate(self.voter)
+        self.client.post(f"/api/v1/events/{self.event_id}/join/")
+
     def _enable_time(self, opens_at, closes_at):
         self.client.patch(self.event_url, {
             "time_restriction_enabled": True,
@@ -1412,7 +1432,7 @@ class VoteRestrictionCombinationTests(APITestCase):
         now = timezone.now()
         self._enable_time(now - timedelta(hours=2), now - timedelta(hours=1))  # already closed
 
-        self.client.force_authenticate(self.voter)
+        self._login_voter()
         response = self.client.post(self.vote_url, {})  # no lat/long — location isn't enabled
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(response.data["detail"], "Voting has closed for this event.")
@@ -1421,14 +1441,14 @@ class VoteRestrictionCombinationTests(APITestCase):
         now = timezone.now()
         self._enable_time(now - timedelta(hours=1), now + timedelta(hours=1))
 
-        self.client.force_authenticate(self.voter)
+        self._login_voter()
         response = self.client.post(self.vote_url, {})
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_location_only_blocks_when_too_far_even_with_time_disabled(self):
         self._enable_location()
 
-        self.client.force_authenticate(self.voter)
+        self._login_voter()
         response = self.client.post(self.vote_url, {
             "latitude": self.FAR_LAT, "longitude": self.FAR_LON,
         }, format="json")
@@ -1438,7 +1458,7 @@ class VoteRestrictionCombinationTests(APITestCase):
     def test_location_only_requires_coordinates_when_enabled(self):
         self._enable_location()
 
-        self.client.force_authenticate(self.voter)
+        self._login_voter()
         response = self.client.post(self.vote_url, {})  # no coordinates at all
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(response.data["detail"], "Your location is required to vote on this event.")
@@ -1446,7 +1466,7 @@ class VoteRestrictionCombinationTests(APITestCase):
     def test_location_only_allows_voting_near_venue(self):
         self._enable_location()
 
-        self.client.force_authenticate(self.voter)
+        self._login_voter()
         response = self.client.post(self.vote_url, {
             "latitude": self.VENUE_LAT, "longitude": self.VENUE_LON,
         }, format="json")
@@ -1457,7 +1477,7 @@ class VoteRestrictionCombinationTests(APITestCase):
         self._enable_time(now - timedelta(hours=1), now + timedelta(hours=1))
         self._enable_location()
 
-        self.client.force_authenticate(self.voter)
+        self._login_voter()
         response = self.client.post(self.vote_url, {
             "latitude": self.VENUE_LAT, "longitude": self.VENUE_LON,
         }, format="json")
@@ -1468,7 +1488,7 @@ class VoteRestrictionCombinationTests(APITestCase):
         self._enable_time(now - timedelta(hours=1), now + timedelta(hours=1))
         self._enable_location()
 
-        self.client.force_authenticate(self.voter)
+        self._login_voter()
         response = self.client.post(self.vote_url, {
             "latitude": self.FAR_LAT, "longitude": self.FAR_LON,
         }, format="json")
@@ -1480,7 +1500,7 @@ class VoteRestrictionCombinationTests(APITestCase):
         self._enable_time(now - timedelta(hours=2), now - timedelta(hours=1))  # closed
         self._enable_location()
 
-        self.client.force_authenticate(self.voter)
+        self._login_voter()
         response = self.client.post(self.vote_url, {
             "latitude": self.FAR_LAT, "longitude": self.FAR_LON,  # also fails location
         }, format="json")

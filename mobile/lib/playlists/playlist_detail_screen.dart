@@ -951,7 +951,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
         : ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             children: [
-              if (inlineHeader != null) inlineHeader,
+              ?inlineHeader,
               for (final song in _songs)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),

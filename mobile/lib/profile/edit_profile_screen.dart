@@ -69,6 +69,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController _usernameController;
   late final TextEditingController _bioController;
   late final TextEditingController _locationController;
+  double? _gpsLatitude;
+  double? _gpsLongitude;
   late final TextEditingController _favoriteArtistController;
   late final TextEditingController _phoneController;
 
@@ -114,14 +116,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  /// Fills [_locationController] from the device's current GPS position,
-  /// reverse-geocoded into a short "City, Country" label — mirroring
-  /// `create_event_screen.dart`'s `_useCurrentLocation` (same permission
-  /// flow, same `reverseGeocodeLabel` call), except there's no separate
-  /// coordinate state to keep here: `Profile.location` only ever stores
-  /// free text, so the resolved label (or, if reverse geocoding fails,
-  /// the raw coordinates) is written straight into the text field the
-  /// user could otherwise have typed into by hand.
+  /// Captures exact GPS coordinates and a read-only display label.
   Future<void> _useCurrentLocationForProfile() async {
     setState(() {
       _isLocating = true;
@@ -151,6 +146,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       );
       if (!mounted) return;
       setState(() {
+        _gpsLatitude = position.latitude;
+        _gpsLongitude = position.longitude;
         _locationController.text =
             label ??
             '${position.latitude.toStringAsFixed(4)}, '
@@ -302,6 +299,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         displayName: _displayNameController.text.trim(),
         bio: _bioController.text.trim(),
         location: _locationController.text.trim(),
+        locationLatitude: _gpsLatitude,
+        locationLongitude: _gpsLongitude,
         favoriteArtist: _favoriteArtistController.text.trim(),
         phoneNumber: _phoneController.text.trim(),
         birthday: _birthday,
@@ -357,6 +356,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
       ),
       'location' => _EditField(
+        readOnly: true,
         label: 'LOCATION',
         controller: _locationController,
         icon: Icons.location_on_outlined,
@@ -826,9 +826,11 @@ class _EditField extends StatelessWidget {
     this.keyboardType,
     this.trailing,
     this.suffixIcon,
+    this.readOnly = false,
   });
 
   final String label;
+  final bool readOnly;
   final TextEditingController controller;
   final IconData icon;
   final int maxLines;
@@ -860,12 +862,13 @@ class _EditField extends StatelessWidget {
                 ),
               ),
             ),
-            if (trailing != null) trailing!,
+            ?trailing,
           ],
         ),
         const SizedBox(height: 8),
         TextField(
           controller: controller,
+          readOnly: readOnly,
           maxLines: maxLines,
           keyboardType: keyboardType,
           style: const TextStyle(color: _EditColors.body, fontFamily: 'Sora'),

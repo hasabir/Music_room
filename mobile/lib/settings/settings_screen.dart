@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import '../auth/auth_api.dart';
 import '../auth/auth_models.dart';
-import '../auth/email_verification_pending_screen.dart';
 import '../auth/welcome_screen.dart';
 import '../core/auth/token_storage.dart';
 import '../notifications/notification_service.dart';
@@ -81,15 +80,6 @@ class SettingsScreen extends StatelessWidget {
     }
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const UpdatePasswordScreen()));
-  }
-
-  void _onVerificationStatus(BuildContext context) {
-    if (authUser.isEmailVerified) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => EmailVerificationPendingScreen(email: authUser.email),
-      ),
-    );
   }
 
   Future<void> _onLogout(BuildContext context) async {

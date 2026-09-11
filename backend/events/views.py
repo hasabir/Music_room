@@ -1,6 +1,6 @@
 # events/views.py
 from django.db import IntegrityError , transaction
-from django.db.models import F, Q
+from django.db.models import Exists, F, OuterRef, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, status
@@ -12,7 +12,7 @@ from .throttles import VoteRateThrottle, AddSongRateThrottle, CreateEventRateThr
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 from authentication.utils import log_action
 
-from .models import Event, Song, EventSong, Vote, EventLike
+from .models import Event, EventGuest, EventMembership, Song, EventSong, Vote, EventLike
 from .serializers import (
     EventSerializer, AddSongToQueueSerializer, EventSongSerializer
 )
@@ -65,7 +65,19 @@ class EventListCreateView(generics.ListCreateAPIView):
         # event page still show "this event has been deleted".
         return Event.objects.filter(
             Q(visibility="public") | Q(host=user) | Q(guests__guest=user)
-        ).exclude(status=Event.STATUS_DELETED).distinct()
+        ).exclude(status=Event.STATUS_DELETED).annotate(
+            _list_is_member=Exists(
+                EventMembership.objects.filter(event=OuterRef("pk"), member=user)
+            ),
+            _list_has_liked=Exists(
+                EventLike.objects.filter(event=OuterRef("pk"), user=user)
+            ),
+        ).select_related("host", "current_song__song").prefetch_related(
+            Prefetch("queue", queryset=EventSong.objects.only("event_id")),
+            Prefetch("likes", queryset=EventLike.objects.only("event_id", "user_id")),
+            Prefetch("guests", queryset=EventGuest.objects.only("event_id", "guest_id")),
+            Prefetch("members", queryset=EventMembership.objects.only("event_id", "member_id")),
+        ).distinct()
 
     def perform_create(self, serializer):
         event = serializer.save(host=self.request.user)

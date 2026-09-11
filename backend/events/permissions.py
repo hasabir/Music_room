@@ -47,9 +47,8 @@ def can_user_suggest_track(user, event):
     at all, so having a guest row is how you're "in" one there). Being
     able to *see* a public event isn't enough on its own — the whole
     point of this gate is to distinguish "just browsing" from "actually
-    joined", which is also why it's independent of vote_permission:
-    voting has its own, separate everyone/invited_only gate
-    (can_user_vote) and no join requirement at all.
+    joined". `can_user_vote` applies this exact same join gate (see its
+    own docstring) before its separate everyone/invited_only check.
     """
     if not can_user_see_event(user, event):
         return False, "You do not have access to this event."
@@ -72,10 +71,20 @@ def can_user_vote(user, event, user_latitude=None, user_longitude=None):
     (when/where they're allowed) are independent and composable — an
     `everyone` event can still have a time and/or location restriction
     layered on top, same as an `invited_only` one. Checked in order: see
-    event -> enough songs -> invited-only gate -> time restriction (if
-    enabled) -> location restriction (if enabled). Both restrictions must
-    pass if both are enabled; time is checked first, so a vote attempt
-    failing both surfaces the time message.
+    event -> deleted -> joined -> enough songs -> invited-only gate -> time
+    restriction (if enabled) -> location restriction (if enabled). Both
+    restrictions must pass if both are enabled; time is checked first, so a
+    vote attempt failing both surfaces the time message.
+
+    Requires having actually joined, same gate and same rule as
+    `can_user_suggest_track`: host -> always yes; otherwise a self-joined
+    `EventMembership` (public events) or an `EventGuest` invite (private
+    events have no separate self-join, so a guest row is how you're "in"
+    one) is required. Merely being able to *see* a public event isn't
+    enough — this used to be voting-permission-independent (no join
+    requirement at all), but that let anyone who could just see a public
+    event vote on it without ever joining; unified with suggest-track's
+    rule so both actions require the same "actually in it" bar.
     """
     # Must be able to see the event at all first
     if not can_user_see_event(user, event):
@@ -88,13 +97,16 @@ def can_user_vote(user, event, user_latitude=None, user_longitude=None):
     if event.status == "deleted":
         return False, "This event has been deleted."
 
+    is_host = event.host_id == user.id
+    is_guest = event.guests.filter(guest=user).exists()
+    if not (is_host or is_guest or event.members.filter(member=user).exists()):
+        return False, "Join this event before voting."
+
     # Must have at least 2 songs in the queue before any voting can happen
     if not event.voting_is_open:
         return False, "At least 2 songs must be in the queue before voting can start."
 
     if event.vote_permission == "invited_only":
-        is_host = event.host_id == user.id
-        is_guest = event.guests.filter(guest=user).exists()
         if not (is_host or is_guest):
             return False, "Only invited guests can vote on this event."
 

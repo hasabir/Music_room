@@ -118,17 +118,61 @@ class AvatarPreset {
   final Color glowColor;
 
   static const _basePath = 'assets/images/avatars';
-  static const p1 = AvatarPreset._('1', '$_basePath/avatar1.jpg', Color(0xFFFF7A59));
-  static const p2 = AvatarPreset._('2', '$_basePath/avatar2.jpg', Color(0xFF818CF8));
-  static const p3 = AvatarPreset._('3', '$_basePath/avatar3.jpg', Color(0xFF2FD9F4));
-  static const p4 = AvatarPreset._('4', '$_basePath/avatar4.jpg', Color(0xFFFBBF24));
-  static const p5 = AvatarPreset._('5', '$_basePath/avatar5.jpg', Color(0xFF38BDF8));
-  static const p6 = AvatarPreset._('6', '$_basePath/avatar6.jpg', Color(0xFF34D399));
-  static const p7 = AvatarPreset._('7', '$_basePath/avatar9.jpg', Color(0xFFA78BFA));
-  static const p8 = AvatarPreset._('8', '$_basePath/avatart7.jpg', Color(0xFFF472B6));
-  static const p9 = AvatarPreset._('9', '$_basePath/avatart8.jpg', Color(0xFFFF7A59));
-  static const p10 = AvatarPreset._('10', '$_basePath/avatart9.jpg', Color(0xFF2FD9F4));
-  static const p11 = AvatarPreset._('11', '$_basePath/avatart10.jpg', Color(0xFF34D399));
+  static const p1 = AvatarPreset._(
+    '1',
+    '$_basePath/avatar1.jpg',
+    Color(0xFFFF7A59),
+  );
+  static const p2 = AvatarPreset._(
+    '2',
+    '$_basePath/avatar2.jpg',
+    Color(0xFF818CF8),
+  );
+  static const p3 = AvatarPreset._(
+    '3',
+    '$_basePath/avatar3.jpg',
+    Color(0xFF2FD9F4),
+  );
+  static const p4 = AvatarPreset._(
+    '4',
+    '$_basePath/avatar4.jpg',
+    Color(0xFFFBBF24),
+  );
+  static const p5 = AvatarPreset._(
+    '5',
+    '$_basePath/avatar5.jpg',
+    Color(0xFF38BDF8),
+  );
+  static const p6 = AvatarPreset._(
+    '6',
+    '$_basePath/avatar6.jpg',
+    Color(0xFF34D399),
+  );
+  static const p7 = AvatarPreset._(
+    '7',
+    '$_basePath/avatar9.jpg',
+    Color(0xFFA78BFA),
+  );
+  static const p8 = AvatarPreset._(
+    '8',
+    '$_basePath/avatart7.jpg',
+    Color(0xFFF472B6),
+  );
+  static const p9 = AvatarPreset._(
+    '9',
+    '$_basePath/avatart8.jpg',
+    Color(0xFFFF7A59),
+  );
+  static const p10 = AvatarPreset._(
+    '10',
+    '$_basePath/avatart9.jpg',
+    Color(0xFF2FD9F4),
+  );
+  static const p11 = AvatarPreset._(
+    '11',
+    '$_basePath/avatart10.jpg',
+    Color(0xFF34D399),
+  );
 
   /// All 11 presets, in the order they're offered in the avatar grid.
   static const all = [p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11];
@@ -153,6 +197,7 @@ class UserProfile {
     required this.location,
     required this.locationLatitude,
     required this.locationLongitude,
+    this.locationFromGps = false,
     required this.favoriteArtist,
     required this.phoneNumber,
     required this.birthday,
@@ -174,6 +219,7 @@ class UserProfile {
     location: json['location'] as String? ?? '',
     locationLatitude: (json['location_latitude'] as num?)?.toDouble(),
     locationLongitude: (json['location_longitude'] as num?)?.toDouble(),
+    locationFromGps: json['location_from_gps'] as bool? ?? false,
     favoriteArtist: json['favorite_artist'] as String? ?? '',
     phoneNumber: json['phone_number'] as String? ?? '',
     birthday: json['birthday'] != null
@@ -206,6 +252,7 @@ class UserProfile {
   final String location;
   final double? locationLatitude;
   final double? locationLongitude;
+  final bool locationFromGps;
   final String favoriteArtist;
   final String phoneNumber;
   final DateTime? birthday;
@@ -314,7 +361,8 @@ class FriendRequest {
       otherUserFirstName: other['first_name'] as String? ?? '',
       otherUserLastName: other['last_name'] as String? ?? '',
       otherUserAvatar: other['avatar'] as String?,
-      otherUserAvatarType: other['avatar_type'] as String? ?? profileAvatarTypePreset,
+      otherUserAvatarType:
+          other['avatar_type'] as String? ?? profileAvatarTypePreset,
     );
   }
 

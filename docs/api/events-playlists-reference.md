@@ -205,10 +205,11 @@ Read via `request.data.get("latitude")` / `.get("longitude")` (not a DRF seriali
 
 Permission logic (`can_user_vote` in `backend/events/permissions.py`), evaluated in order:
 1. Caller must be able to see the event (`can_user_see_event`) → else `403 {"detail": "You do not have access to this event."}`
-2. `event.voting_is_open` must be true (≥2 songs in queue) → else `403 {"detail": "At least 2 songs must be in the queue before voting can start."}`
-3. If `vote_permission == "everyone"` → allowed.
-4. If `vote_permission == "invited_only"` → allowed iff host or in `EventGuest` list, else `403 {"detail": "Only invited guests can vote on this event."}`
-5. If `vote_permission == "location_time_restricted"`:
+2. Caller must have actually joined — host, self-joined `EventMembership`, or `EventGuest` invite (same gate as suggesting a track, see `can_user_suggest_track`) → else `403 {"detail": "Join this event before voting."}`
+3. `event.voting_is_open` must be true (≥2 songs in queue) → else `403 {"detail": "At least 2 songs must be in the queue before voting can start."}`
+4. If `vote_permission == "everyone"` → allowed.
+5. If `vote_permission == "invited_only"` → allowed iff host or in `EventGuest` list, else `403 {"detail": "Only invited guests can vote on this event."}`
+6. If `vote_permission == "location_time_restricted"`:
    - `now < voting_opens_at` → `403 {"detail": "Voting has not opened yet for this event."}`
    - `now > voting_closes_at` → `403 {"detail": "Voting has closed for this event."}`
    - missing `latitude`/`longitude` in request → `403 {"detail": "Your location is required to vote on this event."}`

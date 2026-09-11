@@ -84,6 +84,7 @@ class VoteLimitConcurrencyTests(TransactionTestCase):
             email="conc_free2@test.com", password="x", registration_method="email"
         )
         self.event = Event.objects.create(host=self.host, title="Concurrency Party 2", visibility="public")
+        self.event.members.create(member=self.user)
         self.songs = []
         for i in range(FREE_VOTE_LIMIT + 5):
             song = Song.objects.create(title=f"Concurrency Song {i}", artist="Artist")

@@ -1,6 +1,6 @@
 # playlists/views.py
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Exists, OuterRef, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.views import APIView
@@ -13,7 +13,7 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResp
 from authentication.utils import log_action
 from events.models import Song
 
-from .models import Playlist, PlaylistSong, PlaylistMembership
+from .models import Playlist, PlaylistCollaborator, PlaylistSong, PlaylistMembership
 from .serializers import (
     PlaylistSerializer, AddSongToPlaylistSerializer, MoveSongSerializer, PlaylistSongSerializer,
     PlaylistMembershipSerializer
@@ -58,7 +58,15 @@ class PlaylistListCreateView(generics.ListCreateAPIView):
         user = self.request.user
         return Playlist.objects.filter(
             Q(visibility="public") | Q(owner=user) | Q(collaborators__collaborator=user)
-        ).distinct()
+        ).annotate(
+            _list_song_count=Count("songs", distinct=True),
+            _list_is_collaborator=Exists(
+                PlaylistCollaborator.objects.filter(playlist=OuterRef("pk"), collaborator=user)
+            ),
+            _list_is_member=Exists(
+                PlaylistMembership.objects.filter(playlist=OuterRef("pk"), member=user)
+            ),
+        ).select_related("owner").distinct()
 
     def perform_create(self, serializer):
         playlist = serializer.save(owner=self.request.user)

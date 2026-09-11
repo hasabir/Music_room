@@ -1,12 +1,12 @@
 import 'package:mobile/core/responsive/responsive.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+
+import '../profile/require_profile_location.dart';
 
 import '../core/api/api_client.dart';
 import 'event_api.dart';
 import 'event_detail_screen.dart';
 import 'event_models.dart';
-import 'location_label.dart';
 
 class _CreateEventColors {
   static const background = Color(0xFF0E0E15);
@@ -69,11 +69,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   double? _venueCenterLatitude;
   double? _venueCenterLongitude;
 
-  /// Human-readable ("Neighborhood, City, Country") reverse-geocoded label
-  /// for [_venueCenterLatitude]/[_venueCenterLongitude], shown on the
-  /// locate button instead of raw coordinates — see [reverseGeocodeLabel].
-  /// `null` while resolving, or if reverse geocoding failed/found nothing,
-  /// in which case the raw coordinates are shown as a fallback.
+  /// Saved profile location associated with the selected venue coordinates.
   String? _venueLabel;
   var _isLocating = false;
 
@@ -125,40 +121,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   }
 
   Future<void> _useCurrentLocation() async {
+    if (_isLocating) return;
     setState(() {
       _isLocating = true;
       _error = null;
     });
 
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        throw 'Turn on location services to use this.';
-      }
-
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        throw 'Location permission was denied.';
-      }
-
-      final position = await Geolocator.getCurrentPosition();
-      if (!mounted) return;
-      setState(() {
-        _venueCenterLatitude = position.latitude;
-        _venueCenterLongitude = position.longitude;
-        _venueLabel = null;
-      });
-      // Best-effort — a failed/empty reverse geocode just leaves the raw
-      // coordinates shown (see the label's fallback below); it never
-      // blocks using the location that was already captured.
-      final label = await reverseGeocodeLabel(
-        position.latitude,
-        position.longitude,
+      final profile = await requireProfileLocation(
+        context,
+        action: 'set the event venue',
       );
-      if (mounted) setState(() => _venueLabel = label);
+      if (!mounted || profile == null) return;
+      setState(() {
+        _venueCenterLatitude = profile.locationLatitude;
+        _venueCenterLongitude = profile.locationLongitude;
+        _venueLabel = profile.location;
+      });
     } catch (error) {
       if (!mounted) return;
       setState(
@@ -173,7 +152,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   /// prefers the reverse-geocoded [_venueLabel] and only falls back to raw
   /// coordinates if that lookup failed or found nothing.
   String _venueButtonLabel() {
-    if (_venueCenterLatitude == null) return 'Use my current location';
+    if (_venueCenterLatitude == null) return 'Use my profile location';
     if (_venueLabel != null) return _venueLabel!;
     if (_isLocating) return 'Locating…';
     return '${_venueCenterLatitude!.toStringAsFixed(4)}, '
@@ -441,8 +420,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       subtitle:
                           'Only allow voting within a radius of the venue.',
                       value: _locationRestrictionEnabled,
-                      onChanged: (value) =>
-                          setState(() => _locationRestrictionEnabled = value),
+                      onChanged: (value) {
+                        setState(() => _locationRestrictionEnabled = value);
+                        if (value && _venueCenterLatitude == null) {
+                          _useCurrentLocation();
+                        }
+                      },
                     ),
                     if (_locationRestrictionEnabled) ...[
                       const SizedBox(height: 16),
@@ -839,20 +822,18 @@ class _RestrictionToggle extends StatelessWidget {
   }
 }
 
-/// A row (or stacked column, for longer labels) of mutually-exclusive
-/// pill choices — used for visibility and the voting license.
+/// A row of mutually-exclusive pill choices — used for visibility and the
+/// voting license.
 class _SegmentedChoice extends StatelessWidget {
   const _SegmentedChoice({
     required this.options,
     required this.value,
     required this.onChanged,
-    this.vertical = false,
   });
 
   final Map<String, String> options;
   final String value;
   final ValueChanged<String> onChanged;
-  final bool vertical;
 
   @override
   Widget build(BuildContext context) {
@@ -864,17 +845,6 @@ class _SegmentedChoice extends StatelessWidget {
           onTap: () => onChanged(entry.key),
         ),
     ];
-
-    if (vertical) {
-      return Column(
-        children: [
-          for (var i = 0; i < chips.length; i++) ...[
-            if (i > 0) const SizedBox(height: 10),
-            SizedBox(width: double.infinity, child: chips[i]),
-          ],
-        ],
-      );
-    }
 
     return Row(
       children: [

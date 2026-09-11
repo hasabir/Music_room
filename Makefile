@@ -1,4 +1,4 @@
-.PHONY: help build up down restart logs shell migrate makemigrations createsuperuser test clean flutter-web flutter-web-build ngrok
+.PHONY: help build up down restart logs shell migrate makemigrations createsuperuser test clean flutter-web flutter-web-build ngrok load-up load-down load-seed load-read load-write load-websocket load-e2e
 
 help:
 	@echo "Music Room - Development Commands"
@@ -23,6 +23,13 @@ help:
 	@echo "make setup          - Initial setup (build, migrate, create superuser)"
 	@echo "make dev            - Start development workflow (up + logs)"
 	@echo "make db             - Load test data into the database"
+	@echo "make load-up        - Start the isolated production-like load stack"
+	@echo "make load-seed      - Seed synthetic load data and copy ignored credentials"
+	@echo "make load-read USERS=30 TIME=3m - Run an authenticated read benchmark"
+	@echo "make load-write EVENT_ID=1 EVENT_SONG_ID=1 - Run vote/retract contention"
+	@echo "make load-websocket EVENT_ID=1 EVENT_SONG_ID=1 - Probe WebSocket fan-out"
+	@echo "make load-e2e       - Run the automated two-client collaboration flow"
+	@echo "make load-down      - Stop the load stack (keeps its database volume)"
 
 
 build:
@@ -139,6 +146,31 @@ flutter-web-build:
 NGROK_PORT ?= 5001
 ngrok:
 	@NGROK_PORT=$(NGROK_PORT) bash scripts/ngrok.sh
+
+LOAD_USERS ?= 30
+LOAD_TIME ?= 3m
+load-up:
+	docker compose -p music-room-load -f docker-compose.load.yml up -d --build
+
+load-seed:
+	docker compose -p music-room-load -f docker-compose.load.yml exec -T backend python manage.py seed_load_test_data --users 1000 --events 100 --playlists 100 --songs 200 --output /tmp/load-accounts.json
+	docker compose -p music-room-load -f docker-compose.load.yml cp backend:/tmp/load-accounts.json tests/load/accounts.json
+
+load-read:
+	mkdir -p tests/load/results
+	LOAD_ACCOUNTS_FILE=$(CURDIR)/tests/load/accounts.json tests/load/.venv/bin/locust -f tests/load/locustfile.py --headless --host http://127.0.0.1:18082 --users $(LOAD_USERS) --spawn-rate 6 --run-time $(LOAD_TIME) --stop-timeout 15 --csv tests/load/results/read-users-$(LOAD_USERS) --csv-full-history --html tests/load/results/read-users-$(LOAD_USERS).html --only-summary
+
+load-write:
+	LOAD_ACCOUNTS_FILE=$(CURDIR)/tests/load/accounts.json LOAD_EVENT_ID=$(EVENT_ID) LOAD_EVENT_SONG_ID=$(EVENT_SONG_ID) tests/load/.venv/bin/locust -f tests/load/locustfile_write.py --headless --host http://127.0.0.1:18082 --users $(LOAD_USERS) --spawn-rate 6 --run-time $(LOAD_TIME) --stop-timeout 15 --csv tests/load/results/write-users-$(LOAD_USERS) --csv-full-history --html tests/load/results/write-users-$(LOAD_USERS).html --only-summary
+
+load-websocket:
+	tests/load/.venv/bin/python tests/load/websocket_probe.py --accounts tests/load/accounts.json --event-id $(EVENT_ID) --event-song-id $(EVENT_SONG_ID) --users $(LOAD_USERS)
+
+load-e2e:
+	tests/load/.venv/bin/python tests/load/two_client_smoke.py --accounts tests/load/accounts.json
+
+load-down:
+	docker compose -p music-room-load -f docker-compose.load.yml down
 
 # Development workflow
 dev: up logs

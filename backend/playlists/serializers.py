@@ -7,7 +7,7 @@ from .models import Playlist, PlaylistCollaborator, PlaylistSong, PlaylistAccess
 
 class PlaylistSerializer(serializers.ModelSerializer):
     owner = serializers.StringRelatedField(read_only=True)
-    song_count = serializers.ReadOnlyField()
+    song_count = serializers.SerializerMethodField()
     cover_image_url = serializers.SerializerMethodField()
     is_collaborator = serializers.SerializerMethodField()
     is_member = serializers.SerializerMethodField()
@@ -28,6 +28,11 @@ class PlaylistSerializer(serializers.ModelSerializer):
     def get_cover_image_url(self, obj):
         return obj.cover_image.url if obj.cover_image else None
 
+    def get_song_count(self, obj):
+        if hasattr(obj, "_list_song_count"):
+            return obj._list_song_count
+        return obj.song_count
+
     def get_is_collaborator(self, obj):
         """Whether the signed-in user is an invited `PlaylistCollaborator`
         on this playlist — distinct from owning it. Collaborator access
@@ -38,7 +43,8 @@ class PlaylistSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return False
-        return obj.collaborators.filter(collaborator=request.user).exists()
+        annotated = getattr(obj, "_list_is_collaborator", None)
+        return annotated if annotated is not None else obj.collaborators.filter(collaborator=request.user).exists()
 
     def get_is_member(self, obj):
         """Whether the signed-in user has self-joined this public playlist
@@ -48,7 +54,8 @@ class PlaylistSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return False
-        return obj.members.filter(member=request.user).exists()
+        annotated = getattr(obj, "_list_is_member", None)
+        return annotated if annotated is not None else obj.members.filter(member=request.user).exists()
 
     def validate(self, attrs):
         # A playlist shows at most one cover. Uploading an image (this is

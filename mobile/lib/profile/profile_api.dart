@@ -41,6 +41,8 @@ class ProfileApi {
     String? displayName,
     String? bio,
     String? location,
+    double? locationLatitude,
+    double? locationLongitude,
     String? favoriteArtist,
     String? phoneNumber,
     DateTime? birthday,
@@ -50,21 +52,23 @@ class ProfileApi {
     String? avatarPresetId,
   }) async {
     final body = <String, dynamic>{
-      if (username != null) 'username': username,
-      if (displayName != null) 'display_name': displayName,
-      if (bio != null) 'bio': bio,
-      if (location != null) 'location': location,
-      if (favoriteArtist != null) 'favorite_artist': favoriteArtist,
-      if (phoneNumber != null) 'phone_number': phoneNumber,
+      'username': ?username,
+      'display_name': ?displayName,
+      'bio': ?bio,
+      'location': ?location,
+      'location_latitude': ?locationLatitude,
+      'location_longitude': ?locationLongitude,
+      'favorite_artist': ?favoriteArtist,
+      'phone_number': ?phoneNumber,
       if (birthday != null)
         'birthday': birthday.toIso8601String().split('T').first
       else if (clearBirthday)
         'birthday': null,
-      if (favoriteGenres != null) 'favorite_genres': favoriteGenres,
-      if (fieldVisibility != null) 'field_visibility': fieldVisibility,
+      'favorite_genres': ?favoriteGenres,
+      'field_visibility': ?fieldVisibility,
       // Picking a preset also clears any previously uploaded custom
       // image, server-side — see `ProfileSerializer.validate`.
-      if (avatarPresetId != null) 'avatar_preset_id': avatarPresetId,
+      'avatar_preset_id': ?avatarPresetId,
     };
 
     final response = await _authorizedPatch(
@@ -173,14 +177,6 @@ class ProfileApi {
   }
 
   /// Cancels a pending friend request the signed-in user sent to [userId].
-  ///
-  /// TODO: The backend has no cancel-sent-request endpoint yet (only
-  /// `RejectFriendRequestView`, restricted to the *receiver* of a
-  /// request, and `RemoveFriendView`, restricted to already-`accepted`
-  /// friendships — see `profiles/views.py`). This targets
-  /// `DELETE .../friends/<user_id>/cancel/`, matching the naming
-  /// convention of the existing endpoints, ready to work once that route
-  /// is added server-side.
   Future<void> cancelFriendRequest(int userId) async {
     final accessToken = await _tokenStorage.readAccessToken();
     if (accessToken == null) throw SessionExpiredException();

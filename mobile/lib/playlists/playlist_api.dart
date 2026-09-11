@@ -42,10 +42,10 @@ class PlaylistApi {
   }) async {
     final body = <String, dynamic>{
       'title': title,
-      if (description != null) 'description': description,
-      if (visibility != null) 'visibility': visibility,
-      if (editPermission != null) 'edit_permission': editPermission,
-      if (coverPreset != null) 'cover_preset': coverPreset,
+      'description': ?description,
+      'visibility': ?visibility,
+      'edit_permission': ?editPermission,
+      'cover_preset': ?coverPreset,
     };
     final response = await _authorizedPost(
       ApiConfig.playlistsUri(),
@@ -73,10 +73,10 @@ class PlaylistApi {
     String? coverPreset,
   }) async {
     final body = <String, dynamic>{
-      if (title != null) 'title': title,
-      if (visibility != null) 'visibility': visibility,
-      if (editPermission != null) 'edit_permission': editPermission,
-      if (coverPreset != null) 'cover_preset': coverPreset,
+      'title': ?title,
+      'visibility': ?visibility,
+      'edit_permission': ?editPermission,
+      'cover_preset': ?coverPreset,
     };
     final response = await _authorizedPatch(
       ApiConfig.playlistDetailUri(playlistId),
@@ -138,10 +138,10 @@ class PlaylistApi {
     final body = <String, dynamic>{
       'title': title,
       'artist': artist,
-      if (durationSeconds != null) 'duration_seconds': durationSeconds,
-      if (externalId != null) 'external_id': externalId,
-      if (albumArtUrl != null) 'album_art_url': albumArtUrl,
-      if (previewUrl != null) 'preview_url': previewUrl,
+      'duration_seconds': ?durationSeconds,
+      'external_id': ?externalId,
+      'album_art_url': ?albumArtUrl,
+      'preview_url': ?previewUrl,
     };
     final response = await _authorizedPost(
       ApiConfig.playlistSongsUri(playlistId),

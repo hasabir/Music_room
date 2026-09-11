@@ -41,7 +41,6 @@ class _MusicPreferencesScreenState extends State<MusicPreferencesScreen> {
 
   late final Set<String> _selectedGenres;
   late String? _selectedArtist;
-  late final List<String> _artistOptions;
 
   String _query = '';
   bool _isSaving = false;

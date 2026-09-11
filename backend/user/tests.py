@@ -49,8 +49,9 @@ class NotificationTests(APITestCase):
         )
         response = self.client.get('/api/v1/user/notifications/')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
-        entry = response.data[0]
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(len(response.data['results']), 1)
+        entry = response.data['results'][0]
         self.assertEqual(entry['kind'], 'playlist_invite')
         self.assertEqual(entry['data'], {'playlist_id': 7})
         self.assertFalse(entry['is_read'])
@@ -59,7 +60,8 @@ class NotificationTests(APITestCase):
         notify_user(self.user.id, kind='friend_request', title='t', body='b')
         notify_user(self.other_user.id, kind='friend_request', title='t', body='b')
         response = self.client.get('/api/v1/user/notifications/')
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(len(response.data['results']), 1)
 
     def test_marking_one_notification_read(self):
         notification = Notification.objects.create(

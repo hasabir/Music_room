@@ -1,7 +1,6 @@
 from django.db.models import Q
 from rest_framework import serializers
 
-from api.geocoding import geocode, GeocodingUnavailable
 from user.models import User, ActionLog
 from events.models import EventLike
 from playlists.models import Playlist
@@ -55,6 +54,8 @@ class FriendshipSerializer(serializers.ModelSerializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
+    location_latitude = serializers.FloatField(required=False, min_value=-90, max_value=90)
+    location_longitude = serializers.FloatField(required=False, min_value=-180, max_value=180)
 
     username = serializers.CharField(
         source="user.username",
@@ -90,6 +91,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "location",
             "location_latitude",
             "location_longitude",
+            "location_from_gps",
             "favorite_artist",
             "phone_number",
             "birthday",
@@ -106,10 +108,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
-            # Resolved server-side from `location` on save — see `update`
-            # below — never client-writable directly.
-            "location_latitude",
-            "location_longitude",
+            "location_from_gps",
             "avatar",
             # `avatar_type` is inferred server-side from whichever of
             # `profile_image` / `avatar_preset_id` arrives in a request —
@@ -166,6 +165,13 @@ class ProfileSerializer(serializers.ModelSerializer):
         return username
 
     def validate(self, attrs):
+        latitude = "location_latitude" in attrs
+        longitude = "location_longitude" in attrs
+        if latitude != longitude:
+            raise serializers.ValidationError("Both GPS coordinates are required.")
+        if "location" in attrs and not latitude:
+            if self.instance is None or attrs["location"] != self.instance.location:
+                raise serializers.ValidationError({"location": "Use your device GPS to set your location."})
         # A profile shows exactly one avatar. Uploading a custom image
         # (this is how `MyProfileView`'s multipart PATCH arrives) always
         # wins over whatever preset was picked before — and picking a
@@ -187,17 +193,11 @@ class ProfileSerializer(serializers.ModelSerializer):
         incoming_visibility = validated_data.pop("field_visibility", None)
         if incoming_visibility is not None:
             instance.field_visibility = {**instance.field_visibility, **incoming_visibility}
-        # Re-resolve the cached coordinates whenever `location` is touched,
-        # so a location-restricted event's vote check has ready-to-use
-        # coordinates instead of forward-geocoding this on every vote. A
-        # query that doesn't resolve (or a geocoding outage) just clears
-        # the cache — it never blocks saving the free-text field itself.
-        if "location" in validated_data:
-            try:
-                coordinates = geocode(validated_data["location"])
-            except GeocodingUnavailable:
-                coordinates = None
-            instance.location_latitude, instance.location_longitude = coordinates or (None, None)
+        # Preserve device coordinates exactly; the display label is not geocoded.
+        if "location_latitude" in validated_data:
+            instance.location_from_gps = True
+            if not validated_data.get("location"):
+                validated_data["location"] = f'{validated_data["location_latitude"]}, {validated_data["location_longitude"]}'
         # `avatar_type` isn't client-writable (see Meta.read_only_fields)
         # — it's inferred here from whichever avatar source this request
         # actually touched, then persisted along with everything else by

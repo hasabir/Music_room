@@ -134,3 +134,8 @@ The backend uses Django with Channels for WebSocket support, enabling real-time 
 ## License
 
 MIT -->
+
+# Music Room
+
+See [quality, CI and capacity evaluation](docs/QUALITY_AND_CAPACITY.md) for the
+V.7 ramp-up procedure and IV.8 testing/team workflow.
