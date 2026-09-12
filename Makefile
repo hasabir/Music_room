@@ -1,5 +1,7 @@
 .PHONY: help build up down restart logs shell migrate makemigrations createsuperuser test clean flutter-web flutter-web-build ngrok load-up load-down load-seed load-read load-write load-websocket load-e2e
 
+#test
+
 help:
 	@echo "Music Room - Development Commands"
 	@echo "=================================="
@@ -174,3 +176,5 @@ load-down:
 
 # Development workflow
 dev: up logs
+
+# test workflow
